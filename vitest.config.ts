@@ -7,6 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "next/link": fileURLToPath(new URL("./tests/next-link.tsx", import.meta.url)),
+      "next/navigation": fileURLToPath(new URL("./tests/next-navigation.ts", import.meta.url)),
     },
   },
   test: {
