@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it } from "vitest";
 
@@ -92,4 +92,23 @@ it("keeps a selected out-of-stock line visible but prevents checkout", async () 
   expect(screen.getByRole("link", { name: "선택 상품 주문하기" })).toHaveAttribute("aria-disabled", "true");
   expect(screen.getByRole("button", { name: "수량 줄이기" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "수량 늘리기" })).toBeDisabled();
+});
+
+it("replaces a broken cart thumbnail without changing persisted cart data", async () => {
+  renderCart();
+
+  const listItem = await screen.findByRole("listitem");
+  const thumbnail = listItem.querySelector("img");
+  const imageRegion = thumbnail?.closest(".cart-view__image");
+  expect(thumbnail).toHaveAttribute("src", line.thumbnailUrl);
+  expect(thumbnail).toHaveAttribute("alt", "");
+  expect(imageRegion).toHaveAttribute("aria-hidden", "true");
+
+  fireEvent.error(thumbnail as HTMLImageElement);
+
+  expect(imageRegion?.querySelector("img")).not.toBeInTheDocument();
+  expect(within(imageRegion as HTMLElement).getByText("VITALEAF")).toBeInTheDocument();
+  await waitFor(() => {
+    expect(JSON.parse(localStorage.getItem(storageKey) ?? "[]")).toEqual([line]);
+  });
 });

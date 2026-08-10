@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 
 import type { Product } from "@/lib/products/types";
 
@@ -41,6 +41,24 @@ it("shows discount, benefit, rating, and sold-out status without relying on colo
   expect(card).toHaveTextContent("리뷰 1,624");
   expect(card).toHaveTextContent("품절");
   expect(screen.getByRole("link", { name: /데일리 오메가3/ })).toHaveAttribute(
+    "href",
+    "/products/daily-omega-3",
+  );
+});
+
+it("replaces a broken non-empty thumbnail with the existing decorative brand fallback", () => {
+  render(<ProductCard product={{ ...product, stock: 3 }} />);
+
+  const card = screen.getByRole("article", { name: product.name });
+  const thumbnail = card.querySelector("img");
+  expect(thumbnail).toHaveAttribute("src", product.thumbnailUrl);
+  expect(thumbnail).toHaveAttribute("alt", "");
+
+  fireEvent.error(thumbnail as HTMLImageElement);
+
+  expect(card.querySelector("img")).not.toBeInTheDocument();
+  expect(within(card).getByText("VITALEAF")).toHaveAttribute("aria-hidden", "true");
+  expect(within(card).getByRole("link", { name: /데일리 오메가3/ })).toHaveAttribute(
     "href",
     "/products/daily-omega-3",
   );

@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useState } from "react";
 
 import { formatWon } from "../../lib/format";
 import type { Product } from "../../lib/products/types";
@@ -10,15 +13,22 @@ const discountRate = (product: Product): number | null => {
 
 export function ProductCard({ product, rank }: { product: Product; rank?: number }) {
   const discount = discountRate(product);
+  const [imageFailed, setImageFailed] = useState(false);
 
   return (
     <article className="product-card" aria-label={product.name}>
       <Link className="product-card__link" href={`/products/${product.slug}`}>
         <div className="product-card__image-wrap">
-          {product.thumbnailUrl ? (
+          {product.thumbnailUrl && !imageFailed ? (
             // Firestore accepts merchant-managed image URLs from arbitrary hosts.
             // eslint-disable-next-line @next/next/no-img-element
-            <img className="product-card__image" src={product.thumbnailUrl} alt="" loading="lazy" />
+            <img
+              className="product-card__image"
+              src={product.thumbnailUrl}
+              alt=""
+              loading="lazy"
+              onError={() => setImageFailed(true)}
+            />
           ) : (
             <span className="product-card__image-fallback" aria-hidden="true">VITALEAF</span>
           )}

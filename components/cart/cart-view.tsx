@@ -45,6 +45,22 @@ function CartQuantity({ line }: { line: CartLine }) {
   );
 }
 
+function CartThumbnail({ line }: { line: CartLine }) {
+  const [imageFailed, setImageFailed] = useState(false);
+
+  return (
+    <div className="cart-view__image" aria-hidden="true">
+      {line.thumbnailUrl && !imageFailed ? (
+        // Cart thumbnails are merchant-managed URLs, like product gallery images.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={line.thumbnailUrl} alt="" onError={() => setImageFailed(true)} />
+      ) : (
+        <span>VITALEAF</span>
+      )}
+    </div>
+  );
+}
+
 export function CartView() {
   const {
     lines,
@@ -184,15 +200,7 @@ export function CartView() {
                     onChange={(event) => setSelected(line.productId, event.target.checked)}
                   />
                 </label>
-                <div className="cart-view__image" aria-hidden="true">
-                  {line.thumbnailUrl ? (
-                    // Cart thumbnails are merchant-managed URLs, like product gallery images.
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={line.thumbnailUrl} alt="" />
-                  ) : (
-                    <span>VITALEAF</span>
-                  )}
-                </div>
+                <CartThumbnail line={line} />
                 <div className="cart-view__product">
                   <h3>{line.name}</h3>
                   <p>{formatWon(line.unitPrice)} / 개</p>
