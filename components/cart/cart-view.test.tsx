@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it } from "vitest";
 
@@ -82,7 +82,7 @@ it("keeps focus inside the delete dialog and restores it after cancellation", as
 
   await user.keyboard("{Escape}");
   expect(screen.queryByRole("dialog", { name: "상품 삭제 확인" })).not.toBeInTheDocument();
-  expect(deleteTrigger).toHaveFocus();
+  await waitFor(() => expect(deleteTrigger).toHaveFocus());
 });
 
 it("keeps a selected out-of-stock line visible but prevents checkout", async () => {
