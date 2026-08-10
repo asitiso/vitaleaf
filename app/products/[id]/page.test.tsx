@@ -4,9 +4,10 @@ import { vi } from "vitest";
 import { CartProvider } from "../../../features/cart/cart-context";
 import type { Product } from "../../../lib/products/types";
 
-const { getProductMock, getApprovedReviewsMock, notFoundMock } = vi.hoisted(() => ({
+const { getProductMock, getApprovedReviewsMock, notFoundMock, routePushMock } = vi.hoisted(() => ({
   getProductMock: vi.fn(),
   getApprovedReviewsMock: vi.fn(),
+  routePushMock: vi.fn(),
   notFoundMock: vi.fn(() => {
     throw new Error("NOT_FOUND");
   }),
@@ -14,7 +15,10 @@ const { getProductMock, getApprovedReviewsMock, notFoundMock } = vi.hoisted(() =
 
 vi.mock("../../../lib/firebase/products", () => ({ getProduct: getProductMock }));
 vi.mock("../../../lib/firebase/reviews", () => ({ getApprovedReviews: getApprovedReviewsMock }));
-vi.mock("next/navigation", () => ({ notFound: notFoundMock }));
+vi.mock("next/navigation", () => ({
+  notFound: notFoundMock,
+  useRouter: () => ({ push: routePushMock }),
+}));
 
 import ProductPage from "./page";
 
@@ -49,6 +53,7 @@ beforeEach(() => {
   getProductMock.mockReset();
   getApprovedReviewsMock.mockReset();
   notFoundMock.mockClear();
+  routePushMock.mockClear();
 });
 
 it("uses the route id to load a product and keeps details visible when reviews fail", async () => {

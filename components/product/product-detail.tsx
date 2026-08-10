@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 
 import { useCart } from "../../features/cart/cart-context";
 import { formatWon } from "../../lib/format";
@@ -24,6 +25,7 @@ function getDiscountRate(product: Product): number | null {
 
 export function ProductDetail({ product, reviews, reviewLoadError = false }: ProductDetailProps) {
   const { add } = useCart();
+  const router = useRouter();
   const [quantity, setQuantity] = useState(1);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [failedImages, setFailedImages] = useState<Set<string>>(() => new Set());
@@ -34,6 +36,11 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
 
   const decreaseQuantity = () => setQuantity((current) => Math.max(1, current - 1));
   const increaseQuantity = () => setQuantity((current) => Math.min(product.stock, current + 1));
+  const buyNow = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    add(product, quantity);
+    router.push("/checkout");
+  };
 
   return (
     <main className="product-detail">
@@ -110,7 +117,7 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
           +
         </button>
       </div>
-      <form className="product-detail__actions" action="/checkout" onSubmit={() => add(product, quantity)}>
+      <form className="product-detail__actions" onSubmit={buyNow}>
         <button type="button" disabled={soldOut} onClick={() => add(product, quantity)}>
           장바구니 담기
         </button>

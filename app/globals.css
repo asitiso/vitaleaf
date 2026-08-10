@@ -212,10 +212,10 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
 .product-card__price-row { display: flex; gap: 7px; align-items: baseline; }
 .product-card__discount { color: var(--color-sale); font-size: 18px; }
 .product-card__price { color: #172d25; font-size: 19px; }
-.product-card__original-price { display: block; min-height: 20px; color: #9aa69f; font-size: 12px; }
+.product-card__original-price { display: block; min-height: 20px; color: #5f6f67; font-size: 12px; }
 .product-card__rating { display: flex; gap: 5px; align-items: center; margin: 7px 0 0; color: #52645b; font-size: 12px; }
-.product-card__rating > span:first-child { color: #d4922f; }
-.product-card__rating > span:last-child { padding-left: 6px; border-left: 1px solid #d5ddd7; color: #76857d; }
+.product-card__rating > span:first-child { color: #8a5b16; }
+.product-card__rating > span:last-child { padding-left: 6px; border-left: 1px solid #d5ddd7; color: #52645b; }
 .product-grid-state { display: grid; min-height: 260px; place-items: center; align-content: center; padding: 40px; border: 1px dashed #cbd9ce; border-radius: 7px; text-align: center; background: #fbfcfa; }
 .product-grid-state strong { font-size: 19px; }
 .product-grid-state p { margin: 6px 0 17px; color: #6b7c73; font-size: 14px; }
@@ -329,7 +329,7 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
 .product-detail__price-row { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
 .product-detail__discount { color: var(--color-sale); font-size: 25px; }
 .product-detail__price { color: #152f25; font-size: 30px; }
-.product-detail__price-row del { color: #98a49d; font-size: 14px; }
+.product-detail__price-row del { color: #5f6f67; font-size: 14px; }
 .product-detail__stock { display: inline-flex; padding: 6px 9px; margin: 18px 0 0; border-radius: 3px; color: #315a48; background: var(--color-mint); font-size: 12px; font-weight: 800; }
 .product-detail__stock--sold-out { color: #873729; background: #f7e6e1; }
 .product-detail__shipping { padding: 15px 17px; margin: 17px 0 0; border: 1px solid #d8e3da; border-radius: 5px; color: #607168; background: #f8faf7; font-size: 13px; }
@@ -366,10 +366,10 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
 .review-section__summary { display: grid; grid-template-columns: .75fr 1.25fr; gap: 55px; align-items: center; padding: 34px; margin-top: 28px; border-radius: 7px; background: var(--color-sand); }
 .review-section__summary > div { display: grid; justify-items: center; }
 .review-section__average { color: var(--color-forest); font-size: 48px; line-height: 1; }
-.review-section__summary > div > span { margin-top: 10px; color: #d4922f; letter-spacing: .08em; }
-.review-section__summary p { margin: 7px 0 0; color: #66776e; font-size: 13px; }
+.review-section__summary > div > span { margin-top: 10px; color: #8a5b16; letter-spacing: .08em; }
+.review-section__summary p { margin: 7px 0 0; color: #5f6f67; font-size: 13px; }
 .review-section__distribution { display: grid; gap: 7px; padding: 0; margin: 0; list-style: none; }
-.review-section__distribution li { display: grid; grid-template-columns: 32px 1fr 28px; gap: 10px; align-items: center; color: #66776e; font-size: 12px; }
+.review-section__distribution li { display: grid; grid-template-columns: 32px 1fr 28px; gap: 10px; align-items: center; color: #5f6f67; font-size: 12px; }
 .review-section__distribution progress { width: 100%; height: 8px; border: 0; border-radius: 999px; overflow: hidden; appearance: none; background: #dce4dd; }
 .review-section__distribution progress::-webkit-progress-bar { background: #dce4dd; }
 .review-section__distribution progress::-webkit-progress-value { background: var(--color-sage); }
@@ -377,8 +377,8 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
 .review-section__list { margin-top: 20px; }
 .review-section__list article { padding: 24px 5px; border-bottom: 1px solid #dfe6e0; }
 .review-section__list header { display: flex; gap: 13px; align-items: center; }
-.review-section__list header span { color: #d4922f; font-size: 12px; }
-.review-section__list time { margin-left: auto; color: #8a9890; font-size: 12px; }
+.review-section__list header span { color: #8a5b16; font-size: 12px; }
+.review-section__list time { margin-left: auto; color: #596b62; font-size: 12px; }
 .review-section__list article p { margin: 12px 0 0; color: #4f6358; line-height: 1.7; }
 .review-section__empty, .review-section__error { padding: 40px; margin-top: 28px; border: 1px dashed #cbd9ce; border-radius: 7px; color: #64766c; background: #fbfcfa; text-align: center; }
 .review-section__error p { margin: 0 0 15px; }
