@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ChangeEvent } from "react";
+import { useRef, useState, type ChangeEvent } from "react";
 
 import {
   parseProductCsv,
@@ -57,25 +57,33 @@ type CsvToolsProps = {
   products: readonly Product[];
   onImport(products: ProductInput[]): Promise<void>;
   downloadCsv?: (csv: string, filename: string) => void;
+  readFile?: (file: File) => Promise<string>;
 };
 
-export function CsvTools({ products, onImport, downloadCsv = downloadCsvInBrowser }: CsvToolsProps) {
+export function CsvTools({ products, onImport, downloadCsv = downloadCsvInBrowser, readFile = readUtf8File }: CsvToolsProps) {
   const [preview, setPreview] = useState<ProductInput[]>([]);
+  const [previewGeneration, setPreviewGeneration] = useState<number | null>(null);
   const [errors, setErrors] = useState<CsvRowError[]>([]);
   const [message, setMessage] = useState("");
   const [operationError, setOperationError] = useState("");
   const [importing, setImporting] = useState(false);
+  const selectionGeneration = useRef(0);
 
   const selectFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
+    const generation = selectionGeneration.current + 1;
+    selectionGeneration.current = generation;
     setPreview([]);
+    setPreviewGeneration(null);
     setErrors([]);
     setMessage("");
     setOperationError("");
     if (!file) return;
 
     try {
-      const result = parseProductCsv(await readUtf8File(file));
+      const contents = await readFile(file);
+      if (generation !== selectionGeneration.current) return;
+      const result = parseProductCsv(contents);
       if (result.errors.length > 0) {
         setErrors(result.errors);
         return;
@@ -89,13 +97,20 @@ export function CsvTools({ products, onImport, downloadCsv = downloadCsvInBrowse
         return;
       }
       setPreview(result.valid);
+      setPreviewGeneration(generation);
     } catch {
+      if (generation !== selectionGeneration.current) return;
       setOperationError("CSV 파일을 읽지 못했습니다. UTF-8 형식인지 확인해 주세요.");
     }
   };
 
   const confirmImport = async () => {
-    if (preview.length === 0 || importing) return;
+    if (
+      preview.length === 0
+      || errors.length > 0
+      || previewGeneration !== selectionGeneration.current
+      || importing
+    ) return;
     setImporting(true);
     setOperationError("");
     setMessage("");
@@ -103,6 +118,7 @@ export function CsvTools({ products, onImport, downloadCsv = downloadCsvInBrowse
       await onImport(preview);
       setMessage(`상품 ${preview.length}개를 가져왔습니다.`);
       setPreview([]);
+      setPreviewGeneration(null);
     } catch {
       setOperationError("상품을 가져오지 못했습니다. 네트워크 연결을 확인하고 다시 시도해 주세요.");
     } finally {
@@ -130,7 +146,8 @@ export function CsvTools({ products, onImport, downloadCsv = downloadCsvInBrowse
       </div>
       <p>
         양식을 내려받아 한 번에 최대 400개 상품을 검증한 뒤 등록할 수 있습니다.
-        배열 값은 <code>|</code>로 구분하고 원료 정보는 JSON 배열로 입력해 주세요.
+        배열 값은 <code>|</code>로 구분하고 값 안의 <code>|</code>와 <code>\</code>는 각각 <code>\|</code>와 <code>\\</code>로 입력해 주세요.
+        원료 정보는 JSON 배열로 입력해 주세요.
       </p>
       <div className="admin-form-actions">
         <a className="admin-secondary-button" href="/products-template.csv" download="products-template.csv">CSV 양식 다운로드</a>
@@ -147,7 +164,7 @@ export function CsvTools({ products, onImport, downloadCsv = downloadCsvInBrowse
           <ul aria-label="CSV 검증 오류">
             {errors.map((error, index) => (
               <li key={`${error.row}-${error.field}-${index}`}>
-                {error.row}행 {FIELD_LABELS[error.field]}: {error.message}
+                {error.row}행{error.field === "row" ? "" : ` ${FIELD_LABELS[error.field]}`}: {error.message}
               </li>
             ))}
           </ul>

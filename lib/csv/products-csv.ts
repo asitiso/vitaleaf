@@ -64,6 +64,42 @@ const emptyProduct = (): ProductInput => ({
   reviewCount: 0,
 });
 
+const encodeSpreadsheetSafe = (value: string): string => {
+  if (value.startsWith("'") || /^[=+\-@]/.test(value)) return `'${value}`;
+  return value;
+};
+
+const decodeSpreadsheetSafe = (value: string): string => {
+  if (value.startsWith("''") || /^'[=+\-@]/.test(value)) return value.slice(1);
+  return value;
+};
+
+const encodeList = (values: readonly string[]): string => values
+  .map((item) => item.replaceAll("\\", "\\\\").replaceAll("|", "\\|"))
+  .join("|");
+
+const decodeList = (value: string): string[] => {
+  const items: string[] = [];
+  let item = "";
+  let escaping = false;
+  for (const character of value) {
+    if (escaping) {
+      item += character === "|" || character === "\\" ? character : `\\${character}`;
+      escaping = false;
+    } else if (character === "\\") {
+      escaping = true;
+    } else if (character === "|") {
+      if (item.trim()) items.push(item.trim());
+      item = "";
+    } else {
+      item += character;
+    }
+  }
+  if (escaping) item += "\\";
+  if (item.trim()) items.push(item.trim());
+  return items;
+};
+
 const parseRows = (input: string): { rows: ParsedRow[]; errors: CsvRowError[] } => {
   const text = input.startsWith("\uFEFF") ? input.slice(1) : input;
   const rows: ParsedRow[] = [];
@@ -71,6 +107,7 @@ const parseRows = (input: string): { rows: ParsedRow[]; errors: CsvRowError[] } 
   const errors: CsvRowError[] = [];
   let cell = "";
   let inQuotes = false;
+  let afterClosingQuote = false;
   let line = 1;
   let sourceRow = 1;
 
@@ -79,6 +116,7 @@ const parseRows = (input: string): { rows: ParsedRow[]; errors: CsvRowError[] } 
     rows.push({ cells: [...cells], sourceRow });
     cells.length = 0;
     cell = "";
+    afterClosingQuote = false;
   };
 
   for (let index = 0; index < text.length; index += 1) {
@@ -90,6 +128,7 @@ const parseRows = (input: string): { rows: ParsedRow[]; errors: CsvRowError[] } 
           index += 1;
         } else {
           inQuotes = false;
+          afterClosingQuote = true;
         }
       } else if (character === "\r") {
         if (text[index + 1] === "\n") index += 1;
@@ -102,8 +141,34 @@ const parseRows = (input: string): { rows: ParsedRow[]; errors: CsvRowError[] } 
       continue;
     }
 
-    if (character === '"' && cell.length === 0) {
+    if (afterClosingQuote) {
+      if (character === ",") {
+        cells.push(cell);
+        cell = "";
+        afterClosingQuote = false;
+      } else if (character === "\r" || character === "\n") {
+        if (character === "\r" && text[index + 1] === "\n") index += 1;
+        finishRow();
+        line += 1;
+        sourceRow = line;
+      } else {
+        errors.push({
+          row: sourceRow,
+          field: "row",
+          message: "닫는 큰따옴표 뒤에는 쉼표 또는 줄바꿈만 사용할 수 있습니다.",
+        });
+        cell += character;
+        afterClosingQuote = false;
+      }
+    } else if (character === '"' && cell.length === 0) {
       inQuotes = true;
+    } else if (character === '"') {
+      errors.push({
+        row: sourceRow,
+        field: "row",
+        message: "큰따옴표는 셀의 시작에서만 사용할 수 있습니다.",
+      });
+      cell += character;
     } else if (character === ",") {
       cells.push(cell);
       cell = "";
@@ -173,19 +238,24 @@ export const parseProductCsv = (text: string): { valid: ProductInput[]; errors: 
 
   for (const row of dataRows) {
     if (row.cells.every((value) => value.trim() === "")) continue;
+    if (row.cells.length !== headers.length) {
+      errors.push({
+        row: row.sourceRow,
+        field: "row",
+        message: `열 개수가 헤더와 일치하지 않습니다. 헤더 ${headers.length}개, 현재 행 ${row.cells.length}개입니다.`,
+      });
+      continue;
+    }
     const product = emptyProduct();
     const rowErrors: CsvRowError[] = [];
     const value = (field: ProductCsvHeader): string => {
       const index = headerIndexes.get(field);
-      return index === undefined ? "" : (row.cells[index] ?? "").trim();
+      return index === undefined ? "" : decodeSpreadsheetSafe((row.cells[index] ?? "").trim());
     };
     const addError = (field: keyof ProductInput, message: string) => {
       rowErrors.push({ row: row.sourceRow, field, message });
     };
-    const list = (field: ProductCsvHeader): string[] => value(field)
-      .split("|")
-      .map((item) => item.trim())
-      .filter(Boolean);
+    const list = (field: ProductCsvHeader): string[] => decodeList(value(field));
     const optionalNumber = (field: "originalPrice" | "salesRank", message: string): number | null => {
       const raw = value(field);
       if (!raw) return null;
@@ -276,10 +346,8 @@ export const parseProductCsv = (text: string): { valid: ProductInput[]; errors: 
   return { valid, errors };
 };
 
-const spreadsheetSafe = (value: string): string => /^[=+\-@]/.test(value) ? `'${value}` : value;
-
 const escapeCell = (value: string): string => {
-  const safe = spreadsheetSafe(value);
+  const safe = encodeSpreadsheetSafe(value);
   return /[",\r\n]/.test(safe) ? `"${safe.replaceAll('"', '""')}"` : safe;
 };
 
@@ -287,18 +355,18 @@ const productCells = (product: Product): Record<ProductCsvHeader, string> => ({
   name: product.name,
   slug: product.slug,
   category: product.category,
-  concerns: product.concerns.join("|"),
+  concerns: encodeList(product.concerns),
   price: String(product.price),
   originalPrice: product.originalPrice === null ? "" : String(product.originalPrice),
   thumbnailUrl: product.thumbnailUrl,
-  images: product.images.join("|"),
+  images: encodeList(product.images),
   description: product.description,
-  benefits: product.benefits.join("|"),
+  benefits: encodeList(product.benefits),
   ingredients: JSON.stringify(product.ingredients),
   dosage: product.dosage,
   origin: product.origin,
-  certifications: product.certifications.join("|"),
-  cautions: product.cautions.join("|"),
+  certifications: encodeList(product.certifications),
+  cautions: encodeList(product.cautions),
   stock: String(product.stock),
   isBest: String(product.isBest),
   isNew: String(product.isNew),

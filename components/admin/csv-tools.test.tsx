@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 
@@ -34,6 +34,39 @@ const product: Product = {
 
 const csvFile = (contents: string) => new File([contents], "products.csv", { type: "text/csv;charset=utf-8" });
 
+it("ignores a stale file read so only the latest selection can be previewed and imported", async () => {
+  const user = userEvent.setup();
+  const onImport = vi.fn().mockResolvedValue(undefined);
+  const pending = new Map<string, (contents: string) => void>();
+  const readFile = vi.fn((file: File) => new Promise<string>((resolve) => {
+    pending.set(file.name, resolve);
+  }));
+  render(<CsvTools products={[]} onImport={onImport} readFile={readFile} />);
+
+  await user.upload(screen.getByLabelText("상품 CSV 파일"), new File(["older"], "older.csv", { type: "text/csv" }));
+  await user.upload(screen.getByLabelText("상품 CSV 파일"), new File(["latest"], "latest.csv", { type: "text/csv" }));
+  expect(readFile).toHaveBeenCalledTimes(2);
+
+  await act(async () => pending.get("latest.csv")?.([
+    "name,category,price,stock",
+    "최신 상품,혈행,21000,5",
+  ].join("\n")));
+  expect(await screen.findByText("가져올 상품 1개를 확인해 주세요.")).toBeVisible();
+
+  await act(async () => pending.get("older.csv")?.([
+    "name,category,price,stock",
+    "오래된 상품,혈행,10000,1",
+  ].join("\n")));
+  await user.click(screen.getByRole("button", { name: "1개 상품 가져오기" }));
+
+  expect(onImport).toHaveBeenCalledWith([
+    expect.objectContaining({ name: "최신 상품", price: 21_000 }),
+  ]);
+  expect(onImport).not.toHaveBeenCalledWith([
+    expect.objectContaining({ name: "오래된 상품" }),
+  ]);
+});
+
 it("blocks all writes when any row is invalid and shows every row-field error", async () => {
   const user = userEvent.setup();
   const onImport = vi.fn();
@@ -48,6 +81,26 @@ it("blocks all writes when any row is invalid and shows every row-field error", 
   expect(await screen.findByText("2행 판매가: 판매가는 0 이상의 숫자여야 합니다.")).toBeVisible();
   expect(screen.getByText("3행 상품명: 상품명을 입력해 주세요.")).toBeVisible();
   expect(screen.getByText("3행 재고: 재고는 0 이상의 정수여야 합니다.")).toBeVisible();
+  expect(screen.queryByRole("button", { name: /상품 가져오기/ })).not.toBeInTheDocument();
+  expect(onImport).not.toHaveBeenCalled();
+});
+
+it.each([
+  ['"오메가3"x,혈행,35000,10', "닫는 큰따옴표 뒤에는 쉼표 또는 줄바꿈만 사용할 수 있습니다."],
+  ['오"메가3,혈행,35000,10', "큰따옴표는 셀의 시작에서만 사용할 수 있습니다."],
+  ["오메가3,혈행,35000", "열 개수가 헤더와 일치하지 않습니다. 헤더 4개, 현재 행 3개입니다."],
+])("blocks preview and writes for malformed CSV structure: %s", async (row, message) => {
+  const user = userEvent.setup();
+  const onImport = vi.fn();
+  render(<CsvTools products={[]} onImport={onImport} />);
+
+  await user.upload(screen.getByLabelText("상품 CSV 파일"), csvFile([
+    "name,category,price,stock",
+    row,
+  ].join("\n")));
+
+  expect(await screen.findByText(`2행: ${message}`)).toBeVisible();
+  expect(screen.queryByText(/가져올 상품 \d+개를 확인해 주세요/)).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /상품 가져오기/ })).not.toBeInTheDocument();
   expect(onImport).not.toHaveBeenCalled();
 });
