@@ -1,5 +1,5 @@
 import { ProductBrowser, defaultProductFilters } from "../../components/commerce/product-browser";
-import { getProducts } from "../../lib/firebase/products";
+import { getServerProducts } from "../../lib/firebase/server-read";
 import type { Product, ProductFilters } from "../../lib/products/types";
 
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -60,7 +60,7 @@ export default async function ProductsPage({ searchParams }: { searchParams?: Pr
   let loadError = false;
 
   try {
-    products = await getProducts();
+    products = await getServerProducts();
   } catch {
     loadError = true;
   }

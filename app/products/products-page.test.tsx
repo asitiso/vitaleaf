@@ -7,7 +7,7 @@ import { ProductBrowser } from "../../components/commerce/product-browser";
 
 const { getProductsMock } = vi.hoisted(() => ({ getProductsMock: vi.fn() }));
 
-vi.mock("../../lib/firebase/products", () => ({ getProducts: getProductsMock }));
+vi.mock("../../lib/firebase/server-read", () => ({ getServerProducts: getProductsMock }));
 
 import ProductsPage from "./page";
 

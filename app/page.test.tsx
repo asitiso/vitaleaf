@@ -5,7 +5,7 @@ import type { Product } from "../lib/products/types";
 
 const { getProductsMock } = vi.hoisted(() => ({ getProductsMock: vi.fn() }));
 
-vi.mock("../lib/firebase/products", () => ({ getProducts: getProductsMock }));
+vi.mock("../lib/firebase/server-read", () => ({ getServerProducts: getProductsMock }));
 
 import Home from "./page";
 

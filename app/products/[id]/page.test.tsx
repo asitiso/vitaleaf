@@ -13,8 +13,11 @@ const { getProductMock, getApprovedReviewsMock, notFoundMock, routePushMock } = 
   }),
 }));
 
-vi.mock("../../../lib/firebase/products", () => ({ getProduct: getProductMock }));
-vi.mock("../../../lib/firebase/reviews", () => ({ getApprovedReviews: getApprovedReviewsMock }));
+vi.mock("../../../lib/firebase/server-read", () => ({
+  getServerProduct: getProductMock,
+  getServerApprovedReviews: getApprovedReviewsMock,
+}));
+vi.mock("../../../lib/firebase/reviews", () => ({ getApprovedReviews: vi.fn() }));
 vi.mock("next/navigation", () => ({
   notFound: notFoundMock,
   useRouter: () => ({ push: routePushMock }),

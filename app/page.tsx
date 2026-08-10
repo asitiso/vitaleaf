@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { ProductGrid } from "../components/commerce/product-grid";
-import { getProducts } from "../lib/firebase/products";
+import { getServerProducts } from "../lib/firebase/server-read";
 import type { Product } from "../lib/products/types";
 
 const byRank = (left: Product, right: Product) =>
@@ -16,7 +16,7 @@ export default async function Home() {
   let loadError = false;
 
   try {
-    products = await getProducts();
+    products = await getServerProducts();
   } catch {
     loadError = true;
   }

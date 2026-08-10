@@ -1,13 +1,15 @@
 import { notFound } from "next/navigation";
 
 import { ProductDetail } from "../../../components/product/product-detail";
-import { getProduct } from "../../../lib/firebase/products";
-import { getApprovedReviews } from "../../../lib/firebase/reviews";
+import {
+  getServerApprovedReviews,
+  getServerProduct,
+} from "../../../lib/firebase/server-read";
 import type { Review } from "../../../lib/products/types";
 
 export default async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const product = await getProduct(id);
+  const product = await getServerProduct(id);
 
   if (product === null) {
     return notFound();
@@ -17,7 +19,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
   let reviewLoadError = false;
 
   try {
-    reviews = await getApprovedReviews(product.id);
+    reviews = await getServerApprovedReviews(product.id);
   } catch {
     reviewLoadError = true;
   }
