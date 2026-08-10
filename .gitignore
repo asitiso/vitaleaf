@@ -4,3 +4,5 @@ node_modules/
 .next/
 .env.local
 coverage/
+/dist/
+/.wrangler/
