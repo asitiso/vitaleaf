@@ -60,3 +60,42 @@ describe("SiteHeader", () => {
     expect(within(drawer).getByRole("link", { name: "베스트" })).toBeVisible();
   });
 });
+
+describe("mobile drawer accessibility", () => {
+  it("keeps search, product categories, health concerns, and age recommendations available", async () => {
+    const user = userEvent.setup();
+    renderHeader();
+
+    await user.click(screen.getByRole("button", { name: "메뉴 열기" }));
+
+    const drawer = screen.getByRole("dialog", { name: "모바일 메뉴" });
+    expect(within(drawer).getByRole("search")).toBeVisible();
+    expect(within(drawer).getByRole("heading", { name: "상품 카테고리" })).toBeVisible();
+    expect(within(drawer).getByRole("link", { name: "피로·활력" })).toBeVisible();
+    expect(within(drawer).getByRole("link", { name: "50대+" })).toBeVisible();
+  });
+
+  it("moves focus inside, traps Tab, and restores focus on Escape", async () => {
+    const user = userEvent.setup();
+    renderHeader();
+
+    const trigger = screen.getByRole("button", { name: "메뉴 열기" });
+    await user.click(trigger);
+
+    const drawer = screen.getByRole("dialog", { name: "모바일 메뉴" });
+    const closeButton = within(drawer).getByRole("button", { name: "닫기" });
+    const focusableElements = Array.from(
+      drawer.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled])'),
+    );
+
+    expect(closeButton).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(document.activeElement).toBe(focusableElements.at(-1));
+    await user.tab();
+    expect(closeButton).toHaveFocus();
+
+    await user.keyboard("{Escape}");
+    expect(trigger).toHaveFocus();
+    expect(screen.queryByRole("dialog", { name: "모바일 메뉴" })).not.toBeInTheDocument();
+  });
+});

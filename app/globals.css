@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable.css");
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap");
 
 :root {
   --color-sage: #215c45;
@@ -139,4 +141,10 @@ a { color: inherit; }
   .site-header__cart { gap: 0; }
   .site-header__cart span { min-width: 22px; height: 22px; font-size: 12px; }
   .site-footer__inner { grid-template-columns: 1fr; gap: 24px; padding: 32px 0; }
+  .site-header__mobile-drawer .site-header__search { display: flex; margin: 20px 0 8px; }
+  .site-header__mobile-drawer .mega-menu { position: static; right: auto; left: auto; margin-top: 20px; border-inline: 0; box-shadow: none; }
+  .site-header__mobile-drawer .mega-menu__content { width: 100%; grid-template-columns: 1fr; gap: 26px; padding: 24px 0; }
+  .site-header__mobile-drawer .mega-menu__promotion { min-height: 116px; }
 }
+
+body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sans-serif; }
