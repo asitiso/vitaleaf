@@ -7,28 +7,42 @@ interface SiteOriginInput {
 
 const firstHeaderValue = (value?: string | null) => value?.split(",", 1)[0]?.trim() || undefined;
 
-export function resolveSiteOrigin({ forwardedHost, forwardedProto, host, siteUrl }: SiteOriginInput) {
+const toHttpOrigin = (value?: string | null) => {
+  if (!value) return undefined;
+
+  try {
+    const url = new URL(value);
+    return (url.protocol === "http:" || url.protocol === "https:") && url.origin !== "null"
+      ? url.origin
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const isLocalHost = (host: string) => /^(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(host);
+
+const toRequestOrigin = ({ forwardedHost, forwardedProto, host }: SiteOriginInput) => {
   const requestHost = firstHeaderValue(forwardedHost) ?? firstHeaderValue(host);
+  if (!requestHost) return undefined;
 
-  if (requestHost) {
-    const protocol =
-      firstHeaderValue(forwardedProto) ??
-      (requestHost.startsWith("localhost") || requestHost.startsWith("127.0.0.1") ? "http" : "https");
+  const requestedProtocol = firstHeaderValue(forwardedProto)?.toLowerCase();
+  if (requestedProtocol && requestedProtocol !== "http" && requestedProtocol !== "https") return undefined;
 
-    try {
-      return new URL(`${protocol}://${requestHost}`).origin;
-    } catch {
-      // Fall through to a configured deployment URL when proxy headers are malformed.
+  const protocol = requestedProtocol ?? (isLocalHost(requestHost) ? "http" : "https");
+
+  try {
+    const url = new URL(`${protocol}://${requestHost}`);
+    if (url.username || url.password || url.pathname !== "/" || url.search || url.hash || url.origin === "null") {
+      return undefined;
     }
-  }
 
-  if (siteUrl) {
-    try {
-      return new URL(siteUrl).origin;
-    } catch {
-      // Keep the storefront renderable when an optional deployment URL is invalid.
-    }
+    return url.origin;
+  } catch {
+    return undefined;
   }
+};
 
-  return "http://localhost:3000";
+export function resolveSiteOrigin({ forwardedHost, forwardedProto, host, siteUrl }: SiteOriginInput) {
+  return toHttpOrigin(siteUrl) ?? toRequestOrigin({ forwardedHost, forwardedProto, host }) ?? "http://localhost:3000";
 }

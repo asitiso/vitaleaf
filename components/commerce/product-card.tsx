@@ -17,7 +17,7 @@ export function ProductCard({ product, rank }: { product: Product; rank?: number
 
   return (
     <article className="product-card" aria-label={product.name}>
-      <Link className="product-card__link" href={`/products/${product.slug}`}>
+      <Link className="product-card__link" href={`/products/${product.id}`}>
         <div className="product-card__image-wrap">
           {product.thumbnailUrl && !imageFailed ? (
             // Firestore accepts merchant-managed image URLs from arbitrary hosts.

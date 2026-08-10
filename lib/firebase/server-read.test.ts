@@ -8,7 +8,7 @@ const jsonResponse = (body: unknown, status = 200) =>
     headers: { "content-type": "application/json" },
   });
 
-const productDocument = (id: string, salesRank: number) => ({
+const productDocument = (id: string, salesRank?: number) => ({
   name: `projects/demo-project/databases/(default)/documents/products/${id}`,
   fields: {
     name: { stringValue: id === "rank-1" ? "첫 번째 상품" : "두 번째 상품" },
@@ -41,7 +41,7 @@ const productDocument = (id: string, salesRank: number) => ({
     stock: { integerValue: "5" },
     isBest: { booleanValue: true },
     isNew: { booleanValue: false },
-    salesRank: { integerValue: String(salesRank) },
+    ...(salesRank === undefined ? {} : { salesRank: { integerValue: String(salesRank) } }),
     ratingAverage: { doubleValue: 4.7 },
     reviewCount: { integerValue: "12" },
     createdAt: { timestampValue: "2026-08-10T00:00:00.000Z" },
@@ -82,11 +82,11 @@ describe("Firestore REST value decoding", () => {
 });
 
 describe("Worker-safe Firestore server reads", () => {
-  it("loads every product page, requests sales-rank order, and returns normalized products in rank order", async () => {
+  it("loads default-name-ordered pages, keeps unranked products, and sorts ranks locally", async () => {
     const fetchMock = vi.fn<typeof fetch>();
     fetchMock
       .mockResolvedValueOnce(jsonResponse({
-        documents: [productDocument("rank-2", 2)],
+        documents: [productDocument("a-unranked"), productDocument("rank-2", 2)],
         nextPageToken: "next/page",
       }))
       .mockResolvedValueOnce(jsonResponse({ documents: [productDocument("rank-1", 1)] }));
@@ -98,7 +98,7 @@ describe("Worker-safe Firestore server reads", () => {
 
     const products = await repository.getProducts();
 
-    expect(products.map((product) => product.id)).toEqual(["rank-1", "rank-2"]);
+    expect(products.map((product) => product.id)).toEqual(["rank-1", "rank-2", "a-unranked"]);
     expect(products[0]).toMatchObject({
       price: 32_000,
       concerns: ["활력"],
@@ -106,11 +106,12 @@ describe("Worker-safe Firestore server reads", () => {
       isBest: true,
       createdAt: new Date("2026-08-10T00:00:00.000Z"),
     });
+    expect(products[2].salesRank).toBeNull();
 
     const firstUrl = new URL(String(fetchMock.mock.calls[0][0]));
     expect(firstUrl.pathname).toBe("/v1/projects/demo-project/databases/(default)/documents/products");
     expect(firstUrl.searchParams.get("pageSize")).toBe("100");
-    expect(firstUrl.searchParams.get("orderBy")).toBe("salesRank asc");
+    expect(firstUrl.searchParams.get("orderBy")).toBeNull();
     expect(firstUrl.searchParams.get("key")).toBe("public-api-key");
 
     const secondUrl = new URL(String(fetchMock.mock.calls[1][0]));

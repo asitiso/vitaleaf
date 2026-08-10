@@ -127,7 +127,6 @@ export function createServerReadRepository({
       do {
         const url = withApiKey(new URL(`${documentsUrl}/products`));
         url.searchParams.set("pageSize", "100");
-        url.searchParams.set("orderBy", "salesRank asc");
         if (pageToken) url.searchParams.set("pageToken", pageToken);
 
         const body = asObject(await fetchJson(url));

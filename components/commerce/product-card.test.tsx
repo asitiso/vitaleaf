@@ -42,7 +42,16 @@ it("shows discount, benefit, rating, and sold-out status without relying on colo
   expect(card).toHaveTextContent("품절");
   expect(screen.getByRole("link", { name: /데일리 오메가3/ })).toHaveAttribute(
     "href",
-    "/products/daily-omega-3",
+    "/products/omega-3",
+  );
+});
+
+it("uses the stable Firestore document id when the optional slug is empty", () => {
+  render(<ProductCard product={{ ...product, slug: "" }} />);
+
+  expect(screen.getByRole("link", { name: /데일리 오메가3/ })).toHaveAttribute(
+    "href",
+    "/products/omega-3",
   );
 });
 
@@ -60,6 +69,6 @@ it("replaces a broken non-empty thumbnail with the existing decorative brand fal
   expect(within(card).getByText("VITALEAF")).toHaveAttribute("aria-hidden", "true");
   expect(within(card).getByRole("link", { name: /데일리 오메가3/ })).toHaveAttribute(
     "href",
-    "/products/daily-omega-3",
+    "/products/omega-3",
   );
 });
