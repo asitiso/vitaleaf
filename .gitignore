@@ -2,7 +2,9 @@
 .superpowers/
 node_modules/
 .next/
+.vinext/
 .env.local
 coverage/
 /dist/
 /.wrangler/
+firestore-debug.log

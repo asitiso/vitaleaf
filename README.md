@@ -18,9 +18,10 @@ NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=YOUR_PROJECT.firebasestorage.app
 NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=YOUR_MESSAGING_SENDER_ID
 NEXT_PUBLIC_FIREBASE_APP_ID=YOUR_WEB_APP_ID
 NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=YOUR_MEASUREMENT_ID
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
 ```
 
-`NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID`는 Analytics를 사용하지 않으면 비워 둘 수 있습니다. `NEXT_PUBLIC_*` 값은 브라우저용 Firebase 웹 앱 설정입니다. 서비스 계정 JSON, Admin SDK 비공개 키, PG 비밀 키, 사용자 비밀번호는 저장소나 `.env.local`에 넣지 마세요.
+`NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID`는 Analytics를 사용하지 않으면 비워 둘 수 있습니다. `NEXT_PUBLIC_SITE_URL`은 프록시 호스트 정보를 받을 수 없는 환경에서 소셜 미리보기의 절대 URL을 만드는 예비 값이며, 운영 배포에서는 실제 HTTPS 주소로 바꿉니다. `NEXT_PUBLIC_*` 값은 브라우저에 공개되는 설정입니다. 서비스 계정 JSON, Admin SDK 비공개 키, PG 비밀 키, 사용자 비밀번호는 저장소나 `.env.local`에 넣지 마세요.
 
 기본 명령은 다음과 같습니다.
 
