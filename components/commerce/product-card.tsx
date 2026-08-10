@@ -22,7 +22,7 @@ export function ProductCard({ product, rank }: { product: Product; rank?: number
           ) : (
             <span className="product-card__image-fallback" aria-hidden="true">VITALEAF</span>
           )}
-          {rank ? <span className="product-card__rank" aria-label={`판매 순위 ${rank}위`}>{rank}</span> : null}
+          {rank !== undefined ? <span className="product-card__rank" aria-label={`판매 순위 ${rank}위`}>{rank}</span> : null}
           {product.stock < 1 ? <span className="product-card__sold-out">품절</span> : null}
         </div>
         <div className="product-card__content">

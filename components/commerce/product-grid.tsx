@@ -51,8 +51,8 @@ export function ProductGrid({ status, products, retry, isAdmin = false, showRank
 
   return (
     <div className="product-grid">
-      {products.map((product, index) => (
-        <ProductCard key={product.id} product={product} rank={showRanks ? index + 1 : undefined} />
+      {products.map((product) => (
+        <ProductCard key={product.id} product={product} rank={showRanks ? product.salesRank ?? undefined : undefined} />
       ))}
     </div>
   );

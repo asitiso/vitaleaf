@@ -15,6 +15,12 @@ function renderHeader() {
 }
 
 describe("SiteHeader", () => {
+  it("links best navigation to the supported popular sort", () => {
+    renderHeader();
+
+    expect(screen.getByRole("link", { name: "베스트" })).toHaveAttribute("href", "/products?sort=popular");
+  });
+
   it("opens the category menu and exposes health concern links", async () => {
     const user = userEvent.setup();
     renderHeader();

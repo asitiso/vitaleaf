@@ -46,7 +46,9 @@ const products = [
     slug: "daily-omega-3",
     category: "혈행 건강",
     concerns: ["혈행"],
+    ingredients: [{ name: "EPA 및 DHA", amount: "600 mg", dailyValue: "" }],
     price: 35_000,
+    originalPrice: 40_000,
     stock: 8,
     salesRank: 2,
   }),
@@ -141,6 +143,66 @@ it("normalizes existing menu slugs and age targets into catalog filters", async 
 
   expect(screen.getByLabelText("카테고리")).toHaveValue("유산균");
   expect(screen.getByLabelText("건강 고민")).toHaveValue("장 건강");
-  expect(screen.getByRole("searchbox", { name: "상품 검색" })).toHaveValue("30대");
+  expect(screen.getByRole("searchbox", { name: "상품 검색" })).toHaveValue("");
   expect(screen.getByRole("article", { name: "장 건강 유산균" })).toBeInTheDocument();
+});
+
+it("synchronizes filters when App Router search props change on the same route", () => {
+  const { rerender } = render(
+    <ProductBrowser initialProducts={products} initialFilters={{ query: "데일리" }} />,
+  );
+
+  expect(screen.getByRole("searchbox", { name: "상품 검색" })).toHaveValue("데일리");
+
+  rerender(
+    <ProductBrowser initialProducts={products} initialFilters={{ category: "유산균" }} />,
+  );
+
+  expect(screen.getByRole("searchbox", { name: "상품 검색" })).toHaveValue("");
+  expect(screen.getByLabelText("카테고리")).toHaveValue("유산균");
+  expect(screen.getByRole("article", { name: "장 건강 유산균" })).toBeInTheDocument();
+});
+
+it.each([
+  ["today", "데일리 오메가3"],
+  ["trial", "장 건강 유산균"],
+])("makes the %s promotion URL select deterministic products", async (promotion, expectedName) => {
+  getProductsMock.mockResolvedValue(products);
+
+  render(await ProductsPage({ searchParams: Promise.resolve({ promotion }) }));
+
+  expect(screen.getAllByRole("article")).toHaveLength(1);
+  expect(screen.getByRole("article", { name: expectedName })).toBeInTheDocument();
+});
+
+it.each([
+  ["concerns", "건강 고민으로 찾기", "장 건강", "장 건강 유산균"],
+  ["ingredients", "성분으로 찾기", "EPA 및 DHA", "데일리 오메가3"],
+])("activates %s discovery from the existing view URL", async (view, heading, choice, expectedName) => {
+  const user = userEvent.setup();
+  getProductsMock.mockResolvedValue(products);
+
+  render(await ProductsPage({ searchParams: Promise.resolve({ view }) }));
+
+  expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: choice }));
+  expect(screen.getAllByRole("article")).toHaveLength(1);
+  expect(screen.getByRole("article", { name: expectedName })).toBeInTheDocument();
+});
+
+it.each([
+  ["30", "장 건강 상품", "장 건강"],
+  ["40", "눈 건강 상품", "눈 건강"],
+  ["50", "뇌 건강 상품", "뇌 건강"],
+])("maps age %s to documented concern groups", async (age, expectedName, concern) => {
+  getProductsMock.mockResolvedValue([
+    makeProduct({ id: "gut", name: "장 건강 상품", slug: "gut", concerns: ["장 건강"] }),
+    makeProduct({ id: "eyes", name: "눈 건강 상품", slug: "eyes", concerns: ["눈 건강"] }),
+    makeProduct({ id: "brain", name: "뇌 건강 상품", slug: "brain", concerns: ["뇌 건강"] }),
+  ]);
+
+  render(await ProductsPage({ searchParams: Promise.resolve({ age }) }));
+
+  expect(screen.getByRole("article", { name: expectedName })).toBeInTheDocument();
+  expect(screen.getByText(`연령 추천 기준: ${concern}`)).toBeInTheDocument();
 });

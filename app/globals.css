@@ -245,6 +245,12 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
 .product-filters__stock { display: flex; gap: 8px; align-items: center; font-size: 13px; font-weight: 700; }
 .product-filters__stock input { width: 17px; height: 17px; accent-color: var(--color-sage); }
 .product-browser__results { min-width: 0; }
+.product-browser__discovery { padding: 22px 24px; margin-bottom: 22px; border: 1px solid #cbdacd; border-radius: 6px; background: #f3f7f2; }
+.product-browser__discovery h2 { margin: 0; color: var(--color-forest); font-size: 20px; }
+.product-browser__discovery p { margin: 5px 0 14px; color: #62746a; font-size: 13px; }
+.product-browser__discovery > div { display: flex; gap: 7px; flex-wrap: wrap; }
+.product-browser__discovery button { border: 1px solid #b8ccbc; padding: 8px 12px; border-radius: 999px; color: #315544; background: #fff; font-size: 12px; font-weight: 700; cursor: pointer; }
+.product-browser__context { color: var(--color-sage) !important; font-weight: 700; }
 .product-browser__toolbar { display: flex; align-items: end; justify-content: space-between; padding-bottom: 17px; border-bottom: 1px solid #dfe6e0; }
 .product-browser__toolbar h2 { margin: 0; font-size: 22px; }
 .product-browser__toolbar p { margin: 4px 0 0; color: #687970; font-size: 13px; }

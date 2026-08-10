@@ -8,7 +8,7 @@ import { useCart } from "../../features/cart/cart-context";
 import { MegaMenu } from "./mega-menu";
 
 const primaryNavigation = [
-  { href: "/products?sort=best", label: "베스트" },
+  { href: "/products?sort=popular", label: "베스트" },
   { href: "/products?promotion=today", label: "오늘의 특가" },
   { href: "/products?view=concerns", label: "건강 고민별" },
   { href: "/products?category=gift", label: "선물세트" },

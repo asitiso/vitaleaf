@@ -22,6 +22,8 @@ type ProductBrowserProps = {
   initialProducts: Product[];
   initialFilters?: Partial<ProductFilterValues>;
   loadError?: boolean;
+  discoveryView?: "concerns" | "ingredients" | null;
+  contextLabel?: string;
 };
 
 type Chip = {
@@ -44,13 +46,29 @@ const activeChips = (filters: ProductFilterValues): Chip[] => {
   return chips;
 };
 
-export function ProductBrowser({ initialProducts, initialFilters, loadError = false }: ProductBrowserProps) {
+export function ProductBrowser({
+  initialProducts,
+  initialFilters,
+  loadError = false,
+  discoveryView = null,
+  contextLabel,
+}: ProductBrowserProps) {
   const startingFilters = useMemo(() => ({ ...defaultProductFilters, ...initialFilters }), [initialFilters]);
   const [filters, setFilters] = useState<ProductFilterValues>(startingFilters);
+  const [previousStartingFilters, setPreviousStartingFilters] = useState(startingFilters);
   const categories = useMemo(() => uniqueValues(initialProducts.map((product) => product.category)), [initialProducts]);
   const concerns = useMemo(() => uniqueValues(initialProducts.flatMap((product) => product.concerns)), [initialProducts]);
+  const ingredients = useMemo(
+    () => uniqueValues(initialProducts.flatMap((product) => product.ingredients.map((ingredient) => ingredient.name))),
+    [initialProducts],
+  );
   const visibleProducts = useMemo(() => filterProducts(initialProducts, filters), [filters, initialProducts]);
   const chips = activeChips(filters);
+
+  if (previousStartingFilters !== startingFilters) {
+    setPreviousStartingFilters(startingFilters);
+    setFilters(startingFilters);
+  }
 
   const updateFilters = (changes: Partial<ProductFilterValues>) => {
     setFilters((current) => ({ ...current, ...changes }));
@@ -67,10 +85,30 @@ export function ProductBrowser({ initialProducts, initialFilters, loadError = fa
       />
 
       <section className="product-browser__results" aria-labelledby="product-results-title">
+        {discoveryView ? (
+          <section className="product-browser__discovery" aria-labelledby="product-discovery-title">
+            <h2 id="product-discovery-title">
+              {discoveryView === "concerns" ? "건강 고민으로 찾기" : "성분으로 찾기"}
+            </h2>
+            <p>{discoveryView === "concerns" ? "지금 가장 필요한 건강 고민을 선택하세요." : "확인하고 싶은 주요 성분을 선택하세요."}</p>
+            <div>
+              {(discoveryView === "concerns" ? concerns : ingredients).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => updateFilters(discoveryView === "concerns" ? { concern: value } : { query: value })}
+                >
+                  {value}
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : null}
         <div className="product-browser__toolbar">
           <div>
             <h2 id="product-results-title">전체 상품</h2>
             <p aria-live="polite">총 {visibleProducts.length.toLocaleString("ko-KR")}개 상품</p>
+            {contextLabel ? <p className="product-browser__context">{contextLabel}</p> : null}
           </div>
           <label>
             <span>정렬</span>
