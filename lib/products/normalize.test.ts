@@ -1,0 +1,71 @@
+import { describe, expect, it } from "vitest";
+
+import { normalizeProduct } from "./normalize";
+
+describe("normalizeProduct", () => {
+  it("normalizes missing arrays and timestamps without hiding invalid required fields", () => {
+    expect(() => normalizeProduct("p1", { price: 1000 })).toThrow(
+      "상품명이 필요합니다",
+    );
+
+    const product = normalizeProduct("p1", {
+      name: "루테인",
+      category: "눈 건강",
+      price: 28000,
+      stock: 3,
+    });
+
+    expect(product.images).toEqual([]);
+    expect(product.originalPrice).toBeNull();
+    expect(product.createdAt).toBeNull();
+    expect(product.updatedAt).toBeNull();
+  });
+
+  it("rejects invalid price and stock values", () => {
+    const requiredFields = { name: "루테인", price: 28000, stock: 3 };
+
+    expect(() => normalizeProduct("p1", { ...requiredFields, price: -1 })).toThrow(
+      "가격은 0 이상의 유한한 숫자여야 합니다",
+    );
+    expect(() => normalizeProduct("p1", { ...requiredFields, price: Infinity })).toThrow(
+      "가격은 0 이상의 유한한 숫자여야 합니다",
+    );
+    expect(() => normalizeProduct("p1", { ...requiredFields, stock: -1 })).toThrow(
+      "재고는 0 이상의 숫자여야 합니다",
+    );
+  });
+
+  it("defaults optional collections and flags, clamps ratings, and reads Firestore timestamps", () => {
+    const createdAt = new Date("2026-08-10T00:00:00.000Z");
+    const updatedAt = new Date("2026-08-11T00:00:00.000Z");
+
+    const product = normalizeProduct("p1", {
+      name: "오메가3",
+      price: 35000,
+      stock: 10,
+      concerns: "혈행",
+      images: null,
+      benefits: {},
+      ingredients: "EPA",
+      certifications: undefined,
+      cautions: 1,
+      isBest: "true",
+      isNew: 1,
+      ratingAverage: 7,
+      createdAt: { toDate: () => createdAt },
+      updatedAt: { toDate: () => updatedAt },
+    });
+
+    expect(product.concerns).toEqual([]);
+    expect(product.images).toEqual([]);
+    expect(product.benefits).toEqual([]);
+    expect(product.ingredients).toEqual([]);
+    expect(product.certifications).toEqual([]);
+    expect(product.cautions).toEqual([]);
+    expect(product.isBest).toBe(false);
+    expect(product.isNew).toBe(false);
+    expect(product.ratingAverage).toBe(5);
+    expect(product.createdAt).toBe(createdAt);
+    expect(product.updatedAt).toBe(updatedAt);
+  });
+});
