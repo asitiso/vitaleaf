@@ -38,20 +38,20 @@ npm run build
 
 ### Firestore 규칙 테스트
 
-`firestore.rules.test.ts`는 실제 프로젝트가 아닌 `demo-vitaleaf-rules-test` 프로젝트 ID와 매 테스트 초기화되는 로컬 Firestore Emulator만 사용합니다. 운영 데이터나 운영 자격 증명을 읽지 않습니다. 규칙 테스트에는 Java JDK 11 이상(새 환경은 JDK 21 권장)과 Firebase CLI가 필요합니다.
+`firestore.rules.test.ts`는 실제 프로젝트가 아닌 `demo-vitaleaf-rules-test` 프로젝트 ID와 매 테스트 초기화되는 로컬 Firestore Emulator만 사용합니다. 운영 데이터나 운영 자격 증명을 읽지 않습니다. 아래에서 고정한 Firebase CLI `15.26.0` 기준으로 규칙 테스트에는 Java JDK 21 이상이 필요합니다.
 
 저장소에 `firebase.json`이 없다는 CLI 경고가 표시될 수 있지만, 테스트 초기화가 `firestore.rules`를 에뮬레이터에 직접 로드한 뒤에만 검증을 시작합니다. 이 방식은 운영 프로젝트나 규칙에 연결하지 않습니다.
 
 집중 규칙 테스트:
 
 ```bash
-npx firebase-tools emulators:exec --only firestore --project demo-vitaleaf-rules-test "npm test -- firestore.rules.test.ts --maxWorkers=1 --no-file-parallelism"
+npx firebase-tools@15.26.0 emulators:exec --only firestore --project demo-vitaleaf-rules-test "npm test -- firestore.rules.test.ts --maxWorkers=1 --no-file-parallelism"
 ```
 
 규칙을 포함한 전체 테스트를 직렬 실행하려면 다음 명령을 사용합니다.
 
 ```bash
-npx firebase-tools emulators:exec --only firestore --project demo-vitaleaf-rules-test "npm test -- --maxWorkers=1 --no-file-parallelism"
+npx firebase-tools@15.26.0 emulators:exec --only firestore --project demo-vitaleaf-rules-test "npm test -- --maxWorkers=1 --no-file-parallelism"
 ```
 
 ## 2. Firebase 초기 설정
@@ -88,11 +88,11 @@ Firebase Console의 **Firestore Database → Data**에서 다음 문서를 직�
 4. **Publish**를 누른 뒤 규칙 게시 이력과 시간을 확인합니다.
 5. 로그아웃 상태에서 상품 조회, 일반 사용자 상품 쓰기 거부, 관리자 상품 저장을 각각 확인합니다.
 
-나중에 해당 프로젝트에 연결된 `firebase.json`과 `.firebaserc`를 명시적으로 만든 경우에만 `npx firebase-tools deploy --only firestore:rules`를 사용할 수 있습니다. 설정 파일이 없거나 현재 프로젝트가 확실하지 않으면 CLI 배포를 실행하지 마세요.
+나중에 해당 프로젝트에 연결된 `firebase.json`과 `.firebaserc`를 명시적으로 만든 경우에만 `npx firebase-tools@15.26.0 deploy --only firestore:rules`를 사용할 수 있습니다. 설정 파일이 없거나 현재 프로젝트가 확실하지 않으면 CLI 배포를 실행하지 마세요.
 
 제공 규칙의 경계는 다음과 같습니다.
 
-- `products`: 누구나 문서와 목록을 읽을 수 있지만, `admins/{uid}` 문서가 있는 로그인 사용자만 생성·수정·삭제할 수 있습니다.
+- `products`: 누구나 문서와 목록을 읽을 수 있지만, `admins/{uid}` 문서가 존재하고 그 문서의 문자열 필드가 `role: "admin"`인 로그인 사용자만 생성·수정·삭제할 수 있습니다.
 - `reviews`: `approved == true`인 문서만 읽을 수 있습니다. 조회 쿼리에도 `approved == true` 조건이 있어야 하며 모든 클라이언트 쓰기는 거부됩니다.
 - `admins`: 로그인 사용자는 자기 UID 경로만 읽을 수 있고 모든 클라이언트 쓰기는 거부됩니다.
 - `orders`: 현재 릴리스에서는 모든 읽기와 쓰기가 거부됩니다.

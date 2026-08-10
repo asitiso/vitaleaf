@@ -78,6 +78,18 @@ describe("products", () => {
     await assertFails(setDoc(doc(userDatabase, "products/user-write"), product));
   });
 
+  it("denies create, update, and delete when the admin document role is not admin", async () => {
+    await seed({
+      "admins/editor-1": { role: "editor" },
+      "products/existing": product,
+    });
+    const database = testEnvironment.authenticatedContext("editor-1").firestore();
+
+    await assertFails(setDoc(doc(database, "products/created"), product));
+    await assertFails(updateDoc(doc(database, "products/existing"), { stock: 4 }));
+    await assertFails(deleteDoc(doc(database, "products/existing")));
+  });
+
   it("allows an authenticated user backed by admins/{uid} to create, update, and delete products", async () => {
     await seed({ "admins/admin-1": { role: "admin" }, "products/existing": product });
     const database = testEnvironment.authenticatedContext("admin-1").firestore();
