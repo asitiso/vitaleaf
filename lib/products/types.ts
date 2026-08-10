@@ -30,3 +30,15 @@ export type Product = {
   createdAt: Date | null;
   updatedAt: Date | null;
 };
+
+export type Review = {
+  id: string;
+  productId: string;
+  rating: number;
+  text: string;
+  authorAlias: string;
+  approved: boolean;
+  createdAt: Date | null;
+};
+
+export type ProductInput = Omit<Product, "id" | "createdAt" | "updatedAt">;

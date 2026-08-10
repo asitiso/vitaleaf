@@ -11,6 +11,9 @@ importers:
       drizzle-orm:
         specifier: 0.45.2
         version: 0.45.2
+      firebase:
+        specifier: ^12.17.1
+        version: 12.17.1
       react:
         specifier: 19.2.6
         version: 19.2.6
