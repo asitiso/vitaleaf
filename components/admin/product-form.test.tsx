@@ -4,6 +4,25 @@ import { expect, it, vi } from "vitest";
 
 import { ProductForm } from "./product-form";
 
+it("rejects an untouched new form, associates every error, and focuses the first invalid field", async () => {
+  const user = userEvent.setup();
+  const onSave = vi.fn();
+  render(<ProductForm onSave={onSave} />);
+
+  await user.click(screen.getByRole("button", { name: "상품 저장" }));
+
+  const name = screen.getByLabelText("상품명");
+  const category = screen.getByLabelText("카테고리");
+  const price = screen.getByLabelText("판매가");
+  const stock = screen.getByLabelText("재고");
+  expect(name).toHaveFocus();
+  expect(name).toHaveAccessibleDescription("상품명을 입력해 주세요.");
+  expect(category).toHaveAccessibleDescription("카테고리를 입력해 주세요.");
+  expect(price).toHaveAccessibleDescription("판매가를 입력해 주세요.");
+  expect(stock).toHaveAccessibleDescription("재고를 입력해 주세요.");
+  expect(onSave).not.toHaveBeenCalled();
+});
+
 it("rejects negative price and stock and requires a name and category", async () => {
   const user = userEvent.setup();
   const onSave = vi.fn();
@@ -17,6 +36,7 @@ it("rejects negative price and stock and requires a name and category", async ()
   expect(screen.getByText("카테고리를 입력해 주세요.")).toBeVisible();
   expect(screen.getByText("판매가는 0원 이상이어야 합니다.")).toBeVisible();
   expect(screen.getByText("재고는 0개 이상이어야 합니다.")).toBeVisible();
+  expect(screen.getByLabelText("상품명")).toHaveFocus();
   expect(onSave).not.toHaveBeenCalled();
 });
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
 import {
   getAdminAuthErrorMessage,
@@ -96,6 +96,62 @@ function AdminLogin({
         </form>
       </section>
     </main>
+  );
+}
+
+function DeleteProductDialog({
+  product,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  product: Product;
+  busy: boolean;
+  onCancel(): void;
+  onConfirm(): void;
+}) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    cancelRef.current?.focus();
+    return () => {
+      if (returnFocus?.isConnected) returnFocus.focus();
+    };
+  }, []);
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === "Escape" && !busy) {
+      event.preventDefault();
+      onCancel();
+      return;
+    }
+    if (event.key !== "Tab") return;
+
+    const first = cancelRef.current;
+    const last = confirmRef.current;
+    if (!first || !last) return;
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
+  return (
+    <div className="admin-dialog-backdrop">
+      <section className="admin-dialog" role="dialog" aria-modal="true" aria-labelledby="admin-delete-title">
+        <h2 id="admin-delete-title">상품 삭제 확인</h2>
+        <p><strong>{product.name}</strong> 상품을 삭제하시겠습니까? 삭제한 상품은 복구할 수 없습니다.</p>
+        <div>
+          <button ref={cancelRef} type="button" disabled={busy} onClick={onCancel} onKeyDown={handleKeyDown}>취소</button>
+          <button ref={confirmRef} type="button" disabled={busy} onClick={onConfirm} onKeyDown={handleKeyDown}>{busy ? "삭제 중" : "삭제 확인"}</button>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -237,13 +293,12 @@ export function AdminDashboard({ dependencies = defaultDependencies }: { depende
       )}
 
       {deleting && (
-        <div className="admin-dialog-backdrop">
-          <section className="admin-dialog" role="dialog" aria-modal="true" aria-labelledby="admin-delete-title">
-            <h2 id="admin-delete-title">상품 삭제 확인</h2>
-            <p><strong>{deleting.name}</strong> 상품을 삭제하시겠습니까? 삭제한 상품은 복구할 수 없습니다.</p>
-            <div><button type="button" disabled={deleteBusy} onClick={() => setDeleting(null)}>취소</button><button type="button" disabled={deleteBusy} onClick={() => void confirmDelete()}>{deleteBusy ? "삭제 중" : "삭제 확인"}</button></div>
-          </section>
-        </div>
+        <DeleteProductDialog
+          product={deleting}
+          busy={deleteBusy}
+          onCancel={() => setDeleting(null)}
+          onConfirm={() => void confirmDelete()}
+        />
       )}
     </main>
   );

@@ -59,14 +59,35 @@ export const createAdminAuth = (adapter: AdminAuthAdapter) => {
       next: (state: AdminSessionState) => void,
       onError: (error: unknown) => void,
     ): () => void {
-      return adapter.observe((user) => {
+      let generation = 0;
+      let currentUid: string | null = null;
+      const unsubscribe = adapter.observe((user) => {
+        const verificationGeneration = ++generation;
+        currentUid = user?.uid ?? null;
         if (!user) {
           next("signed-out");
           return;
         }
 
-        void verifyUser(user).then(next).catch(onError);
+        void adapter.readAdmin(user.uid).then(async (record) => {
+          if (generation !== verificationGeneration || currentUid !== user.uid) return;
+          if (isAdmin(record)) {
+            next("admin");
+            return;
+          }
+
+          await adapter.signOut();
+          if (generation === verificationGeneration && currentUid === user.uid) next("forbidden");
+        }).catch((error) => {
+          if (generation === verificationGeneration && currentUid === user.uid) onError(error);
+        });
       }, onError);
+
+      return () => {
+        generation += 1;
+        currentUid = null;
+        unsubscribe();
+      };
     },
   };
 };

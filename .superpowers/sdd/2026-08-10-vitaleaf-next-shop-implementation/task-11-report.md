@@ -40,3 +40,33 @@ Complete.
 - The first pre-change full-suite run intermittently failed the existing cart delete-dialog focus restoration test; the fresh final full run passed all 102 tests.
 - Repository-wide `tsc --noEmit` remains blocked by pre-existing missing Vitest-global and Cloudflare worker type declarations. No reported TypeScript error pointed to Task 11 files; focused ESLint and the production build pass.
 - The build retains the existing non-blocking client chunk-size warning. Splitting this single admin route further would add maintenance without a clear user-facing time saving at the current scale.
+
+## Fix Round 1 — 2026-08-10
+
+### Changes
+
+- Added observer generation and current-UID checks so a delayed `admins/{uid}` result cannot publish an obsolete admin state, remount write controls after sign-out, or sign out a newer user because an older forbidden lookup completed late.
+- Treat blank price and stock as missing instead of coercing them to zero; all required-field errors now have Korean messages linked with `aria-describedby`, and validation focuses the first invalid field.
+- Added delete-dialog focus entry, Tab and Shift+Tab trapping, Escape cancellation, and safe trigger-focus restoration when the trigger remains mounted.
+
+### TDD Evidence
+
+- Deterministic deferred-role tests failed first when a stale admin lookup remounted `새 상품 등록` after sign-out and when an older forbidden lookup signed out the newer user.
+- The untouched-form regression failed first because blank number fields produced no errors, error text was not programmatically associated, and focus did not move to the first invalid input.
+- The dialog regression failed first because focus stayed on the background delete trigger and keyboard containment/cancellation was absent.
+
+### Deferred Minor Findings
+
+- Stock toggle still writes the complete product snapshot rather than a stock-only patch.
+- Stock toggle still has no per-row mutation lock.
+
+These were intentionally not changed in this round per review scope. Addressing them would add repository API and row-state complexity without being required for the Critical/Important fixes.
+
+### Verification
+
+- `vitest run lib/firebase/auth.test.ts components/admin` — 3 files, 17 tests passed.
+- `vitest run components/cart/cart-view.test.tsx` — 1 file, 4 tests passed after the known focus test intermittently failed in the first full-suite run.
+- `vitest run` — 24 files, 107 tests passed on the fresh final run.
+- `eslint . --ignore-pattern dist --ignore-pattern .next` — passed.
+- `vinext build` — passed; `/admin` emitted. The existing non-blocking chunk-size warning remains.
+- `git diff --check` — passed with line-ending conversion warnings only.

@@ -47,16 +47,24 @@ export function ProductForm({ product, onSave, onCancel }: ProductFormProps) {
     const form = new FormData(event.currentTarget);
     const name = String(form.get("name") ?? "").trim();
     const category = String(form.get("category") ?? "").trim();
-    const price = Number(String(form.get("price") ?? ""));
-    const stock = Number(String(form.get("stock") ?? ""));
+    const priceText = String(form.get("price") ?? "").trim();
+    const stockText = String(form.get("stock") ?? "").trim();
+    const price = Number(priceText);
+    const stock = Number(stockText);
     const nextErrors: FormErrors = {};
 
     if (!name) nextErrors.name = "상품명을 입력해 주세요.";
     if (!category) nextErrors.category = "카테고리를 입력해 주세요.";
-    if (!Number.isFinite(price) || price < 0) nextErrors.price = "판매가는 0원 이상이어야 합니다.";
-    if (!Number.isFinite(stock) || stock < 0) nextErrors.stock = "재고는 0개 이상이어야 합니다.";
+    if (!priceText) nextErrors.price = "판매가를 입력해 주세요.";
+    else if (!Number.isFinite(price) || price < 0) nextErrors.price = "판매가는 0원 이상이어야 합니다.";
+    if (!stockText) nextErrors.stock = "재고를 입력해 주세요.";
+    else if (!Number.isFinite(stock) || stock < 0) nextErrors.stock = "재고는 0개 이상이어야 합니다.";
     setErrors(nextErrors);
-    if (Object.keys(nextErrors).length) return;
+    if (Object.keys(nextErrors).length) {
+      const firstInvalid = event.currentTarget.elements.namedItem(Object.keys(nextErrors)[0]);
+      if (firstInvalid instanceof HTMLElement) firstInvalid.focus();
+      return;
+    }
 
     const cleanIngredients = ingredients
       .map((ingredient) => ({
@@ -108,13 +116,13 @@ export function ProductForm({ product, onSave, onCancel }: ProductFormProps) {
       <div className="admin-form-grid">
         <label>
           <span>상품명</span>
-          <input name="name" defaultValue={product?.name} aria-invalid={Boolean(errors.name)} />
-          {errors.name && <small>{errors.name}</small>}
+          <input name="name" aria-label="상품명" defaultValue={product?.name} required aria-required="true" aria-invalid={Boolean(errors.name)} aria-describedby={errors.name ? "product-name-error" : undefined} />
+          {errors.name && <small id="product-name-error">{errors.name}</small>}
         </label>
         <label>
           <span>카테고리</span>
-          <input name="category" defaultValue={product?.category} aria-invalid={Boolean(errors.category)} />
-          {errors.category && <small>{errors.category}</small>}
+          <input name="category" aria-label="카테고리" defaultValue={product?.category} required aria-required="true" aria-invalid={Boolean(errors.category)} aria-describedby={errors.category ? "product-category-error" : undefined} />
+          {errors.category && <small id="product-category-error">{errors.category}</small>}
         </label>
         <label>
           <span>슬러그</span>
@@ -122,8 +130,8 @@ export function ProductForm({ product, onSave, onCancel }: ProductFormProps) {
         </label>
         <label>
           <span>판매가</span>
-          <input name="price" type="number" min="0" defaultValue={product?.price} aria-invalid={Boolean(errors.price)} />
-          {errors.price && <small>{errors.price}</small>}
+          <input name="price" aria-label="판매가" type="number" min="0" defaultValue={product?.price} required aria-required="true" aria-invalid={Boolean(errors.price)} aria-describedby={errors.price ? "product-price-error" : undefined} />
+          {errors.price && <small id="product-price-error">{errors.price}</small>}
         </label>
         <label>
           <span>정상가 (선택)</span>
@@ -131,8 +139,8 @@ export function ProductForm({ product, onSave, onCancel }: ProductFormProps) {
         </label>
         <label>
           <span>재고</span>
-          <input name="stock" type="number" min="0" defaultValue={product?.stock} aria-invalid={Boolean(errors.stock)} />
-          {errors.stock && <small>{errors.stock}</small>}
+          <input name="stock" aria-label="재고" type="number" min="0" defaultValue={product?.stock} required aria-required="true" aria-invalid={Boolean(errors.stock)} aria-describedby={errors.stock ? "product-stock-error" : undefined} />
+          {errors.stock && <small id="product-stock-error">{errors.stock}</small>}
         </label>
         <label>
           <span>판매 순위 (선택)</span>

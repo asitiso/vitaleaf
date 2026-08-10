@@ -1,13 +1,8 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 
-vi.mock("../../lib/firebase/auth", () => ({
-  getAdminAuthErrorMessage: () => "로그인 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
-  observeAdminSession: vi.fn(),
-  signInAdmin: vi.fn(),
-  signOutAdmin: vi.fn(),
-}));
+vi.mock("../../lib/firebase/client", () => ({ auth: {}, db: {} }));
 
 vi.mock("../../lib/firebase/products", () => ({
   deleteProduct: vi.fn(),
@@ -16,6 +11,7 @@ vi.mock("../../lib/firebase/products", () => ({
 }));
 
 import type { Product } from "../../lib/products/types";
+import { createAdminAuth } from "../../lib/firebase/auth";
 import { AdminDashboard, type AdminDashboardDependencies } from "./admin-dashboard";
 
 const product: Product = {
@@ -73,6 +69,37 @@ it("never mounts product write controls for a signed-out or forbidden user", asy
   expect(screen.getByText("관리자 권한이 없는 계정입니다.")).toBeVisible();
 });
 
+it("does not remount write controls when a stale admin check resolves after sign-out", async () => {
+  let emitUser!: (user: { uid: string } | null) => void;
+  let resolveAdmin!: (record: { role: string }) => void;
+  const adminAuth = createAdminAuth({
+    signIn: vi.fn(),
+    readAdmin: vi.fn(() => new Promise<{ role: string }>((resolve) => {
+      resolveAdmin = resolve;
+    })),
+    signOut: vi.fn(),
+    observe: vi.fn((next) => {
+      emitUser = next;
+      return vi.fn();
+    }),
+  });
+  render(<AdminDashboard dependencies={dependencies({ observeAdminSession: adminAuth.observeAdminSession })} />);
+
+  act(() => {
+    emitUser({ uid: "admin-1" });
+    emitUser(null);
+  });
+  expect(await screen.findByRole("heading", { name: "관리자 로그인" })).toBeVisible();
+
+  await act(async () => {
+    resolveAdmin({ role: "admin" });
+    await Promise.resolve();
+  });
+
+  expect(screen.queryByRole("button", { name: "새 상품 등록" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "상품 저장" })).not.toBeInTheDocument();
+});
+
 it("logs in, searches products, toggles stock, and confirms deletion", async () => {
   const user = userEvent.setup();
   const saveProduct = vi.fn().mockResolvedValue("omega");
@@ -126,4 +153,36 @@ it("opens create and edit forms only after authorization", async () => {
   await user.click(screen.getByRole("button", { name: "취소" }));
   await user.click(screen.getByRole("button", { name: "데일리 오메가3 수정" }));
   expect(screen.getByRole("heading", { name: "데일리 오메가3 수정" })).toBeVisible();
+});
+
+it("moves focus into the delete dialog, traps it, closes on Escape, and restores the trigger", async () => {
+  const user = userEvent.setup();
+  const deps = dependencies({
+    subscribeProducts: (onData) => {
+      onData([product]);
+      return vi.fn();
+    },
+  });
+  render(<AdminDashboard dependencies={deps} />);
+  await user.type(screen.getByLabelText("이메일"), "admin@example.com");
+  await user.type(screen.getByLabelText("비밀번호"), "password");
+  await user.click(screen.getByRole("button", { name: "로그인" }));
+
+  const deleteTrigger = await screen.findByRole("button", { name: "데일리 오메가3 삭제" });
+  await user.click(deleteTrigger);
+  const dialog = screen.getByRole("dialog", { name: "상품 삭제 확인" });
+  const cancel = screen.getByRole("button", { name: "취소" });
+  const confirm = screen.getByRole("button", { name: "삭제 확인" });
+  expect(dialog).toBeVisible();
+  expect(cancel).toHaveFocus();
+
+  await user.tab({ shift: true });
+  expect(confirm).toHaveFocus();
+  await user.tab();
+  expect(cancel).toHaveFocus();
+  await user.keyboard("{Escape}");
+
+  expect(screen.queryByRole("dialog", { name: "상품 삭제 확인" })).not.toBeInTheDocument();
+  expect(deleteTrigger).toHaveFocus();
+  expect(deps.deleteProduct).not.toHaveBeenCalled();
 });

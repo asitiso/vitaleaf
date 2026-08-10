@@ -47,6 +47,69 @@ describe("createAdminAuth", () => {
     await vi.waitFor(() => expect(states).toEqual(["forbidden"]));
     expect(signOut).toHaveBeenCalledOnce();
   });
+
+  it("discards a stale admin verification after the observed user signs out", async () => {
+    let emitUser!: (user: { uid: string } | null) => void;
+    let resolveAdmin!: (record: { role: string }) => void;
+    const readAdmin = vi.fn(() => new Promise<{ role: string }>((resolve) => {
+      resolveAdmin = resolve;
+    }));
+    const states: string[] = [];
+    const adminAuth = createAdminAuth({
+      signIn: vi.fn(),
+      readAdmin,
+      signOut: vi.fn(),
+      observe: vi.fn((next) => {
+        emitUser = next;
+        return vi.fn();
+      }),
+    });
+
+    adminAuth.observeAdminSession((state) => states.push(state), vi.fn());
+    emitUser({ uid: "admin-1" });
+    expect(readAdmin).toHaveBeenCalledWith("admin-1");
+    emitUser(null);
+    resolveAdmin({ role: "admin" });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(states).toEqual(["signed-out"]);
+  });
+
+  it("does not sign out a new user when an older forbidden check resolves", async () => {
+    let emitUser!: (user: { uid: string } | null) => void;
+    let resolveOldUser!: (record: null) => void;
+    let resolveNewUser!: (record: { role: string }) => void;
+    const signOut = vi.fn();
+    const readAdmin = vi.fn((uid: string) => (
+      uid === "old-user"
+        ? new Promise<null>((resolve) => { resolveOldUser = resolve; })
+        : new Promise<{ role: string }>((resolve) => { resolveNewUser = resolve; })
+    ));
+    const states: string[] = [];
+    const adminAuth = createAdminAuth({
+      signIn: vi.fn(),
+      readAdmin,
+      signOut,
+      observe: vi.fn((next) => {
+        emitUser = next;
+        return vi.fn();
+      }),
+    });
+
+    adminAuth.observeAdminSession((state) => states.push(state), vi.fn());
+    emitUser({ uid: "old-user" });
+    emitUser({ uid: "new-user" });
+    resolveOldUser(null);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(signOut).not.toHaveBeenCalled();
+    resolveNewUser({ role: "admin" });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(states).toEqual(["admin"]);
+  });
 });
 
 describe("getAdminAuthErrorMessage", () => {
