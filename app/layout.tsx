@@ -1,4 +1,6 @@
 import type { Metadata, Viewport } from "next";
+import { SiteFooter } from "@/components/shell/site-footer";
+import { SiteHeader } from "@/components/shell/site-header";
 import { Providers } from "./providers";
 import "./globals.css";
 
@@ -21,7 +23,11 @@ export default function RootLayout({
   return (
     <html lang="ko">
       <body>
-        <Providers>{children}</Providers>
+        <Providers>
+          <SiteHeader />
+          {children}
+          <SiteFooter />
+        </Providers>
       </body>
     </html>
   );
