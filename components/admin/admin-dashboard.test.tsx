@@ -82,6 +82,7 @@ it("does not remount write controls when a stale admin check resolves after sign
       emitUser = next;
       return vi.fn();
     }),
+    getSession: () => ({ uid: null, generation: 1 }),
   });
   render(<AdminDashboard dependencies={dependencies({ observeAdminSession: adminAuth.observeAdminSession })} />);
 
@@ -98,6 +99,41 @@ it("does not remount write controls when a stale admin check resolves after sign
 
   expect(screen.queryByRole("button", { name: "새 상품 등록" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "상품 저장" })).not.toBeInTheDocument();
+});
+
+it("keeps observer-authorized user B mounted when stale sign-in A resolves", async () => {
+  const user = userEvent.setup();
+  let emitSession!: (state: "admin" | "signed-out" | "forbidden") => void;
+  let resolveSignIn!: (state: "stale") => void;
+  const deps = dependencies({
+    observeAdminSession: (next) => {
+      emitSession = next;
+      next("signed-out");
+      return vi.fn();
+    },
+    signInAdmin: vi.fn(() => new Promise<"stale">((resolve) => {
+      resolveSignIn = resolve;
+    })),
+    subscribeProducts: (onData) => {
+      onData([product]);
+      return vi.fn();
+    },
+  });
+  render(<AdminDashboard dependencies={deps} />);
+
+  await user.type(screen.getByLabelText("이메일"), "admin-a@example.com");
+  await user.type(screen.getByLabelText("비밀번호"), "password");
+  await user.click(screen.getByRole("button", { name: "로그인" }));
+  act(() => emitSession("admin"));
+  expect(await screen.findByRole("heading", { name: "상품 관리" })).toBeVisible();
+
+  await act(async () => {
+    resolveSignIn("stale");
+    await Promise.resolve();
+  });
+
+  expect(screen.getByRole("heading", { name: "상품 관리" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "새 상품 등록" })).toBeVisible();
 });
 
 it("logs in, searches products, toggles stock, and confirms deletion", async () => {

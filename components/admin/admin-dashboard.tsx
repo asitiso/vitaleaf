@@ -7,6 +7,7 @@ import {
   observeAdminSession,
   signInAdmin,
   signOutAdmin,
+  type AdminSignInResult,
   type AdminSessionState,
 } from "../../lib/firebase/auth";
 import { deleteProduct, saveProduct, subscribeProducts } from "../../lib/firebase/products";
@@ -16,7 +17,7 @@ import { ProductForm } from "./product-form";
 
 export type AdminDashboardDependencies = {
   observeAdminSession(next: (state: AdminSessionState) => void, onError: (error: unknown) => void): () => void;
-  signInAdmin(email: string, password: string): Promise<"admin" | "forbidden">;
+  signInAdmin(email: string, password: string): Promise<AdminSignInResult>;
   signOutAdmin(): Promise<void>;
   subscribeProducts(onData: (products: Product[]) => void, onError: (error: Error) => void): () => void;
   saveProduct(input: ProductInput, id?: string): Promise<string>;
@@ -199,7 +200,7 @@ export function AdminDashboard({ dependencies = defaultDependencies }: { depende
     if (result === "admin") {
       setAuthMessage("");
       setSession("admin");
-    } else {
+    } else if (result === "forbidden") {
       setAuthMessage("관리자 권한이 없는 계정입니다.");
       setSession("forbidden");
     }

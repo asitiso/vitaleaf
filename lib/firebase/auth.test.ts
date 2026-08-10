@@ -4,7 +4,57 @@ vi.mock("./client", () => ({ auth: {}, db: {} }));
 
 import { createAdminAuth, getAdminAuthErrorMessage } from "./auth";
 
+const stableSession = (uid: string | null) => () => ({ uid, generation: 1 });
+
 describe("createAdminAuth", () => {
+  it("returns stale instead of admin when login A finishes after sign-out", async () => {
+    let resolveRole!: (record: { role: string }) => void;
+    let session = { uid: "admin-a" as string | null, generation: 1 };
+    const readAdmin = vi.fn(() => new Promise<{ role: string }>((resolve) => {
+      resolveRole = resolve;
+    }));
+    const signOut = vi.fn();
+    const adminAuth = createAdminAuth({
+      signIn: vi.fn().mockResolvedValue({ uid: "admin-a" }),
+      readAdmin,
+      signOut,
+      observe: vi.fn(),
+      getSession: () => session,
+    });
+
+    const result = adminAuth.signInAdmin("admin-a@example.com", "password");
+    await vi.waitFor(() => expect(readAdmin).toHaveBeenCalledWith("admin-a"));
+    session = { uid: null, generation: 2 };
+    resolveRole({ role: "admin" });
+
+    await expect(result).resolves.toBe("stale");
+    expect(signOut).not.toHaveBeenCalled();
+  });
+
+  it("does not sign out current user B when stale login A is forbidden", async () => {
+    let resolveRole!: (record: null) => void;
+    let session = { uid: "user-a" as string | null, generation: 1 };
+    const readAdmin = vi.fn(() => new Promise<null>((resolve) => {
+      resolveRole = resolve;
+    }));
+    const signOut = vi.fn();
+    const adminAuth = createAdminAuth({
+      signIn: vi.fn().mockResolvedValue({ uid: "user-a" }),
+      readAdmin,
+      signOut,
+      observe: vi.fn(),
+      getSession: () => session,
+    });
+
+    const result = adminAuth.signInAdmin("user-a@example.com", "password");
+    await vi.waitFor(() => expect(readAdmin).toHaveBeenCalledWith("user-a"));
+    session = { uid: "user-b", generation: 2 };
+    resolveRole(null);
+
+    await expect(result).resolves.toBe("stale");
+    expect(signOut).not.toHaveBeenCalled();
+  });
+
   it("signs out an authenticated user without an admin role", async () => {
     const signOut = vi.fn().mockResolvedValue(undefined);
     const adminAuth = createAdminAuth({
@@ -12,6 +62,7 @@ describe("createAdminAuth", () => {
       readAdmin: vi.fn().mockResolvedValue({ role: "staff" }),
       signOut,
       observe: vi.fn(),
+      getSession: stableSession("staff-1"),
     });
 
     await expect(adminAuth.signInAdmin("staff@example.com", "password")).resolves.toBe("forbidden");
@@ -24,6 +75,7 @@ describe("createAdminAuth", () => {
       readAdmin: vi.fn().mockResolvedValue({ role: "admin" }),
       signOut: vi.fn(),
       observe: vi.fn(),
+      getSession: stableSession("admin-1"),
     });
 
     await expect(adminAuth.signInAdmin("admin@example.com", "password")).resolves.toBe("admin");
@@ -41,6 +93,7 @@ describe("createAdminAuth", () => {
       readAdmin: vi.fn().mockResolvedValue(null),
       signOut,
       observe,
+      getSession: stableSession("forbidden-1"),
     });
 
     adminAuth.observeAdminSession((state) => states.push(state), vi.fn());
@@ -63,6 +116,7 @@ describe("createAdminAuth", () => {
         emitUser = next;
         return vi.fn();
       }),
+      getSession: stableSession(null),
     });
 
     adminAuth.observeAdminSession((state) => states.push(state), vi.fn());
@@ -95,6 +149,7 @@ describe("createAdminAuth", () => {
         emitUser = next;
         return vi.fn();
       }),
+      getSession: stableSession(null),
     });
 
     adminAuth.observeAdminSession((state) => states.push(state), vi.fn());

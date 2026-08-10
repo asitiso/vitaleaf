@@ -70,3 +70,32 @@ These were intentionally not changed in this round per review scope. Addressing 
 - `eslint . --ignore-pattern dist --ignore-pattern .next` — passed.
 - `vinext build` — passed; `/admin` emitted. The existing non-blocking chunk-size warning remains.
 - `git diff --check` — passed with line-ending conversion warnings only.
+
+## Fix Round 2 — 2026-08-10
+
+### Changes
+
+- Extended the authentication adapter with a current `{ uid, generation }` session snapshot and added a distinct `stale` sign-in result.
+- `signInAdmin` now compares both its own attempt generation and the authenticated session snapshot before returning `admin` or invoking `signOut`, so an older login cannot authorize or sign out a newer session.
+- AdminDashboard ignores `stale` sign-in results and leaves the observer-confirmed current session untouched.
+
+### TDD Evidence
+
+- A deferred login-A role lookup first failed by returning `admin` after the adapter session had changed to signed-out.
+- A deferred forbidden login-A lookup first failed by calling `signOut` after the adapter session had changed to user B.
+- A Dashboard race first failed when observer-authorized user B's write controls were unmounted after stale login A resolved.
+- All three regressions passed after adding the attempt/session snapshot checks and `stale` Dashboard branch.
+
+### Scope
+
+- Observer generation/current-UID guards from Fix Round 1 remain covered and unchanged in behavior.
+- The stock snapshot write and missing stock mutation lock remain deferred; no Minor finding was changed in this round.
+
+### Verification
+
+- `vitest run lib/firebase/auth.test.ts components/admin` — 3 files, 20 tests passed.
+- `vitest run --no-file-parallelism` — 24 files, 110 tests passed.
+- The standard parallel full run still intermittently fails only the pre-existing cart focus-restoration test; that file passes 4/4 in isolation. No cart code was changed.
+- `eslint . --ignore-pattern dist --ignore-pattern .next` — passed.
+- `vinext build` — passed; `/admin` emitted. The existing non-blocking chunk-size warning remains.
+- `git diff --check` — passed with line-ending conversion warnings only.

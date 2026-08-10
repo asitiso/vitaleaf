@@ -4,15 +4,18 @@ import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "./client";
 
 export type AdminSessionState = "admin" | "signed-out" | "forbidden";
+export type AdminSignInResult = "admin" | "forbidden" | "stale";
 
 type AuthUser = { uid: string };
 type AdminRecord = { role?: unknown } | null;
+type AuthSessionSnapshot = { uid: string | null; generation: number };
 
 export type AdminAuthAdapter = {
   signIn(email: string, password: string): Promise<AuthUser>;
   readAdmin(uid: string): Promise<AdminRecord>;
   signOut(): Promise<void>;
   observe(next: (user: AuthUser | null) => void, onError: (error: unknown) => void): () => void;
+  getSession(): AuthSessionSnapshot;
 };
 
 const isAdmin = (record: AdminRecord): boolean => record?.role === "admin";
@@ -38,20 +41,30 @@ export const getAdminAuthErrorMessage = (error: unknown): string => {
 };
 
 export const createAdminAuth = (adapter: AdminAuthAdapter) => {
-  const verifyUser = async (user: AuthUser): Promise<"admin" | "forbidden"> => {
-    const record = await adapter.readAdmin(user.uid);
-    if (isAdmin(record)) return "admin";
-    await adapter.signOut();
-    return "forbidden";
-  };
+  let signInGeneration = 0;
 
   return {
-    async signInAdmin(email: string, password: string): Promise<"admin" | "forbidden"> {
+    async signInAdmin(email: string, password: string): Promise<AdminSignInResult> {
+      const attemptGeneration = ++signInGeneration;
       const user = await adapter.signIn(email, password);
-      return verifyUser(user);
+      const signedInSession = adapter.getSession();
+      if (attemptGeneration !== signInGeneration || signedInSession.uid !== user.uid) return "stale";
+
+      const record = await adapter.readAdmin(user.uid);
+      const currentSession = adapter.getSession();
+      if (
+        attemptGeneration !== signInGeneration
+        || currentSession.uid !== user.uid
+        || currentSession.generation !== signedInSession.generation
+      ) return "stale";
+
+      if (isAdmin(record)) return "admin";
+      await adapter.signOut();
+      return "forbidden";
     },
 
     signOutAdmin(): Promise<void> {
+      signInGeneration += 1;
       return adapter.signOut();
     },
 
@@ -92,6 +105,18 @@ export const createAdminAuth = (adapter: AdminAuthAdapter) => {
   };
 };
 
+let firebaseSessionUid: string | null = auth.currentUser?.uid ?? null;
+let firebaseSessionGeneration = 0;
+
+const getFirebaseSession = (): AuthSessionSnapshot => {
+  const uid = auth.currentUser?.uid ?? null;
+  if (uid !== firebaseSessionUid) {
+    firebaseSessionUid = uid;
+    firebaseSessionGeneration += 1;
+  }
+  return { uid, generation: firebaseSessionGeneration };
+};
+
 const firebaseAdminAuth = createAdminAuth({
   async signIn(email, password) {
     const credential = await signInWithEmailAndPassword(auth, email, password);
@@ -103,8 +128,12 @@ const firebaseAdminAuth = createAdminAuth({
   },
   signOut: () => signOut(auth),
   observe(next, onError) {
-    return onAuthStateChanged(auth, (user: User | null) => next(user ? { uid: user.uid } : null), onError);
+    return onAuthStateChanged(auth, (user: User | null) => {
+      getFirebaseSession();
+      next(user ? { uid: user.uid } : null);
+    }, onError);
   },
+  getSession: getFirebaseSession,
 });
 
 export const signInAdmin = firebaseAdminAuth.signInAdmin;
