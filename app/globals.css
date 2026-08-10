@@ -69,6 +69,8 @@ main {
 .checkout-card h2, .checkout-card legend, .checkout-summary h2 { padding: 0; margin: 0 0 22px; color: var(--color-forest); font-size: 20px; font-weight: 800; }
 .checkout-form__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 14px; }
 .checkout-field { display: grid; gap: 7px; min-width: 0; color: #30493e; font-size: 13px; font-weight: 800; }
+.checkout-field > span { display: flex; gap: 6px; align-items: center; }
+.checkout-field > span em { color: #a94332; font-size: 11px; font-style: normal; }
 .checkout-field--wide { grid-column: 1 / -1; }
 .checkout-field input, .checkout-field textarea { width: 100%; min-width: 0; border: 1px solid #cbd8ce; border-radius: 4px; padding: 11px 12px; color: var(--color-ink); background: #fff; font: inherit; font-weight: 500; }
 .checkout-field input { min-height: 44px; }

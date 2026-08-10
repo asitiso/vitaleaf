@@ -178,8 +178,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const summary = useMemo(() => calculateCart(lines), [lines]);
   const itemCount = useMemo(() => lines.reduce((count, line) => count + line.quantity, 0), [lines]);
   const value = useMemo<CartContextState>(
-    () => ({ lines, itemCount, add, remove, setQuantity, setSelected, selectAll, clearSelected, ...summary }),
-    [add, clearSelected, itemCount, lines, remove, selectAll, setQuantity, setSelected, summary],
+    () => ({ lines, itemCount, hasHydrated, add, remove, setQuantity, setSelected, selectAll, clearSelected, ...summary }),
+    [add, clearSelected, hasHydrated, itemCount, lines, remove, selectAll, setQuantity, setSelected, summary],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

@@ -17,7 +17,7 @@ const REQUIRED_FIELDS: RequiredField[] = [
   "address",
   "addressDetail",
 ];
-const KOREAN_MOBILE_PHONE = /^01[016789]-?\d{3,4}-?\d{4}$/;
+const KOREAN_MOBILE_PHONE = /^010-?\d{4}-?\d{4}$/;
 const KOREAN_POSTCODE = /^\d{5}$/;
 
 const FIELD_LABELS: Record<RequiredField, string> = {
@@ -58,7 +58,7 @@ function validateOrder(values: Record<RequiredField, string>) {
 
 export function CheckoutForm() {
   const router = useRouter();
-  const { lines, subtotal, shippingFee, total, clearSelected } = useCart();
+  const { lines, hasHydrated, subtotal, shippingFee, total, clearSelected } = useCart();
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
@@ -120,6 +120,15 @@ export function CheckoutForm() {
     }
   };
 
+  if (!hasHydrated) {
+    return (
+      <main className="checkout-empty checkout-loading" aria-busy="true">
+        <p>VITALEAF CHECKOUT</p>
+        <p role="status">주문 정보를 불러오는 중입니다.</p>
+      </main>
+    );
+  }
+
   if (selectedLines.length === 0) {
     return (
       <main className="checkout-empty">
@@ -149,13 +158,18 @@ export function CheckoutForm() {
                   key={field}
                   className={field === "address" || field === "addressDetail" ? "checkout-field checkout-field--wide" : "checkout-field"}
                 >
-                  <span>{FIELD_LABELS[field]}</span>
+                  <span>
+                    {FIELD_LABELS[field]}
+                    <em aria-hidden="true">필수</em>
+                  </span>
                   <input
                     ref={(element) => {
                       if (element) fieldRefs.current[field] = element;
                     }}
                     name={field}
                     aria-label={FIELD_LABELS[field]}
+                    required
+                    aria-required="true"
                     type={field === "phone" ? "tel" : "text"}
                     inputMode={field === "phone" || field === "postcode" ? "numeric" : undefined}
                     autoComplete={

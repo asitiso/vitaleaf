@@ -1,5 +1,6 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { CartProvider } from "../../features/cart/cart-context";
@@ -50,9 +51,12 @@ function renderCheckout(lines: CartLine[] = [selectedLine, unselectedLine]) {
   );
 }
 
-async function fillValidOrder(user: ReturnType<typeof userEvent.setup>) {
+async function fillValidOrder(
+  user: ReturnType<typeof userEvent.setup>,
+  phone = "010-1234-5678",
+) {
   await user.type(screen.getByLabelText("받는 분"), "홍길동");
-  await user.type(screen.getByLabelText("연락처"), "010-1234-5678");
+  await user.type(screen.getByLabelText("연락처"), phone);
   await user.type(screen.getByLabelText("우편번호"), "06236");
   await user.type(screen.getByLabelText("주소"), "서울특별시 강남구 테헤란로 123");
   await user.type(screen.getByLabelText("상세주소"), "4층");
@@ -87,6 +91,21 @@ it("shows only selected cart lines, their totals, and all payment choices", asyn
   expect(screen.getByRole("radio", { name: "간편결제" })).toBeVisible();
 });
 
+it("shows an accessible loading state until the persisted cart hydrates", async () => {
+  const initialMarkup = renderToString(
+    <CartProvider>
+      <CheckoutForm />
+    </CartProvider>,
+  );
+
+  expect(initialMarkup).toContain('role="status"');
+  expect(initialMarkup).toContain("주문 정보를 불러오는 중입니다.");
+  expect(initialMarkup).not.toContain("결제할 상품이 없습니다");
+
+  renderCheckout();
+  expect(await screen.findByRole("form", { name: "주문 및 결제" })).toBeVisible();
+});
+
 it("focuses the first required or malformed field", async () => {
   const user = userEvent.setup();
   renderCheckout();
@@ -99,6 +118,32 @@ it("focuses the first required or malformed field", async () => {
   await user.type(screen.getByLabelText("받는 분"), "홍길동");
   await user.type(screen.getByLabelText("연락처"), "1234");
   await user.click(payButton);
+  expect(screen.getByLabelText("연락처")).toHaveFocus();
+  expect(screen.getByText("휴대전화 번호를 010-1234-5678 형식으로 입력해 주세요.")).toBeVisible();
+});
+
+it("identifies every required field with native, ARIA, and visible semantics", async () => {
+  renderCheckout();
+  await screen.findByRole("form", { name: "주문 및 결제" });
+
+  for (const name of ["받는 분", "연락처", "우편번호", "주소", "상세주소"]) {
+    const input = screen.getByLabelText(name);
+    const label = input.closest("label");
+    expect(input).toHaveAttribute("required");
+    expect(input).toHaveAttribute("aria-required", "true");
+    expect(label).not.toBeNull();
+    expect(within(label as HTMLLabelElement).getByText("필수")).toBeVisible();
+  }
+});
+
+it("rejects a near-valid 010 number with only seven subscriber digits", async () => {
+  const user = userEvent.setup();
+  renderCheckout();
+  await screen.findByRole("button", { name: "결제하기" });
+  await fillValidOrder(user, "010-123-4567");
+
+  await user.click(screen.getByRole("button", { name: "결제하기" }));
+
   expect(screen.getByLabelText("연락처")).toHaveFocus();
   expect(screen.getByText("휴대전화 번호를 010-1234-5678 형식으로 입력해 주세요.")).toBeVisible();
 });

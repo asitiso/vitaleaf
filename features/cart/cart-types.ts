@@ -13,6 +13,7 @@ export type CartLine = {
 export type CartContextValue = {
   lines: CartLine[];
   itemCount: number;
+  hasHydrated: boolean;
   add(product: Product, quantity: number): void;
   remove(productId: string): void;
   setQuantity(productId: string, quantity: number): void;

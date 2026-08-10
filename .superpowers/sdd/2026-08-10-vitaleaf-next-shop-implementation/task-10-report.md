@@ -30,3 +30,25 @@ Complete.
 
 - The build retains the existing non-blocking client chunk-size warning; splitting this small checkout flow would add maintenance without a meaningful user benefit.
 - Repository-wide `tsc --noEmit` remains blocked by pre-existing Vitest-global and Cloudflare worker type configuration errors. Focused lint, the production build, and all runtime tests pass, and no reported TypeScript error points to Task 10 files.
+
+## Fix Round 1/5 — 2026-08-10
+
+### Changes
+
+- Tightened Korean mobile validation to modern `010-XXXX-XXXX` numbers with optional hyphens; seven-digit subscriber numbers such as `010-123-4567` are rejected before payment starts.
+- Exposed the existing `hasHydrated` state through `useCart()` and added an accessible checkout loading state, so direct/SSR loads no longer render a false empty-cart message before persisted cart hydration.
+- Added native `required`, explicit `aria-required="true"`, and a visible `필수` indicator to all five required delivery inputs while keeping the custom `noValidate` first-error focus behavior.
+
+### TDD Evidence
+
+- The near-valid phone regression failed first because the old expression accepted a three-digit middle group and entered the payment path.
+- The initial-render regression failed first because checkout server markup rendered `결제할 상품이 없습니다` before cart hydration.
+- The accessibility regression failed first because required inputs had neither native required attributes nor visible required markers.
+
+### Verification
+
+- `vitest run components/checkout/checkout-form.test.tsx features/cart/cart-context.test.tsx features/cart/cart-utils.test.ts lib/payment/process-payment.test.ts app/order-complete/page.test.tsx` — 5 files, 18 tests passed.
+- Focused ESLint for checkout and cart context files — passed.
+- `vitest run` — 21 files, 90 tests passed.
+- `vinext build` — passed; `/checkout` and `/order-complete` emitted.
+- `git diff --check` — passed.
