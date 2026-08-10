@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useCart } from "../../features/cart/cart-context";
 import type { CartLine } from "../../features/cart/cart-types";
@@ -11,6 +11,12 @@ type PendingDeletion =
   | { type: "line"; line: CartLine }
   | { type: "selected" }
   | null;
+
+function getFocusableElements(container: HTMLElement) {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled])'),
+  );
+}
 
 function CartQuantity({ line }: { line: CartLine }) {
   const { setQuantity } = useCart();
@@ -53,12 +59,27 @@ export function CartView() {
     remainingForFreeShipping,
   } = useCart();
   const [pendingDeletion, setPendingDeletion] = useState<PendingDeletion>(null);
+  const deleteTriggerRef = useRef<HTMLButtonElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
 
   const selectedLines = lines.filter((line) => line.selected);
   const allSelected = lines.length > 0 && selectedLines.length === lines.length;
   const selectedHasNoStock = selectedLines.some((line) => line.stock < 1);
   const checkoutDisabled = selectedLines.length === 0 || selectedHasNoStock;
   const progressValue = Math.min(subtotal, 30_000);
+
+  const restoreDeleteTriggerFocus = useCallback(() => {
+    const trigger = deleteTriggerRef.current;
+    if (trigger?.isConnected && !trigger.disabled) {
+      trigger.focus();
+    }
+  }, []);
+
+  const closeDeletion = useCallback(() => {
+    setPendingDeletion(null);
+    requestAnimationFrame(restoreDeleteTriggerFocus);
+  }, [restoreDeleteTriggerFocus]);
 
   const confirmDeletion = () => {
     if (pendingDeletion?.type === "line") {
@@ -67,8 +88,49 @@ export function CartView() {
     if (pendingDeletion?.type === "selected") {
       clearSelected();
     }
-    setPendingDeletion(null);
+    closeDeletion();
   };
+
+  const openDeletion = (deletion: Exclude<PendingDeletion, null>, trigger: HTMLButtonElement) => {
+    deleteTriggerRef.current = trigger;
+    setPendingDeletion(deletion);
+  };
+
+  useEffect(() => {
+    if (!pendingDeletion) {
+      return;
+    }
+
+    cancelButtonRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeDeletion();
+        return;
+      }
+      if (event.key !== "Tab" || !dialogRef.current) {
+        return;
+      }
+
+      const focusableElements = getFocusableElements(dialogRef.current);
+      const first = focusableElements.at(0);
+      const last = focusableElements.at(-1);
+      if (!first || !last) {
+        return;
+      }
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [closeDeletion, pendingDeletion]);
 
   if (lines.length === 0) {
     return (
@@ -105,7 +167,7 @@ export function CartView() {
             <button
               type="button"
               disabled={selectedLines.length === 0}
-              onClick={() => setPendingDeletion({ type: "selected" })}
+              onClick={(event) => openDeletion({ type: "selected" }, event.currentTarget)}
             >
               선택 삭제
             </button>
@@ -142,7 +204,7 @@ export function CartView() {
                   className="cart-view__remove"
                   type="button"
                   aria-label={`${line.name} 삭제`}
-                  onClick={() => setPendingDeletion({ type: "line", line })}
+                  onClick={(event) => openDeletion({ type: "line", line }, event.currentTarget)}
                 >
                   삭제
                 </button>
@@ -186,11 +248,11 @@ export function CartView() {
 
       {pendingDeletion ? (
         <div className="cart-view__dialog-backdrop">
-          <section className="cart-view__dialog" role="dialog" aria-modal="true" aria-labelledby="cart-delete-heading">
+          <section ref={dialogRef} className="cart-view__dialog" role="dialog" aria-modal="true" aria-labelledby="cart-delete-heading">
             <h2 id="cart-delete-heading">상품 삭제 확인</h2>
             <p>{pendingDeletion.type === "line" ? `${pendingDeletion.line.name}을(를) 장바구니에서 삭제할까요?` : "선택한 상품을 장바구니에서 삭제할까요?"}</p>
             <div>
-              <button type="button" onClick={() => setPendingDeletion(null)}>취소</button>
+              <button ref={cancelButtonRef} type="button" onClick={closeDeletion}>취소</button>
               <button type="button" onClick={confirmDeletion}>삭제하기</button>
             </div>
           </section>

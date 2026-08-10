@@ -64,6 +64,27 @@ it("confirms before deleting selected products and shows an empty-cart guide", a
   expect(screen.getByRole("link", { name: "상품 둘러보기" })).toHaveAttribute("href", "/products");
 });
 
+it("keeps focus inside the delete dialog and restores it after cancellation", async () => {
+  const user = userEvent.setup();
+  renderCart();
+  const deleteTrigger = await screen.findByRole("button", { name: "데일리 오메가3 삭제" });
+
+  await user.click(deleteTrigger);
+
+  const cancelButton = screen.getByRole("button", { name: "취소" });
+  const confirmButton = screen.getByRole("button", { name: "삭제하기" });
+  expect(cancelButton).toHaveFocus();
+
+  await user.tab({ shift: true });
+  expect(confirmButton).toHaveFocus();
+  await user.tab();
+  expect(cancelButton).toHaveFocus();
+
+  await user.keyboard("{Escape}");
+  expect(screen.queryByRole("dialog", { name: "상품 삭제 확인" })).not.toBeInTheDocument();
+  expect(deleteTrigger).toHaveFocus();
+});
+
 it("keeps a selected out-of-stock line visible but prevents checkout", async () => {
   renderCart([{ ...line, stock: 0 }]);
 
