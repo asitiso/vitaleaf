@@ -31,6 +31,16 @@ export type Product = {
   updatedAt: Date | null;
 };
 
+export type ProductFilters = {
+  query: string;
+  category: string;
+  concern: string;
+  minPrice: number | null;
+  maxPrice: number | null;
+  inStockOnly: boolean;
+  sort: "popular" | "newest" | "price-asc" | "price-desc";
+};
+
 export type Review = {
   id: string;
   productId: string;
