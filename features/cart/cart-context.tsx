@@ -38,7 +38,7 @@ function isStoredCartLine(value: unknown): value is Omit<CartLine, "quantity"> &
     line.unitPrice >= 0 &&
     typeof line.stock === "number" &&
     Number.isFinite(line.stock) &&
-    line.stock >= 1 &&
+    line.stock >= 0 &&
     typeof line.quantity === "number" &&
     Number.isFinite(line.quantity) &&
     typeof line.selected === "boolean"
@@ -56,7 +56,7 @@ function normalizeStoredCart(value: unknown): CartLine[] {
     }
 
     const stock = Math.trunc(entry.stock);
-    if (stock < 1) {
+    if (stock < 0) {
       return [];
     }
 
