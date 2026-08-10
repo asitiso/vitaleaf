@@ -66,7 +66,39 @@ it("never mounts product write controls for a signed-out or forbidden user", asy
   expect(await screen.findByRole("heading", { name: "관리자 로그인" })).toBeVisible();
   expect(screen.queryByRole("button", { name: "새 상품 등록" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "상품 저장" })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("상품 CSV 파일")).not.toBeInTheDocument();
   expect(screen.getByText("관리자 권한이 없는 계정입니다.")).toBeVisible();
+});
+
+it("mounts CSV write controls only for an authorized admin and imports through the existing save adapter", async () => {
+  const user = userEvent.setup();
+  const saveProduct = vi.fn().mockResolvedValue("created-id");
+  const deps = dependencies({
+    observeAdminSession: (next) => {
+      next("admin");
+      return vi.fn();
+    },
+    subscribeProducts: (onData) => {
+      onData([product]);
+      return vi.fn();
+    },
+    saveProduct,
+  });
+  render(<AdminDashboard dependencies={deps} />);
+
+  expect(await screen.findByRole("heading", { name: "CSV 일괄 관리" })).toBeVisible();
+  await user.upload(screen.getByLabelText("상품 CSV 파일"), new File([[
+    "name,category,price,stock",
+    "비타민 C,항산화,18000,20",
+  ].join("\n")], "products.csv", { type: "text/csv" }));
+  await user.click(await screen.findByRole("button", { name: "1개 상품 가져오기" }));
+
+  await waitFor(() => expect(saveProduct).toHaveBeenCalledWith(expect.objectContaining({
+    name: "비타민 C",
+    category: "항산화",
+    price: 18_000,
+    stock: 20,
+  })));
 });
 
 it("does not remount write controls when a stale admin check resolves after sign-out", async () => {

@@ -13,6 +13,7 @@ import {
 import { deleteProduct, saveProduct, subscribeProducts } from "../../lib/firebase/products";
 import type { Product, ProductInput } from "../../lib/products/types";
 import { formatWon } from "../../lib/format";
+import { CsvTools } from "./csv-tools";
 import { ProductForm } from "./product-form";
 
 export type AdminDashboardDependencies = {
@@ -217,6 +218,10 @@ export function AdminDashboard({ dependencies = defaultDependencies }: { depende
     }
   };
 
+  const importProducts = async (inputs: ProductInput[]) => {
+    await Promise.all(inputs.map((input) => dependencies.saveProduct(input)));
+  };
+
   const toggleStock = async (product: Product) => {
     try {
       await dependencies.saveProduct({ ...toInput(product), stock: product.stock > 0 ? 0 : 1 }, product.id);
@@ -256,6 +261,8 @@ export function AdminDashboard({ dependencies = defaultDependencies }: { depende
       </header>
 
       {toast && <div className="admin-toast" role="status"><span>{toast}</span><button type="button" aria-label="알림 닫기" onClick={() => setToast("")}>×</button></div>}
+
+      <CsvTools products={products} onImport={importProducts} />
 
       {editing ? (
         <section className="admin-editor" aria-labelledby="admin-editor-heading">
