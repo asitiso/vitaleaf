@@ -13,6 +13,10 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
+    match /productDrafts/{draftId} {
+      allow read, create, update, delete: if isAdmin();
+    }
+
     match /reviews/{reviewId} {
       allow read: if resource.data.approved == true;
       allow create, update, delete: if false;

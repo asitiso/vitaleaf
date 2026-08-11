@@ -100,6 +100,58 @@ describe("products", () => {
   });
 });
 
+describe("product drafts", () => {
+  it("denies signed-out and role-mismatched draft reads and writes", async () => {
+    await seed({
+      "admins/editor-1": { role: "editor" },
+      "admins/missing-role": { active: true },
+      "productDrafts/draft-1": { ...product, status: "draft" },
+    });
+    const publicDatabase = testEnvironment.unauthenticatedContext().firestore();
+    const editorDatabase = testEnvironment.authenticatedContext("editor-1").firestore();
+    const missingRoleDatabase = testEnvironment.authenticatedContext("missing-role").firestore();
+    const customerDatabase = testEnvironment.authenticatedContext("customer-1").firestore();
+
+    await assertFails(getDoc(doc(publicDatabase, "productDrafts/draft-1")));
+    await assertFails(getDocs(collection(publicDatabase, "productDrafts")));
+    await assertFails(setDoc(doc(publicDatabase, "productDrafts/public-write"), product));
+    await assertFails(getDoc(doc(editorDatabase, "productDrafts/draft-1")));
+    await assertFails(getDocs(collection(editorDatabase, "productDrafts")));
+    await assertFails(setDoc(doc(editorDatabase, "productDrafts/editor-write"), product));
+    await assertFails(updateDoc(doc(editorDatabase, "productDrafts/draft-1"), { stock: 4 }));
+    await assertFails(deleteDoc(doc(editorDatabase, "productDrafts/draft-1")));
+    await assertFails(getDoc(doc(missingRoleDatabase, "productDrafts/draft-1")));
+    await assertFails(getDoc(doc(customerDatabase, "productDrafts/draft-1")));
+    await assertFails(setDoc(doc(customerDatabase, "productDrafts/customer-write"), product));
+  });
+
+  it("allows an exact-role admin to read, create, update, and delete drafts", async () => {
+    await seed({
+      "admins/admin-1": { role: "admin" },
+      "productDrafts/existing": { ...product, status: "draft" },
+    });
+    const database = testEnvironment.authenticatedContext("admin-1").firestore();
+
+    await assertSucceeds(getDoc(doc(database, "productDrafts/existing")));
+    const snapshot = await assertSucceeds(getDocs(collection(database, "productDrafts")));
+    expect(snapshot.docs.map((entry) => entry.id)).toEqual(["existing"]);
+    await assertSucceeds(setDoc(doc(database, "productDrafts/created"), { ...product, status: "draft" }));
+    await assertSucceeds(updateDoc(doc(database, "productDrafts/existing"), { stock: 4 }));
+    await assertSucceeds(deleteDoc(doc(database, "productDrafts/existing")));
+  });
+
+  it("keeps nested draft data denied even to an admin", async () => {
+    await seed({
+      "admins/admin-1": { role: "admin" },
+      "productDrafts/draft-1/internal/secret": { value: true },
+    });
+    const database = testEnvironment.authenticatedContext("admin-1").firestore();
+
+    await assertFails(getDoc(doc(database, "productDrafts/draft-1/internal/secret")));
+    await assertFails(setDoc(doc(database, "productDrafts/draft-1/internal/new-secret"), { value: true }));
+  });
+});
+
 describe("reviews", () => {
   it("allows direct reads only when the stored review is approved", async () => {
     await seed({

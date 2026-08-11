@@ -16,12 +16,12 @@ import { db } from "./client";
 
 export type Unsubscribe = () => void;
 
-type FirestoreDocument = {
+export type FirestoreDocument = {
   id: string;
   data(): unknown;
 };
 
-type ProductWrite = ProductInput & {
+export type ProductWrite = ProductInput & {
   createdAt?: unknown;
   updatedAt: unknown;
 };
