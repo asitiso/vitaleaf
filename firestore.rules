@@ -8,13 +8,99 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'admin';
     }
 
+    function hasOwnedCreateMetadata() {
+      return request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.revision == 1;
+    }
+
+    function hasOwnedRevisionUpdate() {
+      return request.resource.data.get('createdBy', null) == resource.data.get('createdBy', null)
+        && request.resource.data.get('createdAt', null) == resource.data.get('createdAt', null)
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.revision == resource.data.get('revision', 0) + 1;
+    }
+
+    function isAtomicRestoreCreate(productId) {
+      let draftPath = /databases/$(database)/documents/productDrafts/$(productId);
+      let draft = get(draftPath).data;
+      return exists(draftPath)
+        && !existsAfter(draftPath)
+        && draft.mode == 'restore'
+        && draft.sourceProductId == productId
+        && request.resource.data.createdAt == draft.sourceCreatedAt
+        && request.resource.data.createdBy == draft.sourceCreatedBy
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.revision == draft.sourceProductRevision + 1;
+    }
+
+    function isRegularProductCreate(productId) {
+      let draftPath = /databases/$(database)/documents/productDrafts/$(productId);
+      return hasOwnedCreateMetadata()
+        && (!exists(draftPath)
+          || (get(draftPath).data.mode == 'create' && !existsAfter(draftPath)));
+    }
+
+    function isAtomicUnpublishDraftCreate(draftId) {
+      let productPath = /databases/$(database)/documents/products/$(draftId);
+      let product = get(productPath).data;
+      return exists(productPath)
+        && !existsAfter(productPath)
+        && request.resource.data.mode == 'restore'
+        && request.resource.data.sourceProductId == draftId
+        && request.resource.data.sourceProductRevision == product.get('revision', 0)
+        && request.resource.data.get('sourceCreatedAt', null) == product.get('createdAt', null)
+        && request.resource.data.get('sourceCreatedBy', null) == product.get('createdBy', null);
+    }
+
+    function isSameIdEditDraftCreate(draftId) {
+      let productPath = /databases/$(database)/documents/products/$(draftId);
+      let product = get(productPath).data;
+      return exists(productPath)
+        && existsAfter(productPath)
+        && request.resource.data.mode == 'edit'
+        && request.resource.data.sourceProductId == draftId
+        && request.resource.data.sourceProductRevision == product.get('revision', 0)
+        && request.resource.data.get('sourceCreatedAt', null) == product.get('createdAt', null)
+        && request.resource.data.get('sourceCreatedBy', null) == product.get('createdBy', null);
+    }
+
+    function hasValidDraftTargetState(draftId) {
+      let productPath = /databases/$(database)/documents/products/$(draftId);
+      return (request.resource.data.mode == 'create' && !exists(productPath))
+        || (request.resource.data.mode == 'edit'
+          && exists(productPath)
+          && request.resource.data.sourceProductRevision == get(productPath).data.get('revision', 0))
+        || (request.resource.data.mode == 'restore' && !exists(productPath));
+    }
+
     match /products/{productId} {
       allow read: if true;
-      allow create, update, delete: if isAdmin();
+      allow create: if isAdmin()
+        && (isRegularProductCreate(productId) || isAtomicRestoreCreate(productId));
+      allow update: if isAdmin() && hasOwnedRevisionUpdate();
+      allow delete: if isAdmin();
     }
 
     match /productDrafts/{draftId} {
-      allow read, create, update, delete: if isAdmin();
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && hasOwnedCreateMetadata()
+        && request.resource.data.sessionId is string
+        && request.resource.data.mode in ['create', 'edit', 'restore']
+        && ((request.resource.data.mode == 'create' && hasValidDraftTargetState(draftId))
+          || isSameIdEditDraftCreate(draftId)
+          || isAtomicUnpublishDraftCreate(draftId));
+      allow update: if isAdmin()
+        && hasOwnedRevisionUpdate()
+        && hasValidDraftTargetState(draftId)
+        && request.resource.data.sessionId == resource.data.sessionId
+        && request.resource.data.mode == resource.data.mode
+        && request.resource.data.get('sourceProductId', null) == resource.data.get('sourceProductId', null)
+        && request.resource.data.get('sourceProductRevision', null) == resource.data.get('sourceProductRevision', null)
+        && request.resource.data.get('sourceCreatedAt', null) == resource.data.get('sourceCreatedAt', null)
+        && request.resource.data.get('sourceCreatedBy', null) == resource.data.get('sourceCreatedBy', null);
+      allow delete: if isAdmin();
     }
 
     match /reviews/{reviewId} {

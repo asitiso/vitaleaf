@@ -69,6 +69,17 @@ describe("normalizeProduct", () => {
     expect(product.updatedAt).toBe(updatedAt);
   });
 
+  it("drops malformed or blank-name ingredients and trims valid names", () => {
+    const product = normalizeProduct("ingredients", {
+      name: "Ingredient product",
+      price: 10_000,
+      stock: 1,
+      ingredients: [null, "EPA", {}, { name: "   " }, { name: " EPA ", amount: "600mg" }],
+    });
+
+    expect(product.ingredients).toEqual([{ name: "EPA", amount: "600mg", dailyValue: "" }]);
+  });
+
   it("normalizes legacy image fields into ordered media", () => {
     const product = normalizeProduct("legacy", {
       name: "Legacy product",

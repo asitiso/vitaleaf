@@ -16,6 +16,7 @@ import {
   getDoc,
   getDocs,
   query,
+  runTransaction,
   setDoc,
   updateDoc,
   where,
@@ -32,6 +33,26 @@ const product = {
   price: 10_000,
   stock: 3,
 };
+
+const ownedProduct = (owner: string, revision = 1) => ({
+  ...product,
+  revision,
+  createdBy: owner,
+  updatedBy: owner,
+  createdAt: "original-created-at",
+  updatedAt: "latest-updated-at",
+});
+
+const ownedDraft = (owner: string, revision = 1) => ({
+  ...ownedProduct(owner, revision),
+  status: "draft",
+  mode: "create",
+  sessionId: "session-1",
+  sourceProductId: null,
+  sourceProductRevision: null,
+  sourceCreatedAt: null,
+  sourceCreatedBy: null,
+});
 
 const seed = async (documents: Record<string, Record<string, unknown>>) => {
   await testEnvironment.withSecurityRulesDisabled(async (context) => {
@@ -91,12 +112,97 @@ describe("products", () => {
   });
 
   it("allows an authenticated user backed by admins/{uid} to create, update, and delete products", async () => {
-    await seed({ "admins/admin-1": { role: "admin" }, "products/existing": product });
+    await seed({ "admins/admin-1": { role: "admin" }, "products/existing": ownedProduct("admin-original") });
     const database = testEnvironment.authenticatedContext("admin-1").firestore();
 
-    await assertSucceeds(setDoc(doc(database, "products/created"), product));
-    await assertSucceeds(updateDoc(doc(database, "products/existing"), { stock: 4 }));
+    await assertSucceeds(setDoc(doc(database, "products/created"), ownedProduct("admin-1")));
+    await assertSucceeds(updateDoc(doc(database, "products/existing"), {
+      stock: 4,
+      revision: 2,
+      updatedBy: "admin-1",
+    }));
     await assertSucceeds(deleteDoc(doc(database, "products/existing")));
+  });
+
+  it("rejects product owner spoofing, createdBy mutation, and stale revisions", async () => {
+    await seed({
+      "admins/admin-1": { role: "admin" },
+      "products/existing": ownedProduct("admin-original", 3),
+    });
+    const database = testEnvironment.authenticatedContext("admin-1").firestore();
+
+    await assertFails(setDoc(doc(database, "products/spoofed"), ownedProduct("other-admin")));
+    await assertFails(updateDoc(doc(database, "products/existing"), {
+      revision: 4,
+      createdBy: "admin-1",
+      updatedBy: "admin-1",
+    }));
+    await assertFails(updateDoc(doc(database, "products/existing"), {
+      revision: 3,
+      updatedBy: "admin-1",
+    }));
+  });
+
+  it("requires a same-ID draft to be deleted atomically when its product is created", async () => {
+    await seed({
+      "admins/admin-1": { role: "admin" },
+      "productDrafts/collision": ownedDraft("admin-1"),
+    });
+    const database = testEnvironment.authenticatedContext("admin-1").firestore();
+
+    await assertFails(setDoc(doc(database, "products/collision"), ownedProduct("admin-1")));
+    await assertSucceeds(runTransaction(database, async (transaction) => {
+      transaction.set(doc(database, "products/collision"), ownedProduct("admin-1"));
+      transaction.delete(doc(database, "productDrafts/collision"));
+    }));
+  });
+
+  it("allows only an atomic restore that preserves the draft's original product lineage", async () => {
+    await seed({
+      "admins/admin-1": { role: "admin" },
+      "products/restored": ownedProduct("admin-original", 8),
+      "products/spoofed": ownedProduct("admin-original", 8),
+      "products/reset-lineage": ownedProduct("admin-original", 8),
+      "products/standalone": ownedProduct("admin-original", 8),
+    });
+    const database = testEnvironment.authenticatedContext("admin-1").firestore();
+    const restoreDraft = (id: string) => ({
+      ...ownedDraft("admin-1", 1),
+      mode: "restore",
+      sourceProductId: id,
+      sourceProductRevision: 8,
+      sourceCreatedAt: "original-created-at",
+      sourceCreatedBy: "admin-original",
+    });
+
+    await assertFails(setDoc(doc(database, "productDrafts/standalone"), restoreDraft("standalone")));
+    for (const id of ["restored", "spoofed", "reset-lineage"]) {
+      await assertSucceeds(runTransaction(database, async (transaction) => {
+        transaction.set(doc(database, `productDrafts/${id}`), restoreDraft(id));
+        transaction.delete(doc(database, `products/${id}`));
+      }));
+    }
+
+    await assertSucceeds(runTransaction(database, async (transaction) => {
+      transaction.set(doc(database, "products/restored"), {
+        ...ownedProduct("admin-original", 9),
+        updatedBy: "admin-1",
+      });
+      transaction.delete(doc(database, "productDrafts/restored"));
+    }));
+
+    await assertFails(runTransaction(database, async (transaction) => {
+      transaction.set(doc(database, "products/spoofed"), {
+        ...ownedProduct("attacker", 9),
+        updatedBy: "admin-1",
+      });
+      transaction.delete(doc(database, "productDrafts/spoofed"));
+    }));
+
+    await assertFails(runTransaction(database, async (transaction) => {
+      transaction.set(doc(database, "products/reset-lineage"), ownedProduct("admin-1", 1));
+      transaction.delete(doc(database, "productDrafts/reset-lineage"));
+    }));
   });
 });
 
@@ -105,7 +211,7 @@ describe("product drafts", () => {
     await seed({
       "admins/editor-1": { role: "editor" },
       "admins/missing-role": { active: true },
-      "productDrafts/draft-1": { ...product, status: "draft" },
+      "productDrafts/draft-1": ownedDraft("admin-1"),
     });
     const publicDatabase = testEnvironment.unauthenticatedContext().firestore();
     const editorDatabase = testEnvironment.authenticatedContext("editor-1").firestore();
@@ -128,16 +234,74 @@ describe("product drafts", () => {
   it("allows an exact-role admin to read, create, update, and delete drafts", async () => {
     await seed({
       "admins/admin-1": { role: "admin" },
-      "productDrafts/existing": { ...product, status: "draft" },
+      "productDrafts/existing": ownedDraft("admin-original"),
     });
     const database = testEnvironment.authenticatedContext("admin-1").firestore();
 
     await assertSucceeds(getDoc(doc(database, "productDrafts/existing")));
     const snapshot = await assertSucceeds(getDocs(collection(database, "productDrafts")));
     expect(snapshot.docs.map((entry) => entry.id)).toEqual(["existing"]);
-    await assertSucceeds(setDoc(doc(database, "productDrafts/created"), { ...product, status: "draft" }));
-    await assertSucceeds(updateDoc(doc(database, "productDrafts/existing"), { stock: 4 }));
+    await assertSucceeds(setDoc(doc(database, "productDrafts/created"), ownedDraft("admin-1")));
+    await assertSucceeds(updateDoc(doc(database, "productDrafts/existing"), {
+      stock: 4,
+      revision: 2,
+      updatedBy: "admin-1",
+    }));
     await assertSucceeds(deleteDoc(doc(database, "productDrafts/existing")));
+  });
+
+  it("enforces create versus same-ID edit draft target and source lineage", async () => {
+    await seed({
+      "admins/admin-1": { role: "admin" },
+      "products/published": ownedProduct("admin-original", 3),
+      "products/wrong-revision": ownedProduct("admin-original", 3),
+    });
+    const database = testEnvironment.authenticatedContext("admin-1").firestore();
+    const editDraft = {
+      ...ownedDraft("admin-1"),
+      mode: "edit",
+      sourceProductId: "published",
+      sourceProductRevision: 3,
+      sourceCreatedAt: "original-created-at",
+      sourceCreatedBy: "admin-original",
+    };
+
+    await assertFails(setDoc(doc(database, "productDrafts/published"), ownedDraft("admin-1")));
+    await assertSucceeds(setDoc(doc(database, "productDrafts/published"), editDraft));
+    await assertFails(setDoc(doc(database, "productDrafts/wrong-revision"), {
+      ...editDraft,
+      sourceProductId: "wrong-revision",
+      sourceProductRevision: 2,
+    }));
+  });
+
+  it("rejects draft owner spoofing and session, creator, or revision mutation", async () => {
+    await seed({
+      "admins/admin-1": { role: "admin" },
+      "productDrafts/existing": ownedDraft("admin-original", 3),
+    });
+    const database = testEnvironment.authenticatedContext("admin-1").firestore();
+
+    await assertFails(setDoc(doc(database, "productDrafts/spoofed"), ownedDraft("other-admin")));
+    await assertFails(updateDoc(doc(database, "productDrafts/existing"), {
+      revision: 4,
+      createdBy: "admin-1",
+      updatedBy: "admin-1",
+    }));
+    await assertFails(updateDoc(doc(database, "productDrafts/existing"), {
+      revision: 4,
+      sessionId: "other-session",
+      updatedBy: "admin-1",
+    }));
+    await assertFails(updateDoc(doc(database, "productDrafts/existing"), {
+      revision: 3,
+      updatedBy: "admin-1",
+    }));
+    await assertFails(updateDoc(doc(database, "productDrafts/existing"), {
+      revision: 4,
+      sourceProductId: "other-product",
+      updatedBy: "admin-1",
+    }));
   });
 
   it("keeps nested draft data denied even to an admin", async () => {

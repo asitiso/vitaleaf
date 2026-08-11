@@ -23,7 +23,9 @@ export const validatePublishableDraft = (draft: ProductDraft): DraftValidationEr
     addError(2, "media", "Add at least one product image.");
   }
   if (!isNonEmptyText(draft.dosage)) addError(3, "dosage", "Enter serving instructions.");
-  if (draft.ingredients.length === 0) addError(3, "ingredients", "Add at least one ingredient.");
+  if (draft.ingredients.length === 0 || draft.ingredients.some((ingredient) => !isNonEmptyText(ingredient.name))) {
+    addError(3, "ingredients", "Add at least one ingredient with a name.");
+  }
   if (!isNonEmptyText(draft.origin)) addError(4, "origin", "Enter the country of origin.");
   if (draft.cautions.length === 0 || !draft.cautions.some(isNonEmptyText)) {
     addError(4, "cautions", "Add at least one precaution.");

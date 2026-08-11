@@ -1,42 +1,76 @@
 import {
   collection,
-  deleteDoc,
   doc,
   getDoc,
   onSnapshot,
   runTransaction,
   serverTimestamp,
-  writeBatch,
+  type Transaction,
 } from "firebase/firestore";
 
 import { toPublishedProductInput, validatePublishableDraft, type DraftValidationError } from "../products/draft";
-import { normalizeMedia } from "../products/normalize";
-import type { DraftStatus, Ingredient, Product, ProductDraft, ProductInput } from "../products/types";
+import { normalizeMedia, normalizeProduct } from "../products/normalize";
+import type {
+  DraftMode,
+  DraftStatus,
+  Ingredient,
+  Product,
+  ProductDraft,
+  ProductInput,
+  ProductMedia,
+} from "../products/types";
 import { auth, db } from "./client";
 import type { FirestoreDocument, Unsubscribe } from "./products";
 
-type ProductDraftData = Omit<ProductDraft, "id" | "createdAt" | "updatedAt">;
+type DraftContent = ProductInput & {
+  media: ProductMedia[];
+  status: DraftStatus;
+  currentStep: ProductDraft["currentStep"];
+};
 
-export type ProductDraftWrite = ProductDraftData & {
-  createdAt?: unknown;
+export type ProductDraftWrite = DraftContent & {
+  mode: DraftMode;
+  sessionId: string;
+  revision: number;
+  sourceProductId: string | null;
+  sourceProductRevision: number | null;
+  sourceCreatedAt: unknown;
+  sourceCreatedBy: string | null;
+  createdAt: unknown;
   updatedAt: unknown;
-  createdBy?: string;
+  createdBy: string;
   updatedBy: string;
+};
+
+export type PublishedProductWrite = ProductInput & {
+  media: ProductMedia[];
+  revision: number;
+  createdAt: unknown;
+  updatedAt: unknown;
+  createdBy: string | null;
+  updatedBy: string;
+};
+
+export type ProductDraftTransaction = {
+  getDraft(id: string): Promise<FirestoreDocument | null>;
+  getProduct(id: string): Promise<FirestoreDocument | null>;
+  setDraft(id: string, value: ProductDraftWrite): void;
+  setProduct(id: string, value: PublishedProductWrite): void;
+  deleteDraft(id: string): void;
+  deleteProduct(id: string): void;
+  timestamp(): unknown;
+  ownerId(): string | null;
 };
 
 export type ProductDraftRepositoryAdapter = {
   createId(): string;
-  save(id: string, value: ProductDraftWrite): Promise<void>;
+  createSessionId(): string;
   get(id: string): Promise<FirestoreDocument | null>;
   subscribe(
     onData: (documents: FirestoreDocument[]) => void,
     onError: (error: Error) => void,
   ): Unsubscribe;
-  commitPublish(id: string, product: ProductInput): Promise<void>;
-  commitUnpublish(id: string, draft: ProductDraftWrite): Promise<void>;
-  delete(id: string): Promise<void>;
-  timestamp(): unknown;
-  ownerId?(): string | null;
+  runTransaction<T>(operation: (transaction: ProductDraftTransaction) => Promise<T>): Promise<T>;
 };
 
 export class ProductDraftValidationError extends Error {
@@ -57,6 +91,7 @@ export class ProductDraftConflictError extends Error {
 }
 
 type UnknownRecord = Record<string, unknown>;
+type DraftIdentity = Pick<ProductDraft, "id" | "sessionId" | "revision">;
 
 const asRecord = (value: unknown): UnknownRecord => (
   typeof value === "object" && value !== null && !Array.isArray(value)
@@ -74,14 +109,20 @@ const asNonNegativeNumber = (value: unknown): number => (
   typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0
 );
 
+const asNonNegativeInteger = (value: unknown): number => Math.floor(asNonNegativeNumber(value));
+
 const asNullableNonNegativeNumber = (value: unknown): number | null => (
   typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null
 );
 
+const asNullableNonNegativeInteger = (value: unknown): number | null => {
+  const number = asNullableNonNegativeNumber(value);
+  return number === null ? null : Math.floor(number);
+};
+
 const asDate = (value: unknown): Date | null => {
   if (value instanceof Date) return value;
   if (typeof value !== "object" || value === null || !("toDate" in value)) return null;
-
   const toDate = (value as { toDate?: unknown }).toDate;
   const date = typeof toDate === "function" ? toDate.call(value) : null;
   return date instanceof Date ? date : null;
@@ -89,19 +130,26 @@ const asDate = (value: unknown): Date | null => {
 
 const asIngredients = (value: unknown): Ingredient[] => (
   Array.isArray(value)
-    ? value.map((item) => {
+    ? value.flatMap((item) => {
+        if (typeof item !== "object" || item === null || Array.isArray(item)) return [];
         const ingredient = asRecord(item);
-        return {
-          name: asString(ingredient.name),
+        const name = asString(ingredient.name).trim();
+        if (!name) return [];
+        return [{
+          name,
           amount: asString(ingredient.amount),
           dailyValue: asString(ingredient.dailyValue),
-        };
+        }];
       })
     : []
 );
 
 const asDraftStatus = (value: unknown): DraftStatus => (
   value === "publishing" || value === "published-copy" ? value : "draft"
+);
+
+const asDraftMode = (value: unknown): DraftMode => (
+  value === "edit" || value === "restore" ? value : "create"
 );
 
 const asCurrentStep = (value: unknown): ProductDraft["currentStep"] => (
@@ -137,73 +185,97 @@ const normalizeDraft = (id: string, value: unknown): ProductDraft => {
     ratingAverage: Math.min(5, asNonNegativeNumber(draft.ratingAverage)),
     reviewCount: asNonNegativeNumber(draft.reviewCount),
     status: asDraftStatus(draft.status),
-    sourceProductId: typeof draft.sourceProductId === "string" ? draft.sourceProductId : null,
+    mode: asDraftMode(draft.mode),
+    sessionId: asString(draft.sessionId).trim() || null,
+    revision: asNonNegativeInteger(draft.revision),
+    sourceProductId: asString(draft.sourceProductId).trim() || null,
+    sourceProductRevision: asNullableNonNegativeInteger(draft.sourceProductRevision),
+    sourceCreatedAt: asDate(draft.sourceCreatedAt),
+    sourceCreatedBy: asString(draft.sourceCreatedBy).trim() || null,
     currentStep: asCurrentStep(draft.currentStep),
     createdAt: asDate(draft.createdAt),
     updatedAt: asDate(draft.updatedAt),
+    createdBy: asString(draft.createdBy).trim() || null,
+    updatedBy: asString(draft.updatedBy).trim() || null,
   };
 };
 
-const cloneProductData = (product: Product | ProductDraft): ProductDraftData => ({
-  name: product.name,
-  slug: product.slug,
-  category: product.category,
-  concerns: [...product.concerns],
-  price: product.price,
-  originalPrice: product.originalPrice,
-  thumbnailUrl: product.thumbnailUrl,
-  images: [...product.images],
-  media: product.media.map((item) => ({ ...item })),
-  description: product.description,
-  benefits: [...product.benefits],
-  ingredients: product.ingredients.map((ingredient) => ({ ...ingredient })),
-  dosage: product.dosage,
-  origin: product.origin,
-  certifications: [...product.certifications],
-  cautions: [...product.cautions],
-  stock: product.stock,
-  isBest: product.isBest,
-  isNew: product.isNew,
-  salesRank: product.salesRank,
-  ratingAverage: product.ratingAverage,
-  reviewCount: product.reviewCount,
-  status: "status" in product ? product.status : "draft",
-  sourceProductId: "sourceProductId" in product ? product.sourceProductId : product.id,
-  currentStep: "currentStep" in product ? product.currentStep : 1,
+const draftContentFrom = (source: Product | ProductDraft): DraftContent => ({
+  name: source.name,
+  slug: source.slug,
+  category: source.category,
+  concerns: [...source.concerns],
+  price: source.price,
+  originalPrice: source.originalPrice,
+  thumbnailUrl: source.thumbnailUrl,
+  images: [...source.images],
+  media: source.media.map((item) => ({ ...item })),
+  description: source.description,
+  benefits: [...source.benefits],
+  ingredients: source.ingredients.map((ingredient) => ({ ...ingredient })),
+  dosage: source.dosage,
+  origin: source.origin,
+  certifications: [...source.certifications],
+  cautions: [...source.cautions],
+  stock: source.stock,
+  isBest: source.isBest,
+  isNew: source.isNew,
+  salesRank: source.salesRank,
+  ratingAverage: source.ratingAverage,
+  reviewCount: source.reviewCount,
+  status: "status" in source ? source.status : "draft",
+  currentStep: "currentStep" in source ? source.currentStep : 1,
 });
 
-const requireOwnerId = (adapter: ProductDraftRepositoryAdapter, explicitOwnerId?: string): string => {
-  const ownerId = explicitOwnerId ?? adapter.ownerId?.() ?? "";
-  if (!ownerId.trim()) throw new Error("An authenticated admin is required to write product drafts.");
-  return ownerId;
-};
-
-const toDraftWrite = (
-  draft: ProductDraftData,
-  ownerId: string,
-  timestamp: unknown,
-  includeCreationMetadata: boolean,
-): ProductDraftWrite => ({
-  ...draft,
-  ...(includeCreationMetadata ? { createdAt: timestamp, createdBy: ownerId } : {}),
-  updatedAt: timestamp,
-  updatedBy: ownerId,
-});
-
-const toDraftFromProduct = (
+const productDraftFromProduct = (
   product: Product,
-  overrides: Pick<ProductDraft, "id" | "name" | "status" | "sourceProductId" | "stock" | "salesRank" | "ratingAverage" | "reviewCount">,
+  lifecycle: Pick<
+    ProductDraft,
+    "id" | "status" | "mode" | "sessionId" | "revision" | "sourceProductId"
+      | "sourceProductRevision" | "sourceCreatedAt" | "sourceCreatedBy"
+  >,
 ): ProductDraft => ({
-  ...cloneProductData(product),
-  ...overrides,
+  ...draftContentFrom(product),
+  ...lifecycle,
   currentStep: 1,
   createdAt: null,
   updatedAt: null,
+  createdBy: null,
+  updatedBy: null,
 });
 
+const requireOwnerId = (transaction: ProductDraftTransaction): string => {
+  const ownerId = transaction.ownerId()?.trim() ?? "";
+  if (!ownerId) throw new Error("An authenticated admin is required to write product drafts.");
+  return ownerId;
+};
+
+const conflict = (message: string): never => {
+  throw new ProductDraftConflictError(message);
+};
+
+const requireIdentity = (document: FirestoreDocument | null, identity: DraftIdentity): ProductDraft => {
+  if (!document) return conflict("This product draft no longer exists. Refresh the draft list.");
+  const draft = normalizeDraft(document.id, document.data());
+  if (!draft.sessionId || draft.sessionId !== identity.sessionId) {
+    return conflict("This product draft belongs to a different editing session. Refresh the draft list.");
+  }
+  if (draft.revision !== identity.revision) {
+    return conflict("This product draft changed in another session. Refresh before continuing.");
+  }
+  return draft;
+};
+
+const productRevision = (product: Product, expected: number | null): void => {
+  if (expected === null || (product.revision ?? 0) !== expected) {
+    conflict("The published product changed in another session. Refresh before continuing.");
+  }
+};
+
+const writeToDomain = (id: string, write: ProductDraftWrite): ProductDraft => normalizeDraft(id, write);
+
 export const createProductDraftRepository = (adapter: ProductDraftRepositoryAdapter) => {
-  const knownDraftIds = new Set<string>();
-  const pendingSaves = new Map<string, Promise<void>>();
+  const pendingSaves = new Map<string, Promise<ProductDraft>>();
   const pendingPublishes = new Map<string, Promise<void>>();
   const pendingDiscards = new Map<string, Promise<void>>();
   const pendingUnpublishes = new Map<string, Promise<ProductDraft>>();
@@ -216,7 +288,113 @@ export const createProductDraftRepository = (adapter: ProductDraftRepositoryAdap
     return operation;
   };
 
-  const saveDraft = (draft: ProductDraft, explicitOwnerId?: string): Promise<void> => {
+  const persistDraft = (
+    snapshot: ProductDraft,
+    identity: { sessionId: string; revision: number },
+  ): Promise<ProductDraft> => adapter.runTransaction(async (transaction) => {
+    const storedDocument = await transaction.getDraft(snapshot.id);
+    const targetProductDocument = await transaction.getProduct(snapshot.id);
+    const sourceDocument = !storedDocument
+      && snapshot.mode === "create"
+      && snapshot.sourceProductId
+      && snapshot.sourceProductId !== snapshot.id
+      ? await transaction.getProduct(snapshot.sourceProductId)
+      : null;
+    const ownerId = requireOwnerId(transaction);
+    const timestamp = transaction.timestamp();
+    const content = draftContentFrom(snapshot);
+
+    if (!storedDocument) {
+      if (identity.revision !== 0) conflict("This product draft no longer exists. Refresh the draft list.");
+      if (snapshot.mode === "restore") conflict("Only unpublish can create a restore draft.");
+      if (snapshot.mode === "create" && targetProductDocument) {
+        conflict("A product with this draft id already exists.");
+      }
+      if (snapshot.mode === "edit" && !targetProductDocument) {
+        conflict("The published product no longer exists.");
+      }
+
+      let sourceProductId = snapshot.sourceProductId;
+      let sourceProductRevision = snapshot.sourceProductRevision;
+      let sourceCreatedAt: unknown = snapshot.sourceCreatedAt;
+      let sourceCreatedBy = snapshot.sourceCreatedBy;
+
+      if (snapshot.mode === "edit") {
+        if (sourceProductId !== snapshot.id || !targetProductDocument) {
+          conflict("An edit draft must target its same-id published product.");
+        }
+        const product = normalizeProduct(snapshot.id, targetProductDocument!.data());
+        productRevision(product, sourceProductRevision);
+        const productRecord = asRecord(targetProductDocument!.data());
+        sourceProductId = snapshot.id;
+        sourceProductRevision = product.revision ?? 0;
+        sourceCreatedAt = productRecord.createdAt ?? null;
+        sourceCreatedBy = asString(productRecord.createdBy).trim() || null;
+      } else if (sourceProductId) {
+        if (!sourceDocument) conflict("The product being duplicated no longer exists.");
+        const sourceProduct = normalizeProduct(sourceProductId, sourceDocument!.data());
+        productRevision(sourceProduct, sourceProductRevision);
+        const sourceRecord = asRecord(sourceDocument!.data());
+        sourceProductRevision = sourceProduct.revision ?? 0;
+        sourceCreatedAt = sourceRecord.createdAt ?? null;
+        sourceCreatedBy = asString(sourceRecord.createdBy).trim() || null;
+      }
+
+      const write: ProductDraftWrite = {
+        ...content,
+        mode: snapshot.mode,
+        sessionId: identity.sessionId,
+        revision: 1,
+        sourceProductId,
+        sourceProductRevision,
+        sourceCreatedAt: sourceCreatedAt ?? null,
+        sourceCreatedBy,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        createdBy: ownerId,
+        updatedBy: ownerId,
+      };
+      transaction.setDraft(snapshot.id, write);
+      return writeToDomain(snapshot.id, write);
+    }
+
+    const stored = requireIdentity(storedDocument, {
+      id: snapshot.id,
+      sessionId: identity.sessionId,
+      revision: identity.revision,
+    });
+    if (snapshot.mode !== stored.mode) conflict("The draft mode cannot change during an editing session.");
+    if (stored.mode === "create" && targetProductDocument) {
+      conflict("This draft was already published.");
+    }
+    if (stored.mode === "edit") {
+      if (!targetProductDocument) conflict("The published product no longer exists.");
+      productRevision(normalizeProduct(snapshot.id, targetProductDocument!.data()), stored.sourceProductRevision);
+    }
+    if (stored.mode === "restore" && targetProductDocument) {
+      conflict("This restore draft was already published.");
+    }
+
+    const storedRecord = asRecord(storedDocument.data());
+    const write: ProductDraftWrite = {
+      ...content,
+      mode: stored.mode,
+      sessionId: stored.sessionId!,
+      revision: stored.revision + 1,
+      sourceProductId: stored.sourceProductId,
+      sourceProductRevision: stored.sourceProductRevision,
+      sourceCreatedAt: storedRecord.sourceCreatedAt ?? null,
+      sourceCreatedBy: stored.sourceCreatedBy,
+      createdAt: storedRecord.createdAt ?? timestamp,
+      updatedAt: timestamp,
+      createdBy: stored.createdBy ?? ownerId,
+      updatedBy: ownerId,
+    };
+    transaction.setDraft(snapshot.id, write);
+    return writeToDomain(snapshot.id, write);
+  });
+
+  const saveDraft = (draft: ProductDraft): Promise<ProductDraft> => {
     if (pendingPublishes.has(draft.id)) {
       return Promise.reject(new Error("This product draft is being published."));
     }
@@ -224,22 +402,19 @@ export const createProductDraftRepository = (adapter: ProductDraftRepositoryAdap
       return Promise.reject(new Error("This product draft is being discarded."));
     }
 
-    const ownerId = requireOwnerId(adapter, explicitOwnerId);
-    const data = cloneProductData(draft);
-    const callerHasCreationMetadata = draft.createdAt !== null;
+    const snapshot = { ...draft, ...draftContentFrom(draft) };
+    const generatedSessionId = draft.sessionId ?? adapter.createSessionId();
     const previousSave = pendingSaves.get(draft.id);
-    const operation = (previousSave ?? Promise.resolve())
-      .catch(() => undefined)
-      .then(async () => {
-        const write = toDraftWrite(
-          data,
-          ownerId,
-          adapter.timestamp(),
-          !callerHasCreationMetadata && !knownDraftIds.has(draft.id),
-        );
-        await adapter.save(draft.id, write);
-        knownDraftIds.add(draft.id);
-      });
+    const operation = previousSave
+      ? previousSave.then((previous) => persistDraft(snapshot, {
+          sessionId: draft.sessionId && draft.sessionId !== previous.sessionId
+            ? draft.sessionId
+            : previous.sessionId!,
+          revision: draft.sessionId && draft.sessionId !== previous.sessionId
+            ? draft.revision
+            : previous.revision,
+        }))
+      : persistDraft(snapshot, { sessionId: generatedSessionId, revision: draft.revision });
 
     return track(pendingSaves, draft.id, operation);
   };
@@ -249,13 +424,25 @@ export const createProductDraftRepository = (adapter: ProductDraftRepositoryAdap
       return adapter.createId();
     },
 
+    createProductEditDraft(product: Product): ProductDraft {
+      return productDraftFromProduct(product, {
+        id: product.id,
+        status: "published-copy",
+        mode: "edit",
+        sessionId: null,
+        revision: 0,
+        sourceProductId: product.id,
+        sourceProductRevision: product.revision ?? 0,
+        sourceCreatedAt: product.createdAt,
+        sourceCreatedBy: product.createdBy ?? null,
+      });
+    },
+
     saveDraft,
 
     async getDraft(id: string): Promise<ProductDraft | null> {
       const document = await adapter.get(id);
-      if (!document) return null;
-      knownDraftIds.add(document.id);
-      return normalizeDraft(document.id, document.data());
+      return document ? normalizeDraft(document.id, document.data()) : null;
     },
 
     subscribeDrafts(
@@ -263,124 +450,191 @@ export const createProductDraftRepository = (adapter: ProductDraftRepositoryAdap
       onError: (error: Error) => void,
     ): Unsubscribe {
       return adapter.subscribe(
-        (documents) => onData(documents.map((document) => {
-          knownDraftIds.add(document.id);
-          return normalizeDraft(document.id, document.data());
-        })),
+        (documents) => onData(documents.map((document) => normalizeDraft(document.id, document.data()))),
         onError,
       );
     },
 
     publishDraft(draft: ProductDraft): Promise<void> {
-      const errors = validatePublishableDraft(draft);
-      if (errors.length > 0) return Promise.reject(new ProductDraftValidationError(errors));
       if (pendingDiscards.has(draft.id)) {
         return Promise.reject(new Error("This product draft is being discarded."));
       }
-
+      if (pendingUnpublishes.has(draft.id)) {
+        return Promise.reject(new Error("This product is being unpublished."));
+      }
       const existing = pendingPublishes.get(draft.id);
       if (existing) return existing;
 
       const pendingSave = pendingSaves.get(draft.id);
-      const product = toPublishedProductInput(draft);
       const operation = (async () => {
-        if (pendingSave) await pendingSave;
-        await adapter.commitPublish(draft.id, product);
-        knownDraftIds.delete(draft.id);
+        const identity = pendingSave ? await pendingSave : draft;
+        await adapter.runTransaction(async (transaction) => {
+          const draftDocument = await transaction.getDraft(identity.id);
+          const productDocument = await transaction.getProduct(identity.id);
+          const authoritativeDraft = requireIdentity(draftDocument, identity);
+          const validationErrors = validatePublishableDraft(authoritativeDraft);
+          if (validationErrors.length > 0) throw new ProductDraftValidationError(validationErrors);
+
+          const ownerId = requireOwnerId(transaction);
+          const timestamp = transaction.timestamp();
+          const productInput = toPublishedProductInput(authoritativeDraft);
+          let revision: number;
+          let createdAt: unknown;
+          let createdBy: string | null;
+
+          if (authoritativeDraft.mode === "create") {
+            if (productDocument) conflict("This draft was already published.");
+            revision = 1;
+            createdAt = timestamp;
+            createdBy = ownerId;
+          } else if (authoritativeDraft.mode === "edit") {
+            if (!productDocument) conflict("The published product no longer exists.");
+            const product = normalizeProduct(identity.id, productDocument!.data());
+            productRevision(product, authoritativeDraft.sourceProductRevision);
+            const productRecord = asRecord(productDocument!.data());
+            revision = (product.revision ?? 0) + 1;
+            createdAt = productRecord.createdAt ?? null;
+            createdBy = asString(productRecord.createdBy).trim() || null;
+          } else {
+            if (productDocument) conflict("This restore draft was already published.");
+            const draftRecord = asRecord(draftDocument!.data());
+            revision = (authoritativeDraft.sourceProductRevision ?? 0) + 1;
+            createdAt = draftRecord.sourceCreatedAt ?? null;
+            createdBy = authoritativeDraft.sourceCreatedBy;
+          }
+
+          transaction.setProduct(identity.id, {
+            ...productInput,
+            revision,
+            createdAt,
+            updatedAt: timestamp,
+            createdBy,
+            updatedBy: ownerId,
+          });
+          transaction.deleteDraft(identity.id);
+        });
       })();
 
       return track(pendingPublishes, draft.id, operation);
     },
 
-    unpublishProduct(product: Product, explicitOwnerId?: string): Promise<ProductDraft> {
+    unpublishProduct(product: Product): Promise<ProductDraft> {
       const existing = pendingUnpublishes.get(product.id);
       if (existing) return existing;
       if (pendingPublishes.has(product.id)) {
         return Promise.reject(new Error("This product is being published."));
       }
 
-      const ownerId = requireOwnerId(adapter, explicitOwnerId);
-      const draft = toDraftFromProduct(product, {
-        id: product.id,
-        name: product.name,
-        status: "draft",
-        sourceProductId: product.id,
-        stock: product.stock,
-        salesRank: product.salesRank,
-        ratingAverage: product.ratingAverage,
-        reviewCount: product.reviewCount,
-      });
-      const write = toDraftWrite(cloneProductData(draft), ownerId, adapter.timestamp(), true);
-      const operation = adapter.commitUnpublish(product.id, write).then(() => {
-        knownDraftIds.add(product.id);
-        return draft;
+      const sessionId = adapter.createSessionId();
+      const operation = adapter.runTransaction(async (transaction) => {
+        const productDocument = await transaction.getProduct(product.id);
+        const draftDocument = await transaction.getDraft(product.id);
+        if (!productDocument) conflict("The published product no longer exists.");
+        if (draftDocument) conflict("A same-id editing draft already exists.");
+        const authoritativeProduct = normalizeProduct(product.id, productDocument!.data());
+        if ((authoritativeProduct.revision ?? 0) !== (product.revision ?? 0)) {
+          conflict("The published product changed in another session. Refresh before continuing.");
+        }
+
+        const productRecord = asRecord(productDocument!.data());
+        const ownerId = requireOwnerId(transaction);
+        const timestamp = transaction.timestamp();
+        const write: ProductDraftWrite = {
+          ...draftContentFrom(authoritativeProduct),
+          status: "draft",
+          currentStep: 1,
+          mode: "restore",
+          sessionId,
+          revision: 1,
+          sourceProductId: product.id,
+          sourceProductRevision: authoritativeProduct.revision ?? 0,
+          sourceCreatedAt: productRecord.createdAt ?? null,
+          sourceCreatedBy: asString(productRecord.createdBy).trim() || null,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          createdBy: ownerId,
+          updatedBy: ownerId,
+        };
+        transaction.setDraft(product.id, write);
+        transaction.deleteProduct(product.id);
+        return writeToDomain(product.id, write);
       });
       return track(pendingUnpublishes, product.id, operation);
     },
 
-    discardDraft(id: string): Promise<void> {
-      const existing = pendingDiscards.get(id);
+    discardDraft(draft: ProductDraft): Promise<void> {
+      const existing = pendingDiscards.get(draft.id);
       if (existing) return existing;
-      if (pendingPublishes.has(id)) {
+      if (pendingPublishes.has(draft.id)) {
         return Promise.reject(new Error("This product draft is being published."));
       }
 
-      const pendingSave = pendingSaves.get(id);
+      const pendingSave = pendingSaves.get(draft.id);
       const operation = (async () => {
-        if (pendingSave) await pendingSave;
-        await adapter.delete(id);
-        knownDraftIds.delete(id);
+        const identity = pendingSave ? await pendingSave : draft;
+        await adapter.runTransaction(async (transaction) => {
+          const document = await transaction.getDraft(identity.id);
+          requireIdentity(document, identity);
+          transaction.deleteDraft(identity.id);
+        });
       })();
-      return track(pendingDiscards, id, operation);
+      return track(pendingDiscards, draft.id, operation);
     },
 
-    async duplicateProductToDraft(product: Product, explicitOwnerId?: string): Promise<ProductDraft> {
-      const draft = toDraftFromProduct(product, {
+    async duplicateProductToDraft(product: Product): Promise<ProductDraft> {
+      const draft = productDraftFromProduct(product, {
         id: adapter.createId(),
-        name: `${product.name} (복사본)`,
         status: "published-copy",
+        mode: "create",
+        sessionId: null,
+        revision: 0,
         sourceProductId: product.id,
+        sourceProductRevision: product.revision ?? 0,
+        sourceCreatedAt: product.createdAt,
+        sourceCreatedBy: product.createdBy ?? null,
+      });
+      return saveDraft({
+        ...draft,
+        name: `${product.name} (복사본)`,
         stock: 0,
         salesRank: null,
         ratingAverage: 0,
         reviewCount: 0,
       });
-      await saveDraft(draft, explicitOwnerId);
-      return draft;
     },
   };
 
   return repository;
 };
 
-const requireFirebaseOwnerId = (): string => {
-  const uid = auth.currentUser?.uid ?? "";
-  if (!uid) throw new Error("An authenticated admin is required to write product drafts.");
-  return uid;
-};
+const firebaseTransaction = (transaction: Transaction): ProductDraftTransaction => ({
+  async getDraft(id) {
+    const snapshot = await transaction.get(doc(db, "productDrafts", id));
+    return snapshot.exists() ? snapshot : null;
+  },
+  async getProduct(id) {
+    const snapshot = await transaction.get(doc(db, "products", id));
+    return snapshot.exists() ? snapshot : null;
+  },
+  setDraft(id, value) {
+    transaction.set(doc(db, "productDrafts", id), value);
+  },
+  setProduct(id, value) {
+    transaction.set(doc(db, "products", id), value);
+  },
+  deleteDraft(id) {
+    transaction.delete(doc(db, "productDrafts", id));
+  },
+  deleteProduct(id) {
+    transaction.delete(doc(db, "products", id));
+  },
+  timestamp: serverTimestamp,
+  ownerId: () => auth.currentUser?.uid ?? null,
+});
 
 const firebaseProductDraftAdapter: ProductDraftRepositoryAdapter = {
-  createId() {
-    return doc(collection(db, "productDrafts")).id;
-  },
-  async save(id, value) {
-    const isCreation = Object.prototype.hasOwnProperty.call(value, "createdAt");
-    await runTransaction(db, async (transaction) => {
-      const productReference = doc(db, "products", id);
-      const draftReference = doc(db, "productDrafts", id);
-      const productSnapshot = await transaction.get(productReference);
-      const draftSnapshot = await transaction.get(draftReference);
-
-      if (productSnapshot.exists()) {
-        throw new ProductDraftConflictError("This product was already published. Refresh the draft list.");
-      }
-      if (!isCreation && !draftSnapshot.exists()) {
-        throw new ProductDraftConflictError("This product draft no longer exists. Refresh the draft list.");
-      }
-
-      transaction.set(draftReference, value, { merge: true });
-    });
-  },
+  createId: () => doc(collection(db, "productDrafts")).id,
+  createSessionId: () => crypto.randomUUID(),
   async get(id) {
     const snapshot = await getDoc(doc(db, "productDrafts", id));
     return snapshot.exists() ? snapshot : null;
@@ -392,36 +646,13 @@ const firebaseProductDraftAdapter: ProductDraftRepositoryAdapter = {
       onError,
     );
   },
-  async commitPublish(id, product) {
-    const ownerId = requireFirebaseOwnerId();
-    const timestamp = serverTimestamp();
-    const batch = writeBatch(db);
-    batch.set(doc(db, "products", id), {
-      ...product,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      createdBy: ownerId,
-      updatedBy: ownerId,
-    });
-    batch.delete(doc(db, "productDrafts", id));
-    await batch.commit();
-  },
-  async commitUnpublish(id, draft) {
-    const batch = writeBatch(db);
-    batch.set(doc(db, "productDrafts", id), draft);
-    batch.delete(doc(db, "products", id));
-    await batch.commit();
-  },
-  async delete(id) {
-    await deleteDoc(doc(db, "productDrafts", id));
-  },
-  timestamp: serverTimestamp,
-  ownerId: () => auth.currentUser?.uid ?? null,
+  runTransaction: (operation) => runTransaction(db, (transaction) => operation(firebaseTransaction(transaction))),
 };
 
 const productDraftRepository = createProductDraftRepository(firebaseProductDraftAdapter);
 
 export const createDraftId = productDraftRepository.createDraftId;
+export const createProductEditDraft = productDraftRepository.createProductEditDraft;
 export const saveDraft = productDraftRepository.saveDraft;
 export const getDraft = productDraftRepository.getDraft;
 export const subscribeDrafts = productDraftRepository.subscribeDrafts;

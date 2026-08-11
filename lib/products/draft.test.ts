@@ -28,10 +28,18 @@ const makeDraft = (overrides: Partial<ProductDraft> = {}): ProductDraft => ({
   ratingAverage: 0,
   reviewCount: 0,
   status: "draft",
+  mode: "create",
+  sessionId: null,
+  revision: 0,
   sourceProductId: null,
+  sourceProductRevision: null,
+  sourceCreatedAt: null,
+  sourceCreatedBy: null,
   currentStep: 1,
   createdAt: null,
   updatedAt: null,
+  createdBy: null,
+  updatedBy: null,
   ...overrides,
 });
 
@@ -68,6 +76,12 @@ describe("product drafts", () => {
       { step: 4, field: "origin" },
       { step: 4, field: "cautions" },
     ]);
+  });
+
+  it("rejects ingredient rows whose names are only whitespace", () => {
+    expect(validatePublishableDraft(makeDraft({
+      ingredients: [{ name: "   ", amount: "600mg", dailyValue: "" }],
+    }))).toContainEqual(expect.objectContaining({ step: 3, field: "ingredients" }));
   });
 
   it("publishes standard media while deriving legacy image fields", () => {

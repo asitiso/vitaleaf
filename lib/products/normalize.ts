@@ -16,9 +16,11 @@ const asStringArray = (value: unknown): string[] =>
 const asIngredients = (value: unknown): Ingredient[] =>
   Array.isArray(value)
     ? value.flatMap((item) => {
+        if (typeof item !== "object" || item === null || Array.isArray(item)) return [];
         const ingredient = asRecord(item);
-        return typeof ingredient.name === "string"
-          ? [{ name: ingredient.name, amount: asString(ingredient.amount), dailyValue: asString(ingredient.dailyValue) }]
+        const name = asString(ingredient.name).trim();
+        return name
+          ? [{ name, amount: asString(ingredient.amount), dailyValue: asString(ingredient.dailyValue) }]
           : [];
       })
     : [];
@@ -137,7 +139,10 @@ export const normalizeProduct = (id: string, raw: unknown): Product => {
     salesRank: asNullableNonNegativeNumber(product.salesRank),
     ratingAverage: Math.min(5, Math.max(0, asNonNegativeNumber(product.ratingAverage))),
     reviewCount: asNonNegativeNumber(product.reviewCount),
+    revision: Math.max(0, Math.floor(asNonNegativeNumber(product.revision))),
     createdAt: asDate(product.createdAt),
     updatedAt: asDate(product.updatedAt),
+    createdBy: asString(product.createdBy).trim() || null,
+    updatedBy: asString(product.updatedBy).trim() || null,
   };
 };

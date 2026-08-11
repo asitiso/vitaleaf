@@ -12,6 +12,7 @@ export type ProductMedia = {
 };
 
 export type DraftStatus = "draft" | "publishing" | "published-copy";
+export type DraftMode = "create" | "edit" | "restore";
 
 export type Product = {
   id: string;
@@ -37,8 +38,13 @@ export type Product = {
   salesRank: number | null;
   ratingAverage: number;
   reviewCount: number;
+  // Optional on callers so legacy product fixtures/documents remain source-compatible;
+  // every normalized Firestore product receives concrete lifecycle metadata.
+  revision?: number;
   createdAt: Date | null;
   updatedAt: Date | null;
+  createdBy?: string | null;
+  updatedBy?: string | null;
 };
 
 export type ProductFilters = {
@@ -62,14 +68,25 @@ export type Review = {
 };
 
 // Legacy ProductInput remains image-field compatible for current CSV and admin writes.
-export type ProductInput = Omit<Product, "id" | "createdAt" | "updatedAt" | "media">;
+export type ProductInput = Omit<
+  Product,
+  "id" | "media" | "revision" | "createdAt" | "updatedAt" | "createdBy" | "updatedBy"
+>;
 
 export type ProductDraft = ProductInput & {
   id: string;
   media: ProductMedia[];
   status: DraftStatus;
+  mode: DraftMode;
+  sessionId: string | null;
+  revision: number;
   sourceProductId: string | null;
+  sourceProductRevision: number | null;
+  sourceCreatedAt: Date | null;
+  sourceCreatedBy: string | null;
   currentStep: 1 | 2 | 3 | 4;
   createdAt: Date | null;
   updatedAt: Date | null;
+  createdBy: string | null;
+  updatedBy: string | null;
 };

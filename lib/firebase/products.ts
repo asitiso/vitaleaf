@@ -6,13 +6,13 @@ import {
   getDoc,
   getDocs,
   onSnapshot,
+  runTransaction,
   serverTimestamp,
-  setDoc,
 } from "firebase/firestore";
 
 import { normalizeProduct } from "../products/normalize";
 import type { Product, ProductInput } from "../products/types";
-import { db } from "./client";
+import { auth, db } from "./client";
 
 export type Unsubscribe = () => void;
 
@@ -100,11 +100,35 @@ const firebaseProductAdapter: Required<ProductRepositoryAdapter> = {
   },
   async save(id, product) {
     if (id) {
-      await setDoc(doc(db, "products", id), product, { merge: true });
+      await runTransaction(db, async (transaction) => {
+        const ownerId = auth.currentUser?.uid;
+        if (!ownerId) throw new Error("An authenticated administrator is required.");
+
+        const reference = doc(db, "products", id);
+        const snapshot = await transaction.get(reference);
+        if (!snapshot.exists()) throw new Error("The product no longer exists.");
+
+        const stored = snapshot.data();
+        const storedRevision = typeof stored.revision === "number" && Number.isInteger(stored.revision)
+          ? stored.revision
+          : 0;
+        transaction.set(reference, {
+          ...product,
+          revision: storedRevision + 1,
+          updatedBy: ownerId,
+        }, { merge: true });
+      });
       return id;
     }
 
-    const reference = await addDoc(collection(db, "products"), product);
+    const ownerId = auth.currentUser?.uid;
+    if (!ownerId) throw new Error("An authenticated administrator is required.");
+    const reference = await addDoc(collection(db, "products"), {
+      ...product,
+      revision: 1,
+      createdBy: ownerId,
+      updatedBy: ownerId,
+    });
     return reference.id;
   },
   async delete(id) {

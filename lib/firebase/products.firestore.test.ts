@@ -2,32 +2,45 @@ import { beforeEach, expect, it, vi } from "vitest";
 
 const {
   collectionMock,
+  addDocMock,
+  docMock,
   getDocsMock,
   onSnapshotMock,
   productCollection,
+  runTransactionMock,
+  serverTimestampMock,
+  transactionGetMock,
+  transactionSetMock,
   unsubscribeMock,
 } = vi.hoisted(() => ({
   collectionMock: vi.fn(),
+  addDocMock: vi.fn(),
+  docMock: vi.fn(),
   getDocsMock: vi.fn(),
   onSnapshotMock: vi.fn(),
   productCollection: { kind: "products-collection" },
+  runTransactionMock: vi.fn(),
+  serverTimestampMock: vi.fn(),
+  transactionGetMock: vi.fn(),
+  transactionSetMock: vi.fn(),
   unsubscribeMock: vi.fn(),
 }));
 
-vi.mock("./client", () => ({ db: {}, auth: {} }));
+vi.mock("./client", () => ({ db: {}, auth: { currentUser: { uid: "admin-1" } } }));
 vi.mock("firebase/firestore", () => ({
-  addDoc: vi.fn(),
+  addDoc: addDocMock,
   collection: collectionMock,
   deleteDoc: vi.fn(),
-  doc: vi.fn(),
+  doc: docMock,
   getDoc: vi.fn(),
   getDocs: getDocsMock,
   onSnapshot: onSnapshotMock,
-  serverTimestamp: vi.fn(),
+  runTransaction: runTransactionMock,
+  serverTimestamp: serverTimestampMock,
   setDoc: vi.fn(),
 }));
 
-import { getProducts, subscribeProducts } from "./products";
+import { getProducts, saveProduct, subscribeProducts } from "./products";
 
 const baseProduct = {
   name: "Daily Omega",
@@ -48,6 +61,7 @@ const baseProduct = {
   stock: 12,
   isBest: false,
   isNew: false,
+  salesRank: null,
   ratingAverage: 0,
   reviewCount: 0,
 };
@@ -59,9 +73,17 @@ const documents = [
 
 beforeEach(() => {
   collectionMock.mockReset();
+  docMock.mockReset().mockReturnValue({ kind: "existing-product" });
   getDocsMock.mockReset();
   onSnapshotMock.mockReset();
   unsubscribeMock.mockReset();
+  addDocMock.mockReset().mockResolvedValue({ id: "created-product" });
+  serverTimestampMock.mockReset().mockReturnValue({ marker: "server-time" });
+  transactionGetMock.mockReset().mockResolvedValue({ exists: () => true, data: () => ({ revision: 4 }) });
+  transactionSetMock.mockReset();
+  runTransactionMock.mockReset().mockImplementation(async (_database, operation) => (
+    operation({ get: transactionGetMock, set: transactionSetMock })
+  ));
   collectionMock.mockReturnValue(productCollection);
 });
 
@@ -88,4 +110,20 @@ it("subscribes to the whole products collection and sorts locally", () => {
     expect.objectContaining({ id: "ranked", salesRank: 1 }),
     expect.objectContaining({ id: "unranked", salesRank: null }),
   ]);
+});
+
+it("adds owner metadata and revision checks to direct admin product writes", async () => {
+  await expect(saveProduct(baseProduct)).resolves.toBe("created-product");
+  expect(addDocMock).toHaveBeenCalledWith(productCollection, expect.objectContaining({
+    revision: 1,
+    createdBy: "admin-1",
+    updatedBy: "admin-1",
+  }));
+
+  await expect(saveProduct(baseProduct, "existing")).resolves.toBe("existing");
+  expect(transactionSetMock).toHaveBeenCalledWith(
+    expect.anything(),
+    expect.objectContaining({ revision: 5, updatedBy: "admin-1" }),
+    { merge: true },
+  );
 });

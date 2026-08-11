@@ -1,64 +1,60 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+type Reference = { collection: string; id?: string };
+type StoredRecord = Record<string, unknown>;
+
 const {
   authMock,
-  batchCommitMock,
-  batchDeleteMock,
-  batchSetMock,
   collectionMock,
-  deleteDocMock,
   docMock,
+  firebaseState,
   getDocMock,
   onSnapshotMock,
   runTransactionMock,
   serverTimestampMock,
-  setDocMock,
-  transactionGetMock,
+  transactionDeleteMock,
   transactionSetMock,
-  writeBatchMock,
 } = vi.hoisted(() => ({
-  authMock: { currentUser: { uid: "admin-boundary" } as { uid: string } | null },
-  batchCommitMock: vi.fn(),
-  batchDeleteMock: vi.fn(),
-  batchSetMock: vi.fn(),
+  authMock: { currentUser: { uid: "admin-a" } as { uid: string } | null },
   collectionMock: vi.fn(),
-  deleteDocMock: vi.fn(),
   docMock: vi.fn(),
+  firebaseState: {
+    productDrafts: new Map<string, Record<string, unknown>>(),
+    products: new Map<string, Record<string, unknown>>(),
+    nextId: 1,
+  },
   getDocMock: vi.fn(),
   onSnapshotMock: vi.fn(),
   runTransactionMock: vi.fn(),
   serverTimestampMock: vi.fn(),
-  setDocMock: vi.fn(),
-  transactionGetMock: vi.fn(),
+  transactionDeleteMock: vi.fn(),
   transactionSetMock: vi.fn(),
-  writeBatchMock: vi.fn(),
 }));
 
 vi.mock("./client", () => ({ auth: authMock, db: { kind: "database" } }));
 vi.mock("firebase/firestore", () => ({
   collection: collectionMock,
-  deleteDoc: deleteDocMock,
   doc: docMock,
   getDoc: getDocMock,
   onSnapshot: onSnapshotMock,
   runTransaction: runTransactionMock,
   serverTimestamp: serverTimestampMock,
-  setDoc: setDocMock,
-  writeBatch: writeBatchMock,
 }));
 
 import {
-  ProductDraftValidationError,
+  createDraftId,
   createProductDraftRepository,
+  duplicateProductToDraft,
+  getDraft,
   publishDraft,
   saveDraft,
+  subscribeDrafts,
   unpublishProduct,
   type ProductDraftRepositoryAdapter,
 } from "./product-drafts";
 import type { Product, ProductDraft } from "../products/types";
 
-const completeDraft = (overrides: Partial<ProductDraft> = {}): ProductDraft => ({
-  id: "draft-1",
+const productFields = {
   name: "Daily Omega",
   slug: "daily-omega",
   category: "heart",
@@ -69,7 +65,7 @@ const completeDraft = (overrides: Partial<ProductDraft> = {}): ProductDraft => (
   images: ["https://example.com/omega.jpg"],
   media: [{
     url: "https://example.com/omega.jpg",
-    storagePath: "products/draft-1/image.jpg",
+    storagePath: "products/product-1/image.jpg",
     alt: "Daily Omega",
     order: 0,
   }],
@@ -86,392 +82,226 @@ const completeDraft = (overrides: Partial<ProductDraft> = {}): ProductDraft => (
   salesRank: 2,
   ratingAverage: 4.8,
   reviewCount: 31,
+};
+
+const makeDraft = (overrides: Partial<ProductDraft> = {}): ProductDraft => ({
+  id: "draft-1",
+  ...productFields,
   status: "draft",
+  mode: "create",
+  sessionId: null,
+  revision: 0,
   sourceProductId: null,
+  sourceProductRevision: null,
+  sourceCreatedAt: null,
+  sourceCreatedBy: null,
   currentStep: 1,
   createdAt: null,
   updatedAt: null,
+  createdBy: null,
+  updatedBy: null,
   ...overrides,
 });
 
-const publishedProduct = (overrides: Partial<Product> = {}): Product => {
-  const draft = completeDraft();
-  return {
-    id: "product-1",
-    name: draft.name,
-    slug: draft.slug,
-    category: draft.category,
-    concerns: draft.concerns,
-    price: draft.price,
-    originalPrice: draft.originalPrice,
-    thumbnailUrl: draft.thumbnailUrl,
-    images: draft.images,
-    media: draft.media,
-    description: draft.description,
-    benefits: draft.benefits,
-    ingredients: draft.ingredients,
-    dosage: draft.dosage,
-    origin: draft.origin,
-    certifications: draft.certifications,
-    cautions: draft.cautions,
-    stock: draft.stock,
-    isBest: draft.isBest,
-    isNew: draft.isNew,
-    salesRank: draft.salesRank,
-    ratingAverage: draft.ratingAverage,
-    reviewCount: draft.reviewCount,
-    createdAt: new Date("2026-01-01T00:00:00.000Z"),
-    updatedAt: new Date("2026-01-02T00:00:00.000Z"),
-    ...overrides,
-  };
-};
-
-const deferred = <T>() => {
-  let resolve!: (value: T | PromiseLike<T>) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((nextResolve, nextReject) => {
-    resolve = nextResolve;
-    reject = nextReject;
-  });
-  return { promise, resolve, reject };
-};
-
-const createAdapter = (overrides: Partial<ProductDraftRepositoryAdapter> = {}): ProductDraftRepositoryAdapter => ({
-  createId: () => "generated-draft",
-  save: vi.fn().mockResolvedValue(undefined),
-  get: vi.fn().mockResolvedValue(null),
-  subscribe: vi.fn(() => vi.fn()),
-  commitPublish: vi.fn().mockResolvedValue(undefined),
-  commitUnpublish: vi.fn().mockResolvedValue(undefined),
-  delete: vi.fn().mockResolvedValue(undefined),
-  timestamp: () => ({ marker: "server-time" }),
+const makeProduct = (overrides: Partial<Product> = {}): Product => ({
+  id: "product-1",
+  ...productFields,
+  revision: 4,
+  createdAt: new Date("2026-01-01T00:00:00.000Z"),
+  updatedAt: new Date("2026-02-01T00:00:00.000Z"),
+  createdBy: "admin-original",
+  updatedBy: "admin-editor",
   ...overrides,
 });
 
-describe("createProductDraftRepository", () => {
-  it("creates a stable id before media upload or draft saving begins", () => {
-    const createId = vi.fn(() => "generated-draft");
-    const repository = createProductDraftRepository(createAdapter({ createId }));
+const referenceKey = (reference: Reference): keyof Pick<typeof firebaseState, "productDrafts" | "products"> => (
+  reference.collection as "productDrafts" | "products"
+);
 
-    expect(repository.createDraftId()).toBe("generated-draft");
-    expect(createId).toHaveBeenCalledOnce();
+beforeEach(() => {
+  authMock.currentUser = { uid: "admin-a" };
+  firebaseState.productDrafts.clear();
+  firebaseState.products.clear();
+  firebaseState.nextId = 1;
+  collectionMock.mockReset().mockImplementation((_database, name: string) => ({ collection: name }));
+  docMock.mockReset().mockImplementation((first: Reference, second?: string, third?: string) => {
+    if (first.collection && second === undefined) return { collection: first.collection, id: `generated-${firebaseState.nextId++}` };
+    return { collection: second!, id: third! };
   });
-
-  it("saves an incomplete new draft with one server timestamp and owner metadata", async () => {
-    const save = vi.fn().mockResolvedValue(undefined);
-    const timestamp = { marker: "server-time" };
-    const timestampFactory = vi.fn(() => timestamp);
-    const repository = createProductDraftRepository(createAdapter({ save, timestamp: timestampFactory }));
-    const draft = completeDraft({ name: "", media: [], images: [], thumbnailUrl: "" });
-
-    await repository.saveDraft(draft, "admin-1");
-
-    expect(timestampFactory).toHaveBeenCalledOnce();
-    expect(save).toHaveBeenCalledWith("draft-1", expect.objectContaining({
-      name: "",
-      media: [],
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      createdBy: "admin-1",
-      updatedBy: "admin-1",
+  getDocMock.mockReset().mockImplementation(async (reference: Reference) => {
+    const value = firebaseState[referenceKey(reference)].get(reference.id!);
+    return { id: reference.id, exists: () => value !== undefined, data: () => structuredClone(value) };
+  });
+  onSnapshotMock.mockReset().mockImplementation((reference: Reference, next) => {
+    const documents = [...firebaseState[referenceKey(reference)]].map(([id, value]) => ({
+      id,
+      data: () => structuredClone(value),
     }));
-    expect(save.mock.calls[0]?.[1]).not.toHaveProperty("id");
+    next({ docs: documents });
+    return () => undefined;
   });
-
-  it("preserves original creation metadata when saving a loaded draft", async () => {
-    const save = vi.fn().mockResolvedValue(undefined);
-    const repository = createProductDraftRepository(createAdapter({ save }));
-
-    await repository.saveDraft(completeDraft({
-      createdAt: new Date("2026-01-01T00:00:00.000Z"),
-      updatedAt: new Date("2026-01-02T00:00:00.000Z"),
-    }), "admin-2");
-
-    const write = save.mock.calls[0]?.[1];
-    expect(write).not.toHaveProperty("createdAt");
-    expect(write).not.toHaveProperty("createdBy");
-    expect(write).toMatchObject({ updatedBy: "admin-2" });
-  });
-
-  it("does not reset creation metadata on repeated autosaves of a locally new draft", async () => {
-    const save = vi.fn().mockResolvedValue(undefined);
-    const repository = createProductDraftRepository(createAdapter({ save }));
-    const draft = completeDraft({ createdAt: null, updatedAt: null });
-
-    await repository.saveDraft(draft, "admin-1");
-    await repository.saveDraft({ ...draft, name: "Updated locally" }, "admin-1");
-
-    expect(save.mock.calls[0]?.[1]).toMatchObject({ createdBy: "admin-1" });
-    expect(save.mock.calls[1]?.[1]).not.toHaveProperty("createdAt");
-    expect(save.mock.calls[1]?.[1]).not.toHaveProperty("createdBy");
-  });
-
-  it("loads and subscribes to incomplete drafts while normalizing timestamps and media", async () => {
-    const timestamp = new Date("2026-02-03T04:05:06.000Z");
-    const rawDraft: Record<string, unknown> = {
-      ...completeDraft({ name: "", media: [] }),
-      createdAt: { toDate: () => timestamp },
-      updatedAt: { toDate: () => timestamp },
-      thumbnailUrl: "legacy.jpg",
-      images: ["legacy.jpg"],
+  serverTimestampMock.mockReset().mockImplementation(() => new Date("2026-08-11T12:00:00.000Z"));
+  transactionDeleteMock.mockReset();
+  transactionSetMock.mockReset();
+  runTransactionMock.mockReset().mockImplementation(async (_database, operation) => {
+    const writes: Array<{ reference: Reference; value: StoredRecord | null }> = [];
+    const transaction = {
+      get: async (reference: Reference) => {
+        const value = firebaseState[referenceKey(reference)].get(reference.id!);
+        return { id: reference.id, exists: () => value !== undefined, data: () => structuredClone(value) };
+      },
+      set: (reference: Reference, value: StoredRecord) => {
+        transactionSetMock(reference, value);
+        writes.push({ reference, value: structuredClone(value) });
+      },
+      delete: (reference: Reference) => {
+        transactionDeleteMock(reference);
+        writes.push({ reference, value: null });
+      },
     };
-    delete rawDraft.id;
-    const unsubscribe = vi.fn();
-    const subscribe = vi.fn((onData: (documents: Array<{ id: string; data(): unknown }>) => void) => {
-      onData([{ id: "draft-1", data: () => rawDraft }]);
-      return unsubscribe;
+    const result = await operation(transaction);
+    for (const { reference, value } of writes) {
+      const target = firebaseState[referenceKey(reference)];
+      if (value) target.set(reference.id!, value);
+      else target.delete(reference.id!);
+    }
+    return result;
+  });
+});
+
+describe("repository boundaries", () => {
+  it("creates draft ids without a write", () => {
+    expect(createDraftId()).toBe("generated-1");
+    expect(firebaseState.productDrafts.size).toBe(0);
+  });
+
+  it("loads and subscribes to incomplete drafts while dropping malformed ingredients", async () => {
+    firebaseState.productDrafts.set("incomplete", {
+      ...makeDraft(),
+      id: undefined,
+      name: "",
+      sessionId: "session-existing",
+      revision: 3,
+      ingredients: [null, {}, { name: "   " }, { name: " EPA ", amount: "600mg" }],
     });
-    const repository = createProductDraftRepository(createAdapter({
-      get: vi.fn().mockResolvedValue({ id: "draft-1", data: () => rawDraft }),
-      subscribe,
-    }));
     const onData = vi.fn();
 
-    await expect(repository.getDraft("draft-1")).resolves.toMatchObject({
-      id: "draft-1",
+    await expect(getDraft("incomplete")).resolves.toMatchObject({
+      id: "incomplete",
       name: "",
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      media: [expect.objectContaining({ url: "legacy.jpg" })],
+      revision: 3,
+      ingredients: [{ name: "EPA", amount: "600mg", dailyValue: "" }],
     });
-    expect(repository.subscribeDrafts(onData, vi.fn())).toBe(unsubscribe);
+    subscribeDrafts(onData, vi.fn());
     expect(onData).toHaveBeenCalledWith([
-      expect.objectContaining({ id: "draft-1", name: "", createdAt: timestamp }),
+      expect.objectContaining({ id: "incomplete", sessionId: "session-existing", revision: 3 }),
     ]);
   });
 
-  it("rejects publish validation before any adapter write", async () => {
-    const commitPublish = vi.fn();
-    const repository = createProductDraftRepository(createAdapter({ commitPublish }));
+  it("duplicates as a separately versioned zero-stock draft without social proof", async () => {
+    const product = makeProduct();
+    const { id, ...record } = product;
+    firebaseState.products.set(id, record as StoredRecord);
 
-    await expect(repository.publishDraft(completeDraft({ name: "" }))).rejects.toBeInstanceOf(ProductDraftValidationError);
-    expect(commitPublish).not.toHaveBeenCalled();
-  });
-
-  it("waits for the latest save, publishes once on double-submit, and blocks a late save", async () => {
-    const saveGate = deferred<void>();
-    const publishGate = deferred<void>();
-    const save = vi.fn(() => saveGate.promise);
-    const commitPublish = vi.fn(() => publishGate.promise);
-    const repository = createProductDraftRepository(createAdapter({ save, commitPublish }));
-    const draft = completeDraft();
-
-    const pendingSave = repository.saveDraft(draft, "admin-1");
-    const firstPublish = repository.publishDraft(draft);
-    const secondPublish = repository.publishDraft(draft);
-
-    expect(commitPublish).not.toHaveBeenCalled();
-    await expect(repository.saveDraft(draft, "admin-1")).rejects.toThrow("being published");
-
-    saveGate.resolve();
-    await pendingSave;
-    await vi.waitFor(() => expect(commitPublish).toHaveBeenCalledOnce());
-    expect(commitPublish).toHaveBeenCalledWith("draft-1", expect.objectContaining({ name: "Daily Omega" }));
-
-    publishGate.resolve();
-    await expect(Promise.all([firstPublish, secondPublish])).resolves.toEqual([undefined, undefined]);
-  });
-
-  it("keeps a failed atomic publish retryable", async () => {
-    const commitPublish = vi.fn()
-      .mockRejectedValueOnce(new Error("batch rejected"))
-      .mockResolvedValueOnce(undefined);
-    const repository = createProductDraftRepository(createAdapter({ commitPublish }));
-    const draft = completeDraft();
-
-    await expect(repository.publishDraft(draft)).rejects.toThrow("batch rejected");
-    await expect(repository.publishDraft(draft)).resolves.toBeUndefined();
-    expect(commitPublish).toHaveBeenCalledTimes(2);
-  });
-
-  it("duplicates as a zero-stock draft without social proof", async () => {
-    const save = vi.fn().mockResolvedValue(undefined);
-    const repository = createProductDraftRepository(createAdapter({ save }));
-    const source = publishedProduct();
-
-    const copy = await repository.duplicateProductToDraft(source, "admin-1");
+    const copy = await duplicateProductToDraft(product);
 
     expect(copy).toMatchObject({
-      id: "generated-draft",
+      id: "generated-1",
       name: "Daily Omega (복사본)",
-      stock: 0,
-      ratingAverage: 0,
-      reviewCount: 0,
-      salesRank: null,
-      status: "published-copy",
+      mode: "create",
+      revision: 1,
       sourceProductId: "product-1",
-    });
-    expect(copy.media).not.toBe(source.media);
-    expect(save).toHaveBeenCalledWith("generated-draft", expect.objectContaining({
+      sourceProductRevision: 4,
       stock: 0,
       ratingAverage: 0,
       reviewCount: 0,
       salesRank: null,
-      createdBy: "admin-1",
-    }));
-  });
-
-  it("unpublishes by atomically writing its same-id draft and removing the product", async () => {
-    const commitUnpublish = vi.fn().mockResolvedValue(undefined);
-    const repository = createProductDraftRepository(createAdapter({ commitUnpublish }));
-
-    const draft = await repository.unpublishProduct(publishedProduct(), "admin-1");
-
-    expect(draft).toMatchObject({ id: "product-1", status: "draft", sourceProductId: "product-1" });
-    expect(commitUnpublish).toHaveBeenCalledWith("product-1", expect.objectContaining({
-      name: "Daily Omega",
-      createdBy: "admin-1",
-      updatedBy: "admin-1",
-    }));
-  });
-
-  it("discards a draft only after its pending save settles", async () => {
-    const saveGate = deferred<void>();
-    const remove = vi.fn().mockResolvedValue(undefined);
-    const repository = createProductDraftRepository(createAdapter({
-      save: vi.fn(() => saveGate.promise),
-      delete: remove,
-    }));
-    const draft = completeDraft();
-
-    const saving = repository.saveDraft(draft, "admin-1");
-    const discarding = repository.discardDraft(draft.id);
-    expect(remove).not.toHaveBeenCalled();
-
-    saveGate.resolve();
-    await saving;
-    await discarding;
-    expect(remove).toHaveBeenCalledWith("draft-1");
-  });
-
-  it("does not publish while the same draft is being discarded", async () => {
-    const deleteGate = deferred<void>();
-    const commitPublish = vi.fn().mockResolvedValue(undefined);
-    const repository = createProductDraftRepository(createAdapter({
-      delete: vi.fn(() => deleteGate.promise),
-      commitPublish,
-    }));
-    const draft = completeDraft();
-
-    const discarding = repository.discardDraft(draft.id);
-    await expect(repository.publishDraft(draft)).rejects.toThrow("being discarded");
-    expect(commitPublish).not.toHaveBeenCalled();
-
-    deleteGate.resolve();
-    await discarding;
+    });
   });
 });
 
-describe("Firebase product draft boundary", () => {
-  beforeEach(() => {
-    authMock.currentUser = { uid: "admin-boundary" };
-    batchCommitMock.mockReset().mockResolvedValue(undefined);
-    batchDeleteMock.mockReset();
-    batchSetMock.mockReset();
-    collectionMock.mockReset().mockImplementation((_database, name: string) => ({ kind: "collection", name }));
-    deleteDocMock.mockReset();
-    docMock.mockReset().mockImplementation((first: { kind?: string; name?: string }, second?: string, third?: string) => {
-      if (first.kind === "collection" && second === undefined) return { kind: "document", collection: first.name, id: "generated" };
-      return { kind: "document", collection: second, id: third };
-    });
-    getDocMock.mockReset();
-    onSnapshotMock.mockReset();
-    transactionGetMock.mockReset().mockResolvedValue({ exists: () => false });
-    transactionSetMock.mockReset();
-    runTransactionMock.mockReset().mockImplementation(async (_database, update) => (
-      update({ get: transactionGetMock, set: transactionSetMock })
-    ));
-    serverTimestampMock.mockReset().mockReturnValue({ marker: "firebase-server-time" });
-    setDocMock.mockReset();
-    writeBatchMock.mockReset().mockReturnValue({
-      set: batchSetMock,
-      delete: batchDeleteMock,
-      commit: batchCommitMock,
-    });
-  });
+describe("Firebase transaction boundary", () => {
+  it("resolves owner metadata inside the save transaction", async () => {
+    const pendingOwner = { current: "admin-a" };
+    authMock.currentUser = { get uid() { return pendingOwner.current; } };
+    pendingOwner.current = "admin-b";
 
-  it("publishes with one batch, server metadata, and removal of the completed draft", async () => {
-    await publishDraft(completeDraft({ id: "boundary-draft" }));
-
-    expect(batchSetMock).toHaveBeenCalledWith(
-      { kind: "document", collection: "products", id: "boundary-draft" },
-      expect.objectContaining({
-        name: "Daily Omega",
-        createdAt: { marker: "firebase-server-time" },
-        updatedAt: { marker: "firebase-server-time" },
-        createdBy: "admin-boundary",
-        updatedBy: "admin-boundary",
-      }),
-    );
-    expect(batchDeleteMock).toHaveBeenCalledWith({
-      kind: "document",
-      collection: "productDrafts",
-      id: "boundary-draft",
-    });
-    expect(batchCommitMock).toHaveBeenCalledOnce();
-  });
-
-  it("guards a late autosave transaction against an already-published same-id product", async () => {
-    await saveDraft(completeDraft({ id: "guarded-draft" }));
+    const saved = await saveDraft(makeDraft());
 
     expect(runTransactionMock).toHaveBeenCalledOnce();
-    expect(transactionGetMock).toHaveBeenCalledWith({
-      kind: "document",
-      collection: "products",
-      id: "guarded-draft",
+    expect(firebaseState.productDrafts.get(saved.id)).toMatchObject({
+      sessionId: expect.any(String),
+      revision: 1,
+      createdBy: "admin-b",
+      updatedBy: "admin-b",
     });
-    expect(transactionGetMock).toHaveBeenCalledWith({
-      kind: "document",
-      collection: "productDrafts",
-      id: "guarded-draft",
-    });
-    expect(transactionSetMock).toHaveBeenCalledWith(
-      { kind: "document", collection: "productDrafts", id: "guarded-draft" },
-      expect.objectContaining({ name: "Daily Omega", updatedBy: "admin-boundary" }),
-      { merge: true },
-    );
-    expect(setDocMock).not.toHaveBeenCalled();
   });
 
-  it("rejects autosave when another client has already published the product", async () => {
-    transactionGetMock.mockImplementation(async (reference: { collection: string }) => ({
-      exists: () => reference.collection === "products",
-    }));
-
-    await expect(saveDraft(completeDraft({ id: "published-elsewhere" }))).rejects.toThrow("already published");
-    expect(transactionSetMock).not.toHaveBeenCalled();
-  });
-
-  it("rejects an update when another client has discarded its existing draft", async () => {
-    const draft = completeDraft({ id: "discarded-elsewhere" });
-    await saveDraft(draft);
-    transactionGetMock.mockClear();
+  it("publishes authoritative draft data with one atomic transaction", async () => {
+    const saved = await saveDraft(makeDraft());
+    firebaseState.productDrafts.set(saved.id, {
+      ...firebaseState.productDrafts.get(saved.id),
+      name: "Authoritative Firestore Name",
+    });
     transactionSetMock.mockClear();
+    transactionDeleteMock.mockClear();
 
-    await expect(saveDraft({ ...draft, name: "Late autosave" })).rejects.toThrow("no longer exists");
-    expect(transactionSetMock).not.toHaveBeenCalled();
-  });
+    await publishDraft(saved);
 
-  it("unpublishes with one batch that creates the draft before removing the public product", async () => {
-    await unpublishProduct(publishedProduct({ id: "boundary-product" }));
-
-    expect(batchSetMock).toHaveBeenCalledWith(
-      { kind: "document", collection: "productDrafts", id: "boundary-product" },
+    expect(transactionSetMock).toHaveBeenCalledWith(
+      { collection: "products", id: saved.id },
       expect.objectContaining({
-        name: "Daily Omega",
-        status: "draft",
-        sourceProductId: "boundary-product",
-        createdAt: { marker: "firebase-server-time" },
-        updatedAt: { marker: "firebase-server-time" },
-        createdBy: "admin-boundary",
-        updatedBy: "admin-boundary",
+        name: "Authoritative Firestore Name",
+        revision: 1,
+        createdBy: "admin-a",
+        updatedBy: "admin-a",
       }),
     );
-    expect(batchDeleteMock).toHaveBeenCalledWith({
-      kind: "document",
-      collection: "products",
-      id: "boundary-product",
+    expect(transactionDeleteMock).toHaveBeenCalledWith({ collection: "productDrafts", id: saved.id });
+    expect(firebaseState.products.has(saved.id)).toBe(true);
+    expect(firebaseState.productDrafts.has(saved.id)).toBe(false);
+  });
+
+  it("unpublishes by atomically creating a restore session and deleting the product", async () => {
+    const product = makeProduct();
+    const { id, ...record } = product;
+    firebaseState.products.set(id, record as StoredRecord);
+
+    const draft = await unpublishProduct(product);
+
+    expect(draft).toMatchObject({
+      id: "product-1",
+      mode: "restore",
+      revision: 1,
+      sourceProductRevision: 4,
+      sourceCreatedAt: product.createdAt,
+      sourceCreatedBy: "admin-original",
     });
-    expect(batchCommitMock).toHaveBeenCalledOnce();
+    expect(firebaseState.productDrafts.has(id)).toBe(true);
+    expect(firebaseState.products.has(id)).toBe(false);
+  });
+});
+
+describe("adapter contract", () => {
+  it("returns null and preserves unsubscribe for an empty adapter", async () => {
+    const unsubscribe = vi.fn();
+    const adapter: ProductDraftRepositoryAdapter = {
+      createId: () => "draft",
+      createSessionId: () => "session",
+      get: async () => null,
+      subscribe: (onData) => {
+        onData([]);
+        return unsubscribe;
+      },
+      runTransaction: async () => {
+        throw new Error("not used");
+      },
+    };
+    const repository = createProductDraftRepository(adapter);
+    const onData = vi.fn();
+
+    await expect(repository.getDraft("missing")).resolves.toBeNull();
+    expect(repository.subscribeDrafts(onData, vi.fn())).toBe(unsubscribe);
+    expect(onData).toHaveBeenCalledWith([]);
   });
 });
