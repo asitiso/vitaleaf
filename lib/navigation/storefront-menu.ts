@@ -57,11 +57,13 @@ export const STOREFRONT_MENU = {
 } as const;
 
 export function flattenMenuLinks(menu: typeof STOREFRONT_MENU): readonly StorefrontMenuItem[] {
-  return [
+  const links = [
     ...menu.header,
     ...menu.categories,
     ...menu.concerns,
     ...menu.ages,
     ...menu.footer,
   ];
+
+  return links.filter((link, index) => links.findIndex(({ href }) => href === link.href) === index);
 }
