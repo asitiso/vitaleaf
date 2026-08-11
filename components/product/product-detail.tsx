@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useCart } from "../../features/cart/cart-context";
 import { formatWon } from "../../lib/format";
 import type { Product, Review } from "../../lib/products/types";
+import { formatFreeShippingCondition, STORE_POLICIES } from "../../lib/site/policies";
 import { ProductInfo } from "./product-info";
 import { ReviewSection } from "./review-section";
 
@@ -93,7 +94,7 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
         <p className={`product-detail__stock${soldOut ? " product-detail__stock--sold-out" : ""}`}>
           {soldOut ? "품절된 상품입니다" : product.stock <= 5 ? `재고 ${product.stock}개 남음` : "재고 있음"}
         </p>
-        <p className="product-detail__shipping"><strong>3만원 이상 무료배송</strong> · 오후 2시 이전 주문 시 당일 출고</p>
+        <p className="product-detail__shipping"><strong>{formatFreeShippingCondition()}</strong> · {STORE_POLICIES.shipping.dispatch}</p>
       </section>
       <div className="product-detail__quantity" role="group" aria-label="구매 수량 선택">
         <button type="button" aria-label="수량 줄이기" disabled={soldOut || quantity <= 1} onClick={decreaseQuantity}>

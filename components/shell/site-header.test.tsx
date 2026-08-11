@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { CartProvider } from "../../features/cart/cart-context";
 import { STOREFRONT_MENU } from "../../lib/navigation/storefront-menu";
+import { STORE_POLICIES } from "../../lib/site/policies";
 
 import { SiteHeader } from "./site-header";
 
@@ -16,6 +17,19 @@ function renderHeader() {
 }
 
 describe("SiteHeader", () => {
+  it("renders the public shipping benefit from the shared policy", () => {
+    const shipping = STORE_POLICIES.shipping as { freeThreshold: number; dispatch: string };
+    const original = { ...shipping };
+    Object.assign(shipping, { freeThreshold: 50_000, dispatch: "결제 확인 후 정책 기준 순차 출고" });
+
+    try {
+      renderHeader();
+      expect(screen.getByText("첫 구매 10% 쿠폰 · 5만원 이상 무료배송 · 결제 확인 후 정책 기준 순차 출고")).toBeVisible();
+    } finally {
+      Object.assign(shipping, original);
+    }
+  });
+
   it("keeps customer navigation limited to routes that exist", () => {
     renderHeader();
 

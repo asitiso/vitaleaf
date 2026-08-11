@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ProductGrid } from "../components/commerce/product-grid";
 import { getServerProducts } from "../lib/firebase/server-read";
 import type { Product } from "../lib/products/types";
+import { formatFreeShippingCondition, STORE_POLICIES } from "../lib/site/policies";
 
 const byRank = (left: Product, right: Product) =>
   (left.salesRank ?? Number.POSITIVE_INFINITY) - (right.salesRank ?? Number.POSITIVE_INFINITY);
@@ -43,8 +44,8 @@ export default async function Home() {
         </Link>
         <Link className="home-promo-card home-promo-card--delivery" href="/products?stock=1">
           <span>DAILY DELIVERY</span>
-          <strong>오후 2시 전<br />당일 출고</strong>
-          <small>3만원 이상 무료배송</small>
+          <strong>{STORE_POLICIES.shipping.dispatch}</strong>
+          <small>{formatFreeShippingCondition()}</small>
         </Link>
       </section>
 

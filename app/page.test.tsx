@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, vi } from "vitest";
 
 import type { Product } from "../lib/products/types";
+import { STORE_POLICIES } from "../lib/site/policies";
 
 const { getProductsMock } = vi.hoisted(() => ({ getProductsMock: vi.fn() }));
 
@@ -55,6 +56,21 @@ it("renders the approved professional merchandising sections", async () => {
   expect(screen.getByRole("heading", { name: "무엇이 얼마나 들었는지 먼저 공개합니다" })).toBeInTheDocument();
   expect(screen.getAllByRole("article", { name: "데일리 오메가3" })).toHaveLength(2);
   expect(screen.queryByRole("heading", { name: "건강 고민별" })).not.toBeInTheDocument();
+});
+
+it("renders the home delivery promotion from the shared shipping policy", async () => {
+  const shipping = STORE_POLICIES.shipping as { freeThreshold: number; dispatch: string };
+  const original = { ...shipping };
+  Object.assign(shipping, { freeThreshold: 50_000, dispatch: "결제 확인 후 정책 기준 순차 출고" });
+  getProductsMock.mockResolvedValue([product]);
+
+  try {
+    render(await Home());
+    expect(screen.getByText("결제 확인 후 정책 기준 순차 출고")).toBeVisible();
+    expect(screen.getByText("5만원 이상 무료배송")).toBeVisible();
+  } finally {
+    Object.assign(shipping, original);
+  }
 });
 
 it("shows a polished empty catalog state without hardcoded product fallbacks", async () => {

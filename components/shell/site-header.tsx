@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState } from "react";
 
 import { useCart } from "../../features/cart/cart-context";
 import { STOREFRONT_MENU } from "../../lib/navigation/storefront-menu";
+import { formatShippingBenefitBar } from "../../lib/site/policies";
 
 import { MegaMenu } from "./mega-menu";
 
@@ -99,7 +100,7 @@ export function SiteHeader() {
 
   return (
     <header className="site-header">
-      <div className="site-header__benefit-bar"><p>첫 구매 10% 쿠폰 · 3만원 이상 무료배송 · 오후 2시 이전 당일 출고</p></div>
+      <div className="site-header__benefit-bar"><p>{formatShippingBenefitBar()}</p></div>
       <div className="site-header__main-shell">
         <div className="site-header__main-row">
           <button ref={mobileMenuTriggerRef} className="site-header__mobile-trigger" type="button" aria-label="메뉴 열기" aria-expanded={isMobileMenuOpen} onClick={() => setIsMobileMenuOpen(true)}><span aria-hidden="true">☰</span></button>

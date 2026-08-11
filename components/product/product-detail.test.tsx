@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
 import type { Product, Review } from "@/lib/products/types";
+import { STORE_POLICIES } from "../../lib/site/policies";
 
 const { add, getApprovedReviewsMock, push } = vi.hoisted(() => ({
   add: vi.fn(),
@@ -121,6 +122,20 @@ it("shows pricing and shipping facts and prevents purchasing a sold-out product"
   expect(screen.getByText("3만원 이상 무료배송")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "장바구니 담기" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "바로 구매" })).toBeDisabled();
+});
+
+it("renders the public shipping condition and dispatch copy from the shared policy", () => {
+  const shipping = STORE_POLICIES.shipping as { freeThreshold: number; dispatch: string };
+  const original = { ...shipping };
+  Object.assign(shipping, { freeThreshold: 50_000, dispatch: "결제 확인 후 정책 기준 순차 출고" });
+
+  try {
+    render(<ProductDetail product={product} reviews={[]} />);
+    expect(screen.getByText("5만원 이상 무료배송")).toBeVisible();
+    expect(screen.getByText((_, element) => element?.classList.contains("product-detail__shipping") === true && element.textContent?.includes("결제 확인 후 정책 기준 순차 출고") === true)).toBeVisible();
+  } finally {
+    Object.assign(shipping, original);
+  }
 });
 
 it("switches gallery images and shows a named fallback when the selected image fails", async () => {

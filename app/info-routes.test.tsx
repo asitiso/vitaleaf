@@ -40,3 +40,17 @@ it("renders shared policy values and support route links", () => {
   expect(screen.getByText(`${STORE_POLICIES.shipping.freeThreshold.toLocaleString("ko-KR")}원 이상 구매 시 무료이며, 미만일 경우 ${STORE_POLICIES.shipping.baseFee.toLocaleString("ko-KR")}원입니다.`)).toBeVisible();
   expect(screen.getByRole("link", { name: "교환 및 반품 안내" })).toHaveAttribute("href", "/help/returns");
 });
+
+it("renders help support details from the shared policy", () => {
+  const support = STORE_POLICIES.support as { phone: string; hours: string; lunch: string };
+  const original = { ...support };
+  Object.assign(support, { phone: "02-9999-0000", hours: "평일 10:00–17:00", lunch: "13:00–14:00" });
+
+  try {
+    render(<HelpPage />);
+    expect(screen.getByText("평일 10:00–17:00 (점심 13:00–14:00)")).toBeVisible();
+    expect(screen.getByText("02-9999-0000")).toBeVisible();
+  } finally {
+    Object.assign(support, original);
+  }
+});
