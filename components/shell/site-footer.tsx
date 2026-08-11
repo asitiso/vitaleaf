@@ -1,10 +1,8 @@
 import Link from "next/link";
 
 const footerLinks = [
-  { href: "/story", label: "브랜드 소개" },
-  { href: "/help/shipping", label: "배송 안내" },
-  { href: "/help/returns", label: "교환·반품" },
-  { href: "/help", label: "고객센터" },
+  { href: "/products", label: "전체 상품" },
+  { href: "/cart", label: "장바구니" },
 ];
 
 export function SiteFooter() {

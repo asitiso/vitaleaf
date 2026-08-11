@@ -77,6 +77,9 @@ main {
 .checkout-field input:focus, .checkout-field textarea:focus { outline: 3px solid rgb(33 92 69 / 18%); border-color: var(--color-sage); }
 .checkout-field input[aria-invalid="true"] { border-color: #a94332; }
 .checkout-field small, .checkout-form__submit-error { color: #9e3d2c; font-size: 12px; font-weight: 700; line-height: 1.5; }
+.checkout-form__stock-error { display: grid; gap: 5px; margin: 0 0 13px; padding: 12px; border: 1px solid #d9a99e; border-radius: 4px; color: #7f3023; background: #fff7f4; font-size: 13px; line-height: 1.5; }
+.checkout-form__stock-error [role="alert"] { display: grid; gap: 3px; }
+.checkout-form__stock-error a { color: #174d3b; font-weight: 800; }
 .checkout-payment { display: flex; gap: 10px; flex-wrap: wrap; }
 .checkout-payment legend { float: left; width: 100%; }
 .checkout-payment label { display: flex; flex: 1 1 150px; min-height: 48px; gap: 9px; align-items: center; border: 1px solid #cbd8ce; border-radius: 4px; padding: 11px 13px; color: #30493e; font-size: 13px; font-weight: 800; cursor: pointer; }
@@ -535,7 +538,8 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
 .product-detail-state > span { color: #9bb5a5; font-size: 17px; font-weight: 800; letter-spacing: .16em; }
 .product-detail-state h1 { margin: 10px 0 0; font-size: 31px; }
 .product-detail-state p { margin: 9px 0 24px; color: #687a70; }
-.product-detail-state a { padding: 11px 17px; border-radius: 4px; color: #fff; background: var(--color-sage); font-weight: 800; text-decoration: none; }
+.product-detail-state a, .product-detail-state button { padding: 11px 17px; border: 0; border-radius: 4px; color: #fff; background: var(--color-sage); font: inherit; font-weight: 800; text-decoration: none; cursor: pointer; }
+.product-detail-state__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 9px; }
 
 @media (max-width: 760px) {
   .product-detail { grid-template-columns: 1fr; grid-template-areas: "gallery" "summary" "quantity" "actions" "info" "reviews"; gap: 20px; padding-top: 30px; }

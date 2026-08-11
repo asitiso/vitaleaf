@@ -6,8 +6,6 @@ import {
   getDoc,
   getDocs,
   onSnapshot,
-  orderBy,
-  query,
   serverTimestamp,
   setDoc,
 } from "firebase/firestore";
@@ -86,7 +84,7 @@ export const createProductRepository = (adapter: ProductRepositoryAdapter) => ({
 
 const firebaseProductAdapter: Required<ProductRepositoryAdapter> = {
   async list() {
-    const snapshot = await getDocs(query(collection(db, "products"), orderBy("salesRank", "asc")));
+    const snapshot = await getDocs(collection(db, "products"));
     return snapshot.docs;
   },
   async get(id) {
@@ -95,7 +93,7 @@ const firebaseProductAdapter: Required<ProductRepositoryAdapter> = {
   },
   subscribe(onData, onError) {
     return onSnapshot(
-      query(collection(db, "products"), orderBy("salesRank", "asc")),
+      collection(db, "products"),
       (snapshot) => onData(snapshot.docs),
       onError,
     );

@@ -13,7 +13,6 @@ const primaryNavigation = [
   { href: "/products?view=concerns", label: "건강 고민별" },
   { href: "/products?category=gift", label: "선물세트" },
   { href: "/products?view=ingredients", label: "성분 가이드" },
-  { href: "/story", label: "브랜드 스토리" },
 ];
 
 function SearchForm({ className }: { className?: string }) {
@@ -114,7 +113,7 @@ export function SiteHeader() {
           <Link className="site-header__wordmark" href="/" aria-label="Vitaleaf 홈"><span>VITA</span>LEAF</Link>
           <SearchForm />
           <nav className="site-header__utility-nav" aria-label="사용자 메뉴">
-            <Link href="/login">로그인</Link><Link href="/admin">관리자</Link>
+            <Link href="/admin">관리자</Link>
             <Link className="site-header__cart" href="/cart" aria-label={`장바구니 ${itemCount}개`}>장바구니 <span aria-hidden="true">{itemCount}</span></Link>
           </nav>
         </div>

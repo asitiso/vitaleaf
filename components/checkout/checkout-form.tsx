@@ -65,10 +65,16 @@ export function CheckoutForm() {
   const submittingRef = useRef(false);
   const fieldRefs = useRef<Partial<Record<RequiredField, HTMLInputElement>>>({});
   const selectedLines = lines.filter((line) => line.selected);
+  const unavailableSelectedLines = selectedLines.filter((line) => line.stock < 1);
+  const hasUnavailableItems = unavailableSelectedLines.length > 0;
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (submittingRef.current) {
+      return;
+    }
+    if (hasUnavailableItems) {
+      setSubmitError("품절 상품을 장바구니에서 제외한 뒤 다시 시도해 주세요.");
       return;
     }
 
@@ -220,8 +226,17 @@ export function CheckoutForm() {
             <div><dt>배송비</dt><dd>{formatWon(shippingFee)}</dd></div>
             <div className="checkout-summary__total"><dt>총 결제 금액</dt><dd>{formatWon(total)}</dd></div>
           </dl>
+          {hasUnavailableItems ? (
+            <div className="checkout-form__stock-error">
+              <div role="alert">
+                <strong>품절 상품이 포함되어 결제할 수 없습니다.</strong>
+                <span>{unavailableSelectedLines.map((line) => line.name).join(", ")}</span>
+              </div>
+              <Link href="/cart">장바구니에서 확인하기</Link>
+            </div>
+          ) : null}
           {submitError ? <p className="checkout-form__submit-error" role="alert">{submitError}</p> : null}
-          <button type="submit" disabled={isSubmitting}>
+          <button type="submit" disabled={isSubmitting || hasUnavailableItems}>
             {isSubmitting ? "결제 처리 중" : "결제하기"}
           </button>
           <small>개인정보와 주문 정보는 저장되지 않습니다.</small>

@@ -15,6 +15,15 @@ function renderHeader() {
 }
 
 describe("SiteHeader", () => {
+  it("keeps customer navigation limited to routes that exist", () => {
+    renderHeader();
+
+    expect(screen.queryByRole("link", { name: "로그인" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "브랜드 스토리" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "관리자" })).toHaveAttribute("href", "/admin");
+    expect(screen.getByRole("link", { name: /장바구니/ })).toHaveAttribute("href", "/cart");
+  });
+
   it("links best navigation to the supported popular sort", () => {
     renderHeader();
 

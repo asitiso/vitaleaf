@@ -148,6 +148,29 @@ it("rejects a near-valid 010 number with only seven subscriber digits", async ()
   expect(screen.getByText("휴대전화 번호를 010-1234-5678 형식으로 입력해 주세요.")).toBeVisible();
 });
 
+it("blocks a persisted selected line that is sold out", async () => {
+  const soldOutLine: CartLine = {
+    ...selectedLine,
+    productId: "sold-out",
+    name: "품절 상품",
+    stock: 0,
+    quantity: 1,
+  };
+
+  renderCheckout([soldOutLine]);
+
+  const form = await screen.findByRole("form", { name: "주문 및 결제" });
+  expect(screen.getByRole("alert")).toHaveTextContent("품절 상품");
+  expect(screen.getByRole("link", { name: "장바구니에서 확인하기" })).toHaveAttribute("href", "/cart");
+  expect(screen.getByRole("button", { name: "결제하기" })).toBeDisabled();
+
+  fireEvent.submit(form);
+
+  expect(processPaymentMock).not.toHaveBeenCalled();
+  expect(pushMock).not.toHaveBeenCalled();
+  expect(JSON.parse(localStorage.getItem(storageKey) ?? "[]")).toEqual([soldOutLine]);
+});
+
 it("submits the selected order once, clears it, and routes with only the order number", async () => {
   const user = userEvent.setup();
   const payment = deferredPayment();
