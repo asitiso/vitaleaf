@@ -10,8 +10,19 @@ import {
 } from "./product-media";
 
 const MIB = 1024 * 1024;
+const UUID = "c0a8012e-7cda-4f2d-8cd1-6df7ab291482";
 
 const fakeFile = ({ type, size }: { type: string; size: number }) => new File([new Uint8Array(size)], "source-file", { type });
+
+const deferred = <T>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+  return { promise, resolve, reject };
+};
 
 const createTask = () => {
   let next: ((snapshot: { bytesTransferred: number; totalBytes: number }) => void) | undefined;
@@ -55,7 +66,7 @@ describe("product image adapter", () => {
       startResumable: vi.fn(() => upload.task),
       getDownloadUrl,
       delete: vi.fn(),
-      randomUUID: () => "uuid-123",
+      randomUUID: () => UUID,
     });
     const onProgress = vi.fn();
 
@@ -73,11 +84,11 @@ describe("product image adapter", () => {
     upload.complete();
     await expect(controller.promise).resolves.toEqual({
       url: "https://storage.example/products/draft-1/image.jpg",
-      storagePath: "products/draft-1/uuid-123.jpg",
+      storagePath: `products/draft-1/${UUID}.jpg`,
       alt: "Front package",
       order: 2,
     });
-    expect(createRef).toHaveBeenCalledWith("products/draft-1/uuid-123.jpg");
+    expect(createRef).toHaveBeenCalledWith(`products/draft-1/${UUID}.jpg`);
   });
 
   it("does not start an upload for an invalid image and returns an operator-readable error", async () => {
@@ -87,7 +98,7 @@ describe("product image adapter", () => {
       startResumable,
       getDownloadUrl: vi.fn(),
       delete: vi.fn(),
-      randomUUID: () => "uuid-123",
+      randomUUID: () => UUID,
     });
 
     const controller = adapter.uploadProductImage({
@@ -109,7 +120,7 @@ describe("product image adapter", () => {
       startResumable: vi.fn(() => upload.task),
       getDownloadUrl: vi.fn(),
       delete: vi.fn(),
-      randomUUID: () => "uuid-123",
+      randomUUID: () => UUID,
     });
     const controller = adapter.uploadProductImage({
       productId: "draft-1",
@@ -133,13 +144,175 @@ describe("product image adapter", () => {
       startResumable: vi.fn(),
       getDownloadUrl: vi.fn(),
       delete: remove,
-      randomUUID: () => "uuid-123",
+      randomUUID: () => UUID,
     });
 
-    await expect(adapter.deleteProductImage({ productId: "draft-1", storagePath: "products/draft-1/uuid-123.webp" })).resolves.toBeUndefined();
-    await expect(adapter.deleteProductImage({ productId: "draft-1", storagePath: "products/other/uuid-123.webp" })).rejects.toThrow("해당 상품의 이미지 경로");
-    await expect(adapter.deleteProductImage({ productId: "draft-1", storagePath: "products/draft-1/nested/uuid-123.webp" })).rejects.toThrow("해당 상품의 이미지 경로");
+    await expect(adapter.deleteProductImage({ productId: "draft-1", storagePath: `products/draft-1/${UUID}.webp` })).resolves.toBeUndefined();
+    await expect(adapter.deleteProductImage({ productId: "draft-1", storagePath: `products/other/${UUID}.webp` })).rejects.toThrow("해당 상품의 이미지 경로");
+    await expect(adapter.deleteProductImage({ productId: "draft-1", storagePath: `products/draft-1/nested/${UUID}.webp` })).rejects.toThrow("해당 상품의 이미지 경로");
     expect(remove).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts ordinary Firestore draft ids but rejects path-like, dot, control, and overlong ids", async () => {
+    const remove = vi.fn().mockResolvedValue(undefined);
+    const adapter = createProductMediaAdapter({
+      createRef: vi.fn((path) => ({ path })),
+      startResumable: vi.fn(),
+      getDownloadUrl: vi.fn(),
+      delete: remove,
+      randomUUID: () => UUID,
+    });
+
+    await expect(adapter.deleteProductImage({ productId: "임시 초안 2026_08", storagePath: `products/임시 초안 2026_08/${UUID}.jpg` })).resolves.toBeUndefined();
+    await expect(adapter.deleteProductImage({ productId: "draft.id", storagePath: `products/draft.id/${UUID}.jpg` })).rejects.toThrow("안전한 상품 식별자");
+    await expect(adapter.deleteProductImage({ productId: "draft\\id", storagePath: `products/draft\\id/${UUID}.jpg` })).rejects.toThrow("안전한 상품 식별자");
+    await expect(adapter.deleteProductImage({ productId: "draft\u0000id", storagePath: `products/draft\u0000id/${UUID}.jpg` })).rejects.toThrow("안전한 상품 식별자");
+    await expect(adapter.deleteProductImage({ productId: "a".repeat(1501), storagePath: `products/${"a".repeat(1501)}/${UUID}.jpg` })).rejects.toThrow("안전한 상품 식별자");
+    expect(remove).toHaveBeenCalledOnce();
+  });
+
+  it("refuses deletion paths outside the UUID image filename allowlist", async () => {
+    const remove = vi.fn().mockResolvedValue(undefined);
+    const adapter = createProductMediaAdapter({
+      createRef: vi.fn((path) => ({ path })),
+      startResumable: vi.fn(),
+      getDownloadUrl: vi.fn(),
+      delete: remove,
+      randomUUID: () => UUID,
+    });
+
+    await expect(adapter.deleteProductImage({ productId: "draft-1", storagePath: "products/draft-1/manual.png" })).rejects.toThrow("해당 상품의 이미지 경로");
+    await expect(adapter.deleteProductImage({ productId: "draft-1", storagePath: `products/draft-1/${UUID}.gif` })).rejects.toThrow("해당 상품의 이미지 경로");
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it("does not upload when its generated filename is outside the UUID image filename allowlist", async () => {
+    const startResumable = vi.fn();
+    const adapter = createProductMediaAdapter({
+      createRef: vi.fn(),
+      startResumable,
+      getDownloadUrl: vi.fn(),
+      delete: vi.fn(),
+      randomUUID: () => "not-a-uuid",
+    });
+
+    const controller = adapter.uploadProductImage({
+      productId: "draft-1",
+      file: fakeFile({ type: "image/png", size: 1 }),
+      alt: "Front package",
+      order: 0,
+      onProgress: vi.fn(),
+    });
+
+    await expect(controller.promise).rejects.toThrow("안전한 이미지 파일명");
+    expect(startResumable).not.toHaveBeenCalled();
+  });
+
+  it("cleans up the completed object when download URL lookup fails and preserves its cause and storage path", async () => {
+    const upload = createTask();
+    const urlError = new Error("download URL unavailable");
+    const remove = vi.fn().mockResolvedValue(undefined);
+    const adapter = createProductMediaAdapter({
+      createRef: vi.fn((path) => ({ path })),
+      startResumable: vi.fn(() => upload.task),
+      getDownloadUrl: vi.fn().mockRejectedValue(urlError),
+      delete: remove,
+      randomUUID: () => UUID,
+    });
+    const controller = adapter.uploadProductImage({
+      productId: "draft-1",
+      file: fakeFile({ type: "image/png", size: 1 }),
+      alt: "Front package",
+      order: 0,
+      onProgress: vi.fn(),
+    });
+
+    upload.complete();
+
+    await expect(controller.promise).rejects.toMatchObject({
+      storagePath: `products/draft-1/${UUID}.png`,
+      cause: urlError,
+    });
+    expect(remove).toHaveBeenCalledOnce();
+  });
+
+  it("preserves the URL failure, cleanup failure, and storage path when cleanup is best-effort", async () => {
+    const upload = createTask();
+    const urlError = new Error("download URL unavailable");
+    const cleanupError = new Error("cleanup unavailable");
+    const adapter = createProductMediaAdapter({
+      createRef: vi.fn((path) => ({ path })),
+      startResumable: vi.fn(() => upload.task),
+      getDownloadUrl: vi.fn().mockRejectedValue(urlError),
+      delete: vi.fn().mockRejectedValue(cleanupError),
+      randomUUID: () => UUID,
+    });
+    const controller = adapter.uploadProductImage({
+      productId: "draft-1",
+      file: fakeFile({ type: "image/png", size: 1 }),
+      alt: "Front package",
+      order: 0,
+      onProgress: vi.fn(),
+    });
+
+    upload.complete();
+
+    await expect(controller.promise).rejects.toMatchObject({
+      storagePath: `products/draft-1/${UUID}.png`,
+      cause: urlError,
+      cleanupCause: cleanupError,
+    });
+  });
+
+  it("cancels while resolving a download URL, cleans up once, and cannot resolve after a duplicate cancel", async () => {
+    const upload = createTask();
+    const url = deferred<string>();
+    const remove = vi.fn().mockResolvedValue(undefined);
+    const getDownloadUrl = vi.fn(() => url.promise);
+    const adapter = createProductMediaAdapter({
+      createRef: vi.fn((path) => ({ path })),
+      startResumable: vi.fn(() => upload.task),
+      getDownloadUrl,
+      delete: remove,
+      randomUUID: () => UUID,
+    });
+    const controller = adapter.uploadProductImage({
+      productId: "draft-1",
+      file: fakeFile({ type: "image/webp", size: 1 }),
+      alt: "Front package",
+      order: 0,
+      onProgress: vi.fn(),
+    });
+
+    upload.complete();
+    await vi.waitFor(() => expect(getDownloadUrl).toHaveBeenCalledOnce());
+    controller.cancel();
+    controller.cancel();
+    url.resolve("https://storage.example/products/draft-1/image.webp");
+
+    await expect(controller.promise).rejects.toMatchObject({
+      storagePath: `products/draft-1/${UUID}.webp`,
+      message: expect.stringContaining("취소"),
+    });
+    expect(remove).toHaveBeenCalledOnce();
+    expect(upload.task.cancel).toHaveBeenCalledOnce();
+  });
+
+  it("returns a deletion-specific error while preserving the storage path and original cause", async () => {
+    const deleteCause = new Error("permission denied");
+    const adapter = createProductMediaAdapter({
+      createRef: vi.fn((path) => ({ path })),
+      startResumable: vi.fn(),
+      getDownloadUrl: vi.fn(),
+      delete: vi.fn().mockRejectedValue(deleteCause),
+      randomUUID: () => UUID,
+    });
+
+    await expect(adapter.deleteProductImage({ productId: "draft-1", storagePath: `products/draft-1/${UUID}.jpg` })).rejects.toMatchObject({
+      storagePath: `products/draft-1/${UUID}.jpg`,
+      cause: deleteCause,
+      message: expect.stringContaining("삭제"),
+    });
   });
 });
 
