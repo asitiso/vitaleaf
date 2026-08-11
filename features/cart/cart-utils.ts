@@ -1,7 +1,5 @@
 import type { CartLine } from "./cart-types";
-
-const FREE_SHIPPING_THRESHOLD = 30_000;
-const SHIPPING_FEE = 3_000;
+import { STORE_POLICIES } from "../../lib/site/policies";
 
 export function calculateCart(lines: CartLine[]) {
   const subtotal = lines.reduce(
@@ -13,13 +11,13 @@ export function calculateCart(lines: CartLine[]) {
     return { subtotal: 0, shippingFee: 0, total: 0, remainingForFreeShipping: 0 };
   }
 
-  const shippingFee = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
+  const shippingFee = subtotal >= STORE_POLICIES.shipping.freeThreshold ? 0 : STORE_POLICIES.shipping.baseFee;
 
   return {
     subtotal,
     shippingFee,
     total: subtotal + shippingFee,
-    remainingForFreeShipping: Math.max(FREE_SHIPPING_THRESHOLD - subtotal, 0),
+    remainingForFreeShipping: Math.max(STORE_POLICIES.shipping.freeThreshold - subtotal, 0),
   };
 }
 

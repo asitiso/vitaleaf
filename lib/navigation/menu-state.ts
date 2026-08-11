@@ -25,28 +25,28 @@ const DEFAULT_FILTERS: ProductFilters = {
   query: "", category: "", concern: "", minPrice: null, maxPrice: null, inStockOnly: false, sort: "popular",
 };
 
-const firstValue = (value: string | string[] | undefined): string => Array.isArray(value) ? value[0] ?? "" : value ?? "";
-const singleMenuValue = (value: string | string[] | undefined): string => Array.isArray(value) ? "" : value ?? "";
+const singleValue = (value: string | string[] | undefined): string => typeof value === "string" ? value : "";
 
 const readAllowed = <T extends readonly TaxonomyOption[]>(value: string | string[] | undefined, options: T) => {
-  const text = singleMenuValue(value);
+  const text = singleValue(value);
   return options.find((option) => option.value === text) ?? null;
 };
 
 const nonNegativeNumber = (value: string | string[] | undefined): number | null => {
-  const text = firstValue(value);
+  const text = singleValue(value);
+  if (!/^\d+$/.test(text)) return null;
   const parsed = Number(text);
-  return text && Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+  return Number.isFinite(parsed) ? parsed : null;
 };
 
 const parseExistingFilters = (params: SearchParams): ProductFilters => ({
   ...DEFAULT_FILTERS,
-  query: firstValue(params.q),
+  query: singleValue(params.q),
   minPrice: nonNegativeNumber(params.minPrice),
   maxPrice: nonNegativeNumber(params.maxPrice),
-  inStockOnly: ["1", "true"].includes(firstValue(params.stock)),
-  sort: (["popular", "newest", "price-asc", "price-desc"].includes(singleMenuValue(params.sort))
-    ? singleMenuValue(params.sort) : "popular") as ProductFilters["sort"],
+  inStockOnly: ["1", "true"].includes(singleValue(params.stock)),
+  sort: (["popular", "newest", "price-asc", "price-desc"].includes(singleValue(params.sort))
+    ? singleValue(params.sort) : "popular") as ProductFilters["sort"],
 });
 
 export function resolveMenuState(params: SearchParams): MenuPageState {
@@ -54,9 +54,9 @@ export function resolveMenuState(params: SearchParams): MenuPageState {
   const concern = readAllowed(params.concern, HEALTH_CONCERNS);
   const ageOption = readAllowed(params.age, AGE_TARGETS);
   const age = ageOption?.value as MenuPageState["age"] ?? null;
-  const promotionValue = singleMenuValue(params.promotion);
+  const promotionValue = singleValue(params.promotion);
   const promotion = promotionValue === "today" || promotionValue === "trial" ? promotionValue : null;
-  const viewValue = singleMenuValue(params.view);
+  const viewValue = singleValue(params.view);
   const discoveryView = viewValue === "concerns" || viewValue === "ingredients" ? viewValue : null;
   const filters = { ...parseExistingFilters(params), category: category?.label ?? "", concern: concern?.label ?? "" };
   const base = { filters, promotion, age, discoveryView };
@@ -68,6 +68,6 @@ export function resolveMenuState(params: SearchParams): MenuPageState {
   if (promotion === "trial") return { ...base, title: "첫 구매 추천", description: "부담 없이 시작할 수 있는 상품을 살펴보세요.", contextLabel: `체험 추천 기준: 재고 있음 · ${TRIAL_MAX_PRICE_WON.toLocaleString("ko-KR")}원 이하` };
   if (discoveryView === "concerns") return { ...base, title: "건강 고민별 상품", description: "지금 필요한 건강 고민을 선택해 상품을 찾아보세요." };
   if (discoveryView === "ingredients") return { ...base, title: "성분별 상품", description: "관심 있는 성분을 기준으로 상품을 찾아보세요." };
-  if (singleMenuValue(params.sort) === "popular") return { ...base, title: "베스트 상품", description: "많이 찾는 건강기능식품을 인기순으로 살펴보세요." };
+  if (singleValue(params.sort) === "popular") return { ...base, title: "베스트 상품", description: "많이 찾는 건강기능식품을 인기순으로 살펴보세요." };
   return { ...base, title: "전체 상품", description: "필요한 기준으로 건강기능식품을 비교해 보세요." };
 }

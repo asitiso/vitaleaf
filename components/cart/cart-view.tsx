@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useCart } from "../../features/cart/cart-context";
 import type { CartLine } from "../../features/cart/cart-types";
 import { formatWon } from "../../lib/format";
+import { STORE_POLICIES } from "../../lib/site/policies";
 
 type PendingDeletion =
   | { type: "line"; line: CartLine }
@@ -83,7 +84,7 @@ export function CartView() {
   const allSelected = lines.length > 0 && selectedLines.length === lines.length;
   const selectedHasNoStock = selectedLines.some((line) => line.stock < 1);
   const checkoutDisabled = selectedLines.length === 0 || selectedHasNoStock;
-  const progressValue = Math.min(subtotal, 30_000);
+  const progressValue = Math.min(subtotal, STORE_POLICIES.shipping.freeThreshold);
 
   const restoreDeleteTriggerFocus = useCallback(() => {
     const trigger = deleteTriggerRef.current;
@@ -232,7 +233,7 @@ export function CartView() {
                   ? `무료배송까지 ${formatWon(remainingForFreeShipping)} 남았어요`
                   : "무료배송 혜택을 받고 있어요"}
             </p>
-            <progress aria-label="무료배송 달성도" value={progressValue} max={30_000} />
+            <progress aria-label="무료배송 달성도" value={progressValue} max={STORE_POLICIES.shipping.freeThreshold} />
           </div>
           <dl>
             <div><dt>상품 금액</dt><dd>{formatWon(subtotal)}</dd></div>

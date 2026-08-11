@@ -50,6 +50,25 @@ describe("resolveMenuState", () => {
     });
   });
 
+  it("resets multi-valued ordinary filters instead of accepting their first value", () => {
+    expect(resolveMenuState({
+      q: ["오메가", "선물"],
+      minPrice: ["10000", "20000"],
+      maxPrice: ["20000", "30000"],
+      stock: ["true", "false"],
+      sort: ["popular", "newest"],
+    })).toMatchObject({
+      title: "전체 상품",
+      filters: { query: "", minPrice: null, maxPrice: null, inStockOnly: false, sort: "popular" },
+    });
+  });
+
+  it.each([" 10000", "0x10", "1e3", "10.5", "-1"])("rejects malformed decimal price filter %s", (price) => {
+    expect(resolveMenuState({ minPrice: price, maxPrice: price })).toMatchObject({
+      filters: { minPrice: null, maxPrice: null },
+    });
+  });
+
   it("preserves the established age recommendation concern groups", () => {
     expect(AGE_CONCERN_GROUPS).toMatchObject({
       "30": ["장 건강", "피로·활력"],
