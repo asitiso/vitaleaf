@@ -1,0 +1,93 @@
+import { describe, expect, it } from "vitest";
+
+import { toPublishedProductInput, validatePublishableDraft } from "./draft";
+import type { ProductDraft } from "./types";
+
+const makeDraft = (overrides: Partial<ProductDraft> = {}): ProductDraft => ({
+  id: "draft-1",
+  name: "Omega 3",
+  slug: "omega-3",
+  category: "supplements",
+  concerns: [],
+  price: 20_000,
+  originalPrice: null,
+  thumbnailUrl: "",
+  images: [],
+  media: [{ url: "main.jpg", storagePath: "products/main.jpg", alt: "Main image", order: 0 }],
+  description: "Daily omega supplement",
+  benefits: [],
+  ingredients: [{ name: "EPA", amount: "600mg", dailyValue: "" }],
+  dosage: "Take one capsule daily",
+  origin: "Korea",
+  certifications: [],
+  cautions: ["Consult a professional if needed"],
+  stock: 10,
+  isBest: false,
+  isNew: false,
+  salesRank: null,
+  ratingAverage: 0,
+  reviewCount: 0,
+  status: "draft",
+  sourceProductId: null,
+  currentStep: 1,
+  createdAt: null,
+  updatedAt: null,
+  ...overrides,
+});
+
+describe("product drafts", () => {
+  it("allows incomplete drafts but blocks publishing them", () => {
+    expect(validatePublishableDraft(makeDraft({ name: "" }))).toContainEqual(
+      expect.objectContaining({ step: 1, field: "name" }),
+    );
+  });
+
+  it("identifies every missing publish requirement at its wizard step", () => {
+    const errors = validatePublishableDraft(
+      makeDraft({
+        name: "",
+        category: "",
+        price: 0,
+        stock: -1,
+        media: [],
+        dosage: "",
+        ingredients: [],
+        origin: "",
+        cautions: [],
+      }),
+    );
+
+    expect(errors.map(({ step, field }) => ({ step, field }))).toEqual([
+      { step: 1, field: "name" },
+      { step: 1, field: "category" },
+      { step: 1, field: "price" },
+      { step: 1, field: "stock" },
+      { step: 2, field: "media" },
+      { step: 3, field: "dosage" },
+      { step: 3, field: "ingredients" },
+      { step: 4, field: "origin" },
+      { step: 4, field: "cautions" },
+    ]);
+  });
+
+  it("publishes standard media while deriving legacy image fields", () => {
+    const input = toPublishedProductInput(
+      makeDraft({
+        thumbnailUrl: "outdated.jpg",
+        images: ["outdated-detail.jpg"],
+        media: [
+          { url: "second.jpg", storagePath: null, alt: "Second", order: 2 },
+          { url: "first.jpg", storagePath: "products/first.jpg", alt: "First", order: 1 },
+          { url: "first.jpg", storagePath: null, alt: "Duplicate", order: 0 },
+        ],
+      }),
+    );
+
+    expect(input.thumbnailUrl).toBe("first.jpg");
+    expect(input.images).toEqual(["first.jpg", "second.jpg"]);
+    expect(input.media).toEqual([
+      { url: "first.jpg", storagePath: "products/first.jpg", alt: "First", order: 1 },
+      { url: "second.jpg", storagePath: null, alt: "Second", order: 2 },
+    ]);
+  });
+});

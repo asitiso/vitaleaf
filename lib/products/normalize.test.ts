@@ -68,4 +68,41 @@ describe("normalizeProduct", () => {
     expect(product.createdAt).toBe(createdAt);
     expect(product.updatedAt).toBe(updatedAt);
   });
+
+  it("normalizes legacy image fields into ordered media", () => {
+    const product = normalizeProduct("legacy", {
+      name: "Legacy product",
+      category: "supplements",
+      price: 10_000,
+      stock: 3,
+      thumbnailUrl: "a.jpg",
+      images: ["b.jpg"],
+    });
+
+    expect(product.media).toEqual([
+      { url: "a.jpg", storagePath: null, alt: "상품 대표 이미지", order: 0 },
+      { url: "b.jpg", storagePath: null, alt: "상품 상세 이미지 2", order: 1 },
+    ]);
+  });
+
+  it("prefers deduplicated standard media ordered by its order field", () => {
+    const product = normalizeProduct("standard", {
+      name: "Standard product",
+      category: "supplements",
+      price: 10_000,
+      stock: 3,
+      thumbnailUrl: "legacy.jpg",
+      images: ["legacy-detail.jpg"],
+      media: [
+        { url: "second.jpg", storagePath: "products/second.jpg", alt: "Second", order: 2 },
+        { url: "first.jpg", storagePath: null, alt: "First", order: 1 },
+        { url: "first.jpg", storagePath: "ignored", alt: "Duplicate", order: 0 },
+      ],
+    });
+
+    expect(product.media).toEqual([
+      { url: "first.jpg", storagePath: null, alt: "First", order: 1 },
+      { url: "second.jpg", storagePath: "products/second.jpg", alt: "Second", order: 2 },
+    ]);
+  });
 });

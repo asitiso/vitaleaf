@@ -4,6 +4,15 @@ export type Ingredient = {
   dailyValue: string;
 };
 
+export type ProductMedia = {
+  url: string;
+  storagePath: string | null;
+  alt: string;
+  order: number;
+};
+
+export type DraftStatus = "draft" | "publishing" | "published-copy";
+
 export type Product = {
   id: string;
   name: string;
@@ -14,6 +23,8 @@ export type Product = {
   originalPrice: number | null;
   thumbnailUrl: string;
   images: string[];
+  // Optional while records and existing Product literals migrate from the legacy image fields.
+  media?: ProductMedia[];
   description: string;
   benefits: string[];
   ingredients: Ingredient[];
@@ -51,4 +62,15 @@ export type Review = {
   createdAt: Date | null;
 };
 
-export type ProductInput = Omit<Product, "id" | "createdAt" | "updatedAt">;
+// Legacy ProductInput remains image-field compatible for current CSV and admin writes.
+export type ProductInput = Omit<Product, "id" | "createdAt" | "updatedAt" | "media">;
+
+export type ProductDraft = ProductInput & {
+  id: string;
+  media: ProductMedia[];
+  status: DraftStatus;
+  sourceProductId: string | null;
+  currentStep: 1 | 2 | 3 | 4;
+  createdAt: Date | null;
+  updatedAt: Date | null;
+};

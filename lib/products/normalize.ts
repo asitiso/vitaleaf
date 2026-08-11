@@ -1,4 +1,4 @@
-import type { Ingredient, Product } from "./types";
+import type { Ingredient, Product, ProductMedia } from "./types";
 
 type ProductRecord = Record<string, unknown>;
 
@@ -39,6 +39,64 @@ const asDate = (value: unknown): Date | null => {
   return null;
 };
 
+const defaultAlt = (index: number, isMain: boolean): string =>
+  isMain ? "상품 대표 이미지" : `상품 상세 이미지 ${index + 1}`;
+
+const asMedia = (value: unknown, position: number): ProductMedia | null => {
+  const media = asRecord(value);
+  const url = asString(media.url).trim();
+  if (!url) return null;
+
+  return {
+    url,
+    storagePath: asString(media.storagePath).trim() || null,
+    alt: asString(media.alt).trim() || `Product image ${position + 1}`,
+    order:
+      typeof media.order === "number" && Number.isFinite(media.order) && media.order >= 0
+        ? media.order
+        : position,
+  };
+};
+
+const uniqueOrderedMedia = (media: ProductMedia[]): ProductMedia[] => {
+  const seenUrls = new Set<string>();
+  return media
+    .filter((item) => {
+      if (seenUrls.has(item.url)) return false;
+      seenUrls.add(item.url);
+      return true;
+    })
+    .sort((left, right) => left.order - right.order);
+};
+
+export const normalizeMedia = (
+  rawMedia: unknown,
+  legacyThumbnailUrl: unknown,
+  legacyImages: unknown,
+): ProductMedia[] => {
+  const standardMedia = Array.isArray(rawMedia)
+    ? rawMedia.flatMap((item, position) => {
+        const media = asMedia(item, position);
+        return media ? [media] : [];
+      })
+    : [];
+
+  if (standardMedia.length > 0) return uniqueOrderedMedia(standardMedia);
+
+  const legacyUrls = [asString(legacyThumbnailUrl), ...asStringArray(legacyImages)]
+    .map((url) => url.trim())
+    .filter(Boolean);
+
+  return uniqueOrderedMedia(
+    legacyUrls.map((url, index) => ({
+      url,
+      storagePath: null,
+      alt: defaultAlt(index, index === 0),
+      order: index,
+    })),
+  );
+};
+
 export const normalizeProduct = (id: string, raw: unknown): Product => {
   const product = asRecord(raw);
   const name = asString(product.name).trim();
@@ -62,6 +120,7 @@ export const normalizeProduct = (id: string, raw: unknown): Product => {
     originalPrice: asNullableNonNegativeNumber(product.originalPrice),
     thumbnailUrl: asString(product.thumbnailUrl),
     images: asStringArray(product.images),
+    media: normalizeMedia(product.media, product.thumbnailUrl, product.images),
     description: asString(product.description),
     benefits: asStringArray(product.benefits),
     ingredients: asIngredients(product.ingredients),
