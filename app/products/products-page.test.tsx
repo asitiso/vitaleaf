@@ -114,24 +114,37 @@ it("hydrates listing filters from URL search parameters", async () => {
 
   render(await ProductsPage({
     searchParams: Promise.resolve({
-      q: "오메가",
-      category: "혈행 건강",
-      concern: "혈행",
-      minPrice: "30000",
-      maxPrice: "40000",
+      q: "유산균",
+      category: "probiotic",
+      concern: "gut",
+      minPrice: "10000",
+      maxPrice: "30000",
       stock: "1",
       sort: "price-desc",
     }),
   }));
 
-  expect(screen.getByRole("searchbox", { name: "상품 검색" })).toHaveValue("오메가");
-  expect(screen.getByLabelText("카테고리")).toHaveValue("혈행 건강");
-  expect(screen.getByLabelText("건강 고민")).toHaveValue("혈행");
-  expect(screen.getByLabelText("최소 가격")).toHaveValue(30_000);
-  expect(screen.getByLabelText("최대 가격")).toHaveValue(40_000);
+  expect(screen.getByRole("searchbox", { name: "상품 검색" })).toHaveValue("유산균");
+  expect(screen.getByLabelText("카테고리")).toHaveValue("유산균");
+  expect(screen.getByLabelText("건강 고민")).toHaveValue("장 건강");
+  expect(screen.getByLabelText("최소 가격")).toHaveValue(10_000);
+  expect(screen.getByLabelText("최대 가격")).toHaveValue(30_000);
   expect(screen.getByRole("checkbox", { name: "구매 가능한 상품만" })).toBeChecked();
   expect(screen.getByLabelText("정렬")).toHaveValue("price-desc");
   expect(screen.getAllByRole("article")).toHaveLength(1);
+});
+
+it("ignores invalid menu values instead of rendering a blank or broken catalog", async () => {
+  getProductsMock.mockResolvedValue(products);
+
+  render(await ProductsPage({
+    searchParams: Promise.resolve({ category: "unknown", concern: "missing", promotion: "expired", age: "99" }),
+  }));
+
+  expect(screen.getByRole("heading", { level: 1, name: "전체 상품" })).toBeInTheDocument();
+  expect(screen.getAllByRole("article")).toHaveLength(3);
+  expect(screen.getByLabelText("카테고리")).toHaveValue("");
+  expect(screen.getByLabelText("건강 고민")).toHaveValue("");
 });
 
 it("normalizes existing menu slugs and age targets into catalog filters", async () => {

@@ -24,6 +24,7 @@ type ProductBrowserProps = {
   loadError?: boolean;
   discoveryView?: "concerns" | "ingredients" | null;
   contextLabel?: string;
+  resultsTitle?: string;
 };
 
 type Chip = {
@@ -52,6 +53,7 @@ export function ProductBrowser({
   loadError = false,
   discoveryView = null,
   contextLabel,
+  resultsTitle = "전체 상품",
 }: ProductBrowserProps) {
   const startingFilters = useMemo(() => ({ ...defaultProductFilters, ...initialFilters }), [initialFilters]);
   const [filters, setFilters] = useState<ProductFilterValues>(startingFilters);
@@ -106,7 +108,7 @@ export function ProductBrowser({
         ) : null}
         <div className="product-browser__toolbar">
           <div>
-            <h2 id="product-results-title">전체 상품</h2>
+            <h2 id="product-results-title">{resultsTitle}</h2>
             <p aria-live="polite">총 {visibleProducts.length.toLocaleString("ko-KR")}개 상품</p>
             {contextLabel ? <p className="product-browser__context">{contextLabel}</p> : null}
           </div>
