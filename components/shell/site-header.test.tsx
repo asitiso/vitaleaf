@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { CartProvider } from "../../features/cart/cart-context";
+import { STOREFRONT_MENU } from "../../lib/navigation/storefront-menu";
 
 import { SiteHeader } from "./site-header";
 
@@ -28,6 +29,23 @@ describe("SiteHeader", () => {
     renderHeader();
 
     expect(screen.getByRole("link", { name: "베스트" })).toHaveAttribute("href", "/products?sort=popular");
+  });
+
+  it("uses the shared menu links in both desktop navigation and the mobile drawer", async () => {
+    const user = userEvent.setup();
+    renderHeader();
+
+    for (const item of STOREFRONT_MENU.header) {
+      expect(screen.getByRole("link", { name: item.label })).toHaveAttribute("href", item.href);
+    }
+
+    await user.click(screen.getByRole("button", { name: "메뉴 열기" }));
+    const drawer = screen.getByRole("dialog", { name: "모바일 메뉴" });
+    const mobileNavigation = within(drawer).getByRole("navigation", { name: "모바일 주요 메뉴" });
+
+    for (const item of STOREFRONT_MENU.header) {
+      expect(within(mobileNavigation).getByRole("link", { name: item.label })).toHaveAttribute("href", item.href);
+    }
   });
 
   it("opens the category menu and exposes health concern links", async () => {

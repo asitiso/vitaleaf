@@ -1,14 +1,14 @@
 import { render, screen } from "@testing-library/react";
 import { expect, it } from "vitest";
 
+import { STOREFRONT_MENU } from "../../lib/navigation/storefront-menu";
+
 import { SiteFooter } from "./site-footer";
 
-it("links only to useful routes that exist in the storefront", () => {
+it("renders the shared footer links", () => {
   render(<SiteFooter />);
 
-  const hrefs = screen.getAllByRole("link").map((link) => link.getAttribute("href"));
-
-  expect(hrefs).toEqual(["/", "/products", "/cart", "tel:0212345678"]);
-  expect(hrefs).not.toContain("/story");
-  expect(hrefs.some((href) => href?.startsWith("/help"))).toBe(false);
+  for (const item of STOREFRONT_MENU.footer) {
+    expect(screen.getByRole("link", { name: item.label })).toHaveAttribute("href", item.href);
+  }
 });

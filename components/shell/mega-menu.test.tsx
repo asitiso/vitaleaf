@@ -1,6 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { STOREFRONT_MENU } from "../../lib/navigation/storefront-menu";
+
 import { MegaMenu } from "./mega-menu";
 
 describe("MegaMenu", () => {
@@ -11,5 +13,17 @@ describe("MegaMenu", () => {
     expect(screen.getByRole("heading", { name: "건강 고민" })).toBeVisible();
     expect(screen.getByRole("link", { name: "50대+" })).toBeVisible();
     expect(screen.getByRole("link", { name: /첫 구매 고객.*7일 체험/ })).toBeVisible();
+  });
+
+  it("renders every shared category, concern, and age destination", () => {
+    render(<MegaMenu onNavigate={() => undefined} />);
+
+    for (const item of [
+      ...STOREFRONT_MENU.categories,
+      ...STOREFRONT_MENU.concerns,
+      ...STOREFRONT_MENU.ages,
+    ]) {
+      expect(screen.getByRole("link", { name: item.label })).toHaveAttribute("href", item.href);
+    }
   });
 });

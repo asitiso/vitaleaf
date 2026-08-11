@@ -1,29 +1,6 @@
 import Link from "next/link";
 
-type MenuLink = { href: string; label: string };
-
-const productCategories: MenuLink[] = [
-  { href: "/products?category=nutrition", label: "영양제" },
-  { href: "/products?category=vitamin", label: "비타민" },
-  { href: "/products?category=probiotic", label: "유산균" },
-  { href: "/products?category=wellness", label: "웰니스" },
-  { href: "/products?category=food", label: "건강식품" },
-];
-
-const concerns: MenuLink[] = [
-  { href: "/products?concern=energy", label: "피로·활력" },
-  { href: "/products?concern=immunity", label: "면역" },
-  { href: "/products?concern=sleep", label: "수면" },
-  { href: "/products?concern=eyes", label: "눈 건강" },
-  { href: "/products?concern=gut", label: "장 건강" },
-  { href: "/products?concern=brain", label: "뇌 건강" },
-];
-
-const ageTargets: MenuLink[] = [
-  { href: "/products?age=30", label: "30대" },
-  { href: "/products?age=40", label: "40대" },
-  { href: "/products?age=50", label: "50대+" },
-];
+import { STOREFRONT_MENU } from "../../lib/navigation/storefront-menu";
 
 export function MegaMenu({
   id,
@@ -40,8 +17,8 @@ export function MegaMenu({
         <section aria-labelledby={`${id ?? variant}-products-heading`}>
           <h2 id={`${id ?? variant}-products-heading`}>상품 카테고리</h2>
           <ul className="mega-menu__link-list">
-            {productCategories.map((category) => (
-              <li key={category.label}>
+            {STOREFRONT_MENU.categories.map((category) => (
+              <li key={category.key}>
                 <Link href={category.href} onClick={onNavigate}>{category.label}</Link>
               </li>
             ))}
@@ -50,8 +27,8 @@ export function MegaMenu({
         <section aria-labelledby={`${id ?? variant}-concerns-heading`}>
           <h2 id={`${id ?? variant}-concerns-heading`}>건강 고민</h2>
           <ul className="mega-menu__concerns">
-            {concerns.map((concern) => (
-              <li key={concern.label}>
+            {STOREFRONT_MENU.concerns.map((concern) => (
+              <li key={concern.key}>
                 <Link href={concern.href} onClick={onNavigate}>
                   <span aria-hidden="true">{concern.label.slice(0, 1)}</span>
                   {concern.label}
@@ -63,8 +40,8 @@ export function MegaMenu({
         <section aria-labelledby={`${id ?? variant}-age-heading`}>
           <h2 id={`${id ?? variant}-age-heading`}>연령별 추천</h2>
           <ul className="mega-menu__age-list">
-            {ageTargets.map((target) => (
-              <li key={target.label}>
+            {STOREFRONT_MENU.ages.map((target) => (
+              <li key={target.key}>
                 <Link href={target.href} onClick={onNavigate}>{target.label}</Link>
               </li>
             ))}

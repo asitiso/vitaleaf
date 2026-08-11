@@ -4,16 +4,9 @@ import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { useCart } from "../../features/cart/cart-context";
+import { STOREFRONT_MENU } from "../../lib/navigation/storefront-menu";
 
 import { MegaMenu } from "./mega-menu";
-
-const primaryNavigation = [
-  { href: "/products?sort=popular", label: "베스트" },
-  { href: "/products?promotion=today", label: "오늘의 특가" },
-  { href: "/products?view=concerns", label: "건강 고민별" },
-  { href: "/products?category=gift", label: "선물세트" },
-  { href: "/products?view=ingredients", label: "성분 가이드" },
-];
 
 function SearchForm({ className }: { className?: string }) {
   return (
@@ -120,7 +113,7 @@ export function SiteHeader() {
         <div ref={menuRootRef} className="site-header__navigation-row">
           <nav className="site-header__primary-nav" aria-label="주요 메뉴">
             <button ref={categoryTriggerRef} className="site-header__category-trigger" type="button" aria-expanded={isMegaMenuOpen} aria-controls={megaMenuId} onClick={() => setIsMegaMenuOpen((isOpen) => !isOpen)}><span aria-hidden="true">☷</span> 전체 카테고리</button>
-            {primaryNavigation.map((item) => <Link key={item.label} href={item.href}>{item.label}</Link>)}
+            {STOREFRONT_MENU.header.map((item) => <Link key={item.key} href={item.href}>{item.label}</Link>)}
           </nav>
           {isMegaMenuOpen ? <MegaMenu id={megaMenuId} onNavigate={() => closeMegaMenu()} /> : null}
         </div>
@@ -133,7 +126,7 @@ export function SiteHeader() {
             <SearchForm className="site-header__mobile-search" />
             <nav aria-label="모바일 주요 메뉴">
               <Link href="/products" onClick={() => closeMobileMenu()}>전체 상품</Link>
-              {primaryNavigation.map((item) => <Link key={item.label} href={item.href} onClick={() => closeMobileMenu()}>{item.label}</Link>)}
+              {STOREFRONT_MENU.header.map((item) => <Link key={item.key} href={item.href} onClick={() => closeMobileMenu()}>{item.label}</Link>)}
               <Link href="/cart" onClick={() => closeMobileMenu()}>장바구니 ({itemCount})</Link>
             </nav>
             <MegaMenu variant="drawer" onNavigate={() => closeMobileMenu()} />
