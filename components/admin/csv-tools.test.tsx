@@ -15,6 +15,7 @@ const product: Product = {
   originalPrice: null,
   thumbnailUrl: "https://example.com/omega.jpg",
   images: [],
+  media: [{ url: "https://example.com/omega.jpg", storagePath: null, alt: "Omega", order: 0 }],
   description: "매일 섭취하는 오메가3",
   benefits: ["혈행 건강"],
   ingredients: [],

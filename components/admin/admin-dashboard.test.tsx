@@ -24,6 +24,7 @@ const product: Product = {
   originalPrice: null,
   thumbnailUrl: "",
   images: [],
+  media: [],
   description: "",
   benefits: [],
   ingredients: [],

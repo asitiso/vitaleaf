@@ -16,6 +16,11 @@ const representativeProduct: Product = {
   originalPrice: 42_000,
   thumbnailUrl: "https://example.com/omega,front.jpg",
   images: ["https://example.com/front.jpg", "https://example.com/back.jpg"],
+  media: [
+    { url: "https://example.com/omega,front.jpg", storagePath: null, alt: "Omega front", order: 0 },
+    { url: "https://example.com/front.jpg", storagePath: null, alt: "Front", order: 1 },
+    { url: "https://example.com/back.jpg", storagePath: null, alt: "Back", order: 2 },
+  ],
   description: "깨끗한 원료의 \"고함량\" 오메가3",
   benefits: ["혈행 개선", "기억력 개선"],
   ingredients: [

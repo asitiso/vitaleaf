@@ -23,6 +23,7 @@ const makeProduct = (overrides: Partial<Product>): Product => ({
   originalPrice: null,
   thumbnailUrl: "",
   images: [],
+  media: [],
   description: "",
   benefits: [],
   ingredients: [],

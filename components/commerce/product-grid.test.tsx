@@ -14,6 +14,7 @@ const rankedProduct = (id: string, salesRank: number | null): Product => ({
   originalPrice: null,
   thumbnailUrl: "",
   images: [],
+  media: [],
   description: "",
   benefits: [],
   ingredients: [],

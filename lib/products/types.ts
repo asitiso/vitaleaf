@@ -23,8 +23,7 @@ export type Product = {
   originalPrice: number | null;
   thumbnailUrl: string;
   images: string[];
-  // Optional while records and existing Product literals migrate from the legacy image fields.
-  media?: ProductMedia[];
+  media: ProductMedia[];
   description: string;
   benefits: string[];
   ingredients: Ingredient[];

@@ -35,6 +35,10 @@ const product: Product = {
   originalPrice: 40_000,
   thumbnailUrl: "https://images.example.com/omega-3-main.jpg",
   images: ["https://images.example.com/omega-3-side.jpg"],
+  media: [
+    { url: "https://images.example.com/omega-3-main.jpg", storagePath: null, alt: "Omega 3 main", order: 0 },
+    { url: "https://images.example.com/omega-3-side.jpg", storagePath: null, alt: "Omega 3 side", order: 1 },
+  ],
   description: "매일 간편하게 챙기는 혈행 건강",
   benefits: ["혈행 개선", "기억력 개선", "건조한 눈 개선", "피로 개선"],
   ingredients: [{ name: "EPA 및 DHA", amount: "600 mg", dailyValue: "100%" }],

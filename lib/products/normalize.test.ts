@@ -85,6 +85,23 @@ describe("normalizeProduct", () => {
     ]);
   });
 
+  it("renumbers legacy fallback media after duplicate URLs are removed", () => {
+    const product = normalizeProduct("legacy-duplicates", {
+      name: "Legacy product",
+      category: "supplements",
+      price: 10_000,
+      stock: 3,
+      thumbnailUrl: "a.jpg",
+      images: ["a.jpg", "b.jpg", "b.jpg", "c.jpg"],
+    });
+
+    expect(product.media).toEqual([
+      { url: "a.jpg", storagePath: null, alt: "상품 대표 이미지", order: 0 },
+      { url: "b.jpg", storagePath: null, alt: "상품 상세 이미지 2", order: 1 },
+      { url: "c.jpg", storagePath: null, alt: "상품 상세 이미지 3", order: 2 },
+    ]);
+  });
+
   it("prefers deduplicated standard media ordered by its order field", () => {
     const product = normalizeProduct("standard", {
       name: "Standard product",
@@ -104,5 +121,36 @@ describe("normalizeProduct", () => {
       { url: "first.jpg", storagePath: null, alt: "First", order: 1 },
       { url: "second.jpg", storagePath: "products/second.jpg", alt: "Second", order: 2 },
     ]);
+  });
+
+  it("derives legacy image fields from canonical media when legacy fields are absent", () => {
+    const product = normalizeProduct("media-only", {
+      name: "Media only product",
+      category: "supplements",
+      price: 10_000,
+      stock: 3,
+      media: [
+        { url: "detail.jpg", storagePath: null, alt: "Detail", order: 2 },
+        { url: "main.jpg", storagePath: null, alt: "Main", order: 1 },
+      ],
+    });
+
+    expect(product.thumbnailUrl).toBe("main.jpg");
+    expect(product.images).toEqual(["main.jpg", "detail.jpg"]);
+  });
+
+  it("uses canonical media instead of conflicting legacy image fields", () => {
+    const product = normalizeProduct("media-conflict", {
+      name: "Conflicting product",
+      category: "supplements",
+      price: 10_000,
+      stock: 3,
+      thumbnailUrl: "outdated-main.jpg",
+      images: ["outdated-detail.jpg"],
+      media: [{ url: "current-main.jpg", storagePath: null, alt: "Main", order: 0 }],
+    });
+
+    expect(product.thumbnailUrl).toBe("current-main.jpg");
+    expect(product.images).toEqual(["current-main.jpg"]);
   });
 });

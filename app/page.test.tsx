@@ -20,6 +20,7 @@ const product: Product = {
   originalPrice: 40_000,
   thumbnailUrl: "",
   images: [],
+  media: [],
   description: "",
   benefits: ["혈행"],
   ingredients: [{ name: "EPA 및 DHA", amount: "600 mg", dailyValue: "" }],

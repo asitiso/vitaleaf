@@ -14,6 +14,7 @@ const product: Product = {
   originalPrice: 40_000,
   thumbnailUrl: "https://images.example.com/omega-3.jpg",
   images: [],
+  media: [{ url: "https://images.example.com/omega-3.jpg", storagePath: null, alt: "Omega 3", order: 0 }],
   description: "매일 챙기는 혈행 건강",
   benefits: ["혈행", "기억력"],
   ingredients: [{ name: "EPA 및 DHA", amount: "600 mg", dailyValue: "" }],

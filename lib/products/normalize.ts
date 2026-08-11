@@ -83,9 +83,11 @@ export const normalizeMedia = (
 
   if (standardMedia.length > 0) return uniqueOrderedMedia(standardMedia);
 
-  const legacyUrls = [asString(legacyThumbnailUrl), ...asStringArray(legacyImages)]
-    .map((url) => url.trim())
-    .filter(Boolean);
+  const legacyUrls = [...new Set(
+    [asString(legacyThumbnailUrl), ...asStringArray(legacyImages)]
+      .map((url) => url.trim())
+      .filter(Boolean),
+  )];
 
   return uniqueOrderedMedia(
     legacyUrls.map((url, index) => ({
@@ -99,6 +101,7 @@ export const normalizeMedia = (
 
 export const normalizeProduct = (id: string, raw: unknown): Product => {
   const product = asRecord(raw);
+  const media = normalizeMedia(product.media, product.thumbnailUrl, product.images);
   const name = asString(product.name).trim();
   if (!name) throw new Error("상품명이 필요합니다");
 
@@ -118,9 +121,9 @@ export const normalizeProduct = (id: string, raw: unknown): Product => {
     concerns: asStringArray(product.concerns),
     price: product.price,
     originalPrice: asNullableNonNegativeNumber(product.originalPrice),
-    thumbnailUrl: asString(product.thumbnailUrl),
-    images: asStringArray(product.images),
-    media: normalizeMedia(product.media, product.thumbnailUrl, product.images),
+    thumbnailUrl: media[0]?.url ?? "",
+    images: media.map((item) => item.url),
+    media,
     description: asString(product.description),
     benefits: asStringArray(product.benefits),
     ingredients: asIngredients(product.ingredients),

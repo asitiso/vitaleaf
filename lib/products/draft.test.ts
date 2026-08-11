@@ -90,4 +90,31 @@ describe("product drafts", () => {
       { url: "second.jpg", storagePath: null, alt: "Second", order: 2 },
     ]);
   });
+
+  it("returns a publish snapshot independent from mutable draft collections", () => {
+    const draft = makeDraft({
+      concerns: ["heart"],
+      images: ["legacy.jpg"],
+      benefits: ["supports circulation"],
+      ingredients: [{ name: "EPA", amount: "600mg", dailyValue: "" }],
+      certifications: ["GMP"],
+      cautions: ["Take with food"],
+    });
+    const input = toPublishedProductInput(draft);
+
+    draft.concerns[0] = "changed";
+    draft.benefits[0] = "changed";
+    draft.ingredients[0]!.name = "changed";
+    draft.certifications[0] = "changed";
+    draft.cautions[0] = "changed";
+    draft.media[0]!.alt = "changed";
+
+    expect(input.concerns).toEqual(["heart"]);
+    expect(input.benefits).toEqual(["supports circulation"]);
+    expect(input.ingredients).toEqual([{ name: "EPA", amount: "600mg", dailyValue: "" }]);
+    expect(input.certifications).toEqual(["GMP"]);
+    expect(input.cautions).toEqual(["Take with food"]);
+    expect(input.media[0]?.alt).toBe("Main image");
+    expect(input.images).not.toBe(draft.images);
+  });
 });

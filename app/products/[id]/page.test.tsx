@@ -35,6 +35,7 @@ const product: Product = {
   originalPrice: null,
   thumbnailUrl: "",
   images: [],
+  media: [],
   description: "혈행 건강",
   benefits: [],
   ingredients: [],
