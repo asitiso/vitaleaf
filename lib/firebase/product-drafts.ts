@@ -275,6 +275,13 @@ const productRevision = (product: Product, expected: number | null): void => {
 const writeToDomain = (id: string, write: ProductDraftWrite): ProductDraft => normalizeDraft(id, write);
 
 export const createProductDraftRepository = (adapter: ProductDraftRepositoryAdapter) => {
+  const localSessions = new Map<string, {
+    sessionId: string;
+    revision: number;
+    acceptsSessionless: boolean;
+  }>();
+  const retiredSessions = new Set<string>();
+  const retiredSessionlessDrafts = new Set<string>();
   const pendingSaves = new Map<string, Promise<ProductDraft>>();
   const pendingPublishes = new Map<string, Promise<void>>();
   const pendingDiscards = new Map<string, Promise<void>>();
@@ -287,6 +294,35 @@ export const createProductDraftRepository = (adapter: ProductDraftRepositoryAdap
     }).catch(() => undefined);
     return operation;
   };
+
+  const sessionKey = (id: string, sessionId: string): string => `${id}:${sessionId}`;
+
+  const resolveLocalIdentity = (draft: ProductDraft): DraftIdentity | null => {
+    const localSession = localSessions.get(draft.id);
+    if (draft.sessionId === null) {
+      if (retiredSessionlessDrafts.has(draft.id)) return null;
+      return localSession?.acceptsSessionless
+        ? { id: draft.id, sessionId: localSession.sessionId, revision: localSession.revision }
+        : { id: draft.id, sessionId: null, revision: draft.revision };
+    }
+    if (retiredSessions.has(sessionKey(draft.id, draft.sessionId))) return null;
+    return localSession?.sessionId === draft.sessionId
+      ? { id: draft.id, ...localSession }
+      : { id: draft.id, sessionId: draft.sessionId, revision: draft.revision };
+  };
+
+  const retireLocalIdentity = (identity: DraftIdentity): void => {
+    if (!identity.sessionId) return;
+    retiredSessions.add(sessionKey(identity.id, identity.sessionId));
+    const localSession = localSessions.get(identity.id);
+    if (localSession?.sessionId !== identity.sessionId) return;
+    if (localSession.acceptsSessionless) retiredSessionlessDrafts.add(identity.id);
+    localSessions.delete(identity.id);
+  };
+
+  const retiredIdentityError = (): ProductDraftConflictError => new ProductDraftConflictError(
+    "This local draft session already finished. Start a new editing session to continue.",
+  );
 
   const persistDraft = (
     snapshot: ProductDraft,
@@ -403,9 +439,14 @@ export const createProductDraftRepository = (adapter: ProductDraftRepositoryAdap
     }
 
     const snapshot = { ...draft, ...draftContentFrom(draft) };
-    const generatedSessionId = draft.sessionId ?? adapter.createSessionId();
+    const resolvedIdentity = resolveLocalIdentity(draft);
+    if (!resolvedIdentity) return Promise.reject(retiredIdentityError());
+    const identity = {
+      sessionId: resolvedIdentity.sessionId ?? adapter.createSessionId(),
+      revision: resolvedIdentity.revision,
+    };
     const previousSave = pendingSaves.get(draft.id);
-    const operation = previousSave
+    const persistence = previousSave
       ? previousSave.then((previous) => persistDraft(snapshot, {
           sessionId: draft.sessionId && draft.sessionId !== previous.sessionId
             ? draft.sessionId
@@ -414,7 +455,18 @@ export const createProductDraftRepository = (adapter: ProductDraftRepositoryAdap
             ? draft.revision
             : previous.revision,
         }))
-      : persistDraft(snapshot, { sessionId: generatedSessionId, revision: draft.revision });
+      : persistDraft(snapshot, identity);
+    const operation = persistence.then((saved) => {
+      const previousLocal = localSessions.get(saved.id);
+      localSessions.set(saved.id, {
+        sessionId: saved.sessionId!,
+        revision: saved.revision,
+        acceptsSessionless: previousLocal?.sessionId === saved.sessionId
+          ? previousLocal.acceptsSessionless
+          : draft.sessionId === null && !retiredSessionlessDrafts.has(saved.id),
+      });
+      return saved;
+    });
 
     return track(pendingSaves, draft.id, operation);
   };
@@ -424,12 +476,20 @@ export const createProductDraftRepository = (adapter: ProductDraftRepositoryAdap
       return adapter.createId();
     },
 
+    startDraftSession(draft: ProductDraft): ProductDraft {
+      return {
+        ...draft,
+        sessionId: adapter.createSessionId(),
+        revision: 0,
+      };
+    },
+
     createProductEditDraft(product: Product): ProductDraft {
       return productDraftFromProduct(product, {
         id: product.id,
         status: "published-copy",
         mode: "edit",
-        sessionId: null,
+        sessionId: adapter.createSessionId(),
         revision: 0,
         sourceProductId: product.id,
         sourceProductRevision: product.revision ?? 0,
@@ -467,7 +527,8 @@ export const createProductDraftRepository = (adapter: ProductDraftRepositoryAdap
 
       const pendingSave = pendingSaves.get(draft.id);
       const operation = (async () => {
-        const identity = pendingSave ? await pendingSave : draft;
+        const identity = pendingSave ? await pendingSave : resolveLocalIdentity(draft);
+        if (!identity) throw retiredIdentityError();
         await adapter.runTransaction(async (transaction) => {
           const draftDocument = await transaction.getDraft(identity.id);
           const productDocument = await transaction.getProduct(identity.id);
@@ -513,6 +574,7 @@ export const createProductDraftRepository = (adapter: ProductDraftRepositoryAdap
           });
           transaction.deleteDraft(identity.id);
         });
+        retireLocalIdentity(identity);
       })();
 
       return track(pendingPublishes, draft.id, operation);
@@ -571,12 +633,14 @@ export const createProductDraftRepository = (adapter: ProductDraftRepositoryAdap
 
       const pendingSave = pendingSaves.get(draft.id);
       const operation = (async () => {
-        const identity = pendingSave ? await pendingSave : draft;
+        const identity = pendingSave ? await pendingSave : resolveLocalIdentity(draft);
+        if (!identity) throw retiredIdentityError();
         await adapter.runTransaction(async (transaction) => {
           const document = await transaction.getDraft(identity.id);
           requireIdentity(document, identity);
           transaction.deleteDraft(identity.id);
         });
+        retireLocalIdentity(identity);
       })();
       return track(pendingDiscards, draft.id, operation);
     },
@@ -652,6 +716,7 @@ const firebaseProductDraftAdapter: ProductDraftRepositoryAdapter = {
 const productDraftRepository = createProductDraftRepository(firebaseProductDraftAdapter);
 
 export const createDraftId = productDraftRepository.createDraftId;
+export const startDraftSession = productDraftRepository.startDraftSession;
 export const createProductEditDraft = productDraftRepository.createProductEditDraft;
 export const saveDraft = productDraftRepository.saveDraft;
 export const getDraft = productDraftRepository.getDraft;

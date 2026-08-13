@@ -224,6 +224,86 @@ const productFromState = (state: SharedState, id: string): Product => {
 };
 
 describe("product draft lifecycle transactions", () => {
+  it("reuses its committed local session for sequential saves of the original unsaved object", async () => {
+    const state = createState();
+    const repository = createProductDraftRepository(createSharedAdapter(state));
+    const localDraft = makeCreateDraft();
+
+    await repository.saveDraft(localDraft);
+    localDraft.name = "Second local snapshot";
+    const second = await repository.saveDraft(localDraft);
+
+    expect(second).toMatchObject({
+      sessionId: "session-1",
+      revision: 2,
+      name: "Second local snapshot",
+    });
+    expect(state.drafts.get(localDraft.id)).toMatchObject({
+      sessionId: "session-1",
+      revision: 2,
+      name: "Second local snapshot",
+    });
+  });
+
+  it("publishes after the first save when the caller keeps the original local object", async () => {
+    const state = createState();
+    const repository = createProductDraftRepository(createSharedAdapter(state));
+    const localDraft = makeCreateDraft();
+
+    await repository.saveDraft(localDraft);
+    await repository.publishDraft(localDraft);
+
+    expect(state.products.get(localDraft.id)).toMatchObject({ name: "Daily Omega", revision: 1 });
+    expect(state.drafts.has(localDraft.id)).toBe(false);
+  });
+
+  it("discards after the first save when the caller keeps the original local object", async () => {
+    const state = createState();
+    const repository = createProductDraftRepository(createSharedAdapter(state));
+    const localDraft = makeCreateDraft();
+
+    await repository.saveDraft(localDraft);
+    await repository.discardDraft(localDraft);
+
+    expect(state.drafts.has(localDraft.id)).toBe(false);
+    expect(state.products.has(localDraft.id)).toBe(false);
+  });
+
+  it("keeps the retired local object tombstoned across an explicit same-ID session restart", async () => {
+    const state = createState();
+    const repository = createProductDraftRepository(createSharedAdapter(state));
+    const localDraft = makeCreateDraft();
+
+    await repository.saveDraft(localDraft);
+    await repository.discardDraft(localDraft);
+    await expect(repository.saveDraft(localDraft)).rejects.toBeInstanceOf(ProductDraftConflictError);
+    expect(state.drafts.has(localDraft.id)).toBe(false);
+
+    const restarted = repository.startDraftSession({ ...localDraft, name: "Explicit restart" });
+    expect(restarted).toMatchObject({ sessionId: "session-2", revision: 0 });
+    await repository.saveDraft(restarted);
+    await expect(repository.saveDraft(localDraft)).rejects.toBeInstanceOf(ProductDraftConflictError);
+    expect(state.drafts.get(localDraft.id)).toMatchObject({
+      sessionId: "session-2",
+      revision: 1,
+      name: "Explicit restart",
+    });
+  });
+
+  it("does not retain a provisional local session when the first transaction fails", async () => {
+    const state = createState();
+    const repository = createProductDraftRepository(createSharedAdapter(state));
+    const localDraft = makeCreateDraft();
+    state.currentOwnerId = null;
+
+    await expect(repository.saveDraft(localDraft)).rejects.toThrow("authenticated admin");
+    state.currentOwnerId = "admin-a";
+    const saved = await repository.saveDraft(localDraft);
+
+    expect(saved).toMatchObject({ sessionId: "session-2", revision: 1 });
+    expect(state.drafts.get(localDraft.id)).toMatchObject({ sessionId: "session-2", revision: 1 });
+  });
+
   it("creates a same-ID edit draft without removing its published product, then revision-checks updates", async () => {
     const state = createState();
     const product = makeProduct();

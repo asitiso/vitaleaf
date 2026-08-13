@@ -38,6 +38,7 @@ const product: Product = {
   salesRank: null,
   ratingAverage: 0,
   reviewCount: 0,
+  revision: 4,
   createdAt: null,
   updatedAt: null,
 };
@@ -193,7 +194,10 @@ it("logs in, searches products, toggles stock, and confirms deletion", async () 
   expect(screen.queryByText("비타민 D")).not.toBeInTheDocument();
 
   await user.click(screen.getByRole("button", { name: "데일리 오메가3 품절 처리" }));
-  await waitFor(() => expect(saveProduct).toHaveBeenCalledWith(expect.objectContaining({ stock: 0 }), "omega"));
+  await waitFor(() => expect(saveProduct).toHaveBeenCalledWith(
+    expect.objectContaining({ stock: 0 }),
+    { id: "omega", expectedRevision: 4 },
+  ));
   expect(await screen.findByText("재고 상태를 변경했습니다.")).toBeVisible();
 
   await user.click(screen.getByRole("button", { name: "데일리 오메가3 삭제" }));
@@ -222,6 +226,11 @@ it("opens create and edit forms only after authorization", async () => {
   await user.click(screen.getByRole("button", { name: "취소" }));
   await user.click(screen.getByRole("button", { name: "데일리 오메가3 수정" }));
   expect(screen.getByRole("heading", { name: "데일리 오메가3 수정" })).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "상품 저장" }));
+  await waitFor(() => expect(deps.saveProduct).toHaveBeenCalledWith(
+    expect.objectContaining({ name: product.name }),
+    { id: "omega", expectedRevision: 4 },
+  ));
 });
 
 it("moves focus into the delete dialog, traps it, closes on Escape, and restores the trigger", async () => {

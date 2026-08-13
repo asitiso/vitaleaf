@@ -226,7 +226,7 @@ describe("Firebase transaction boundary", () => {
     authMock.currentUser = { get uid() { return pendingOwner.current; } };
     pendingOwner.current = "admin-b";
 
-    const saved = await saveDraft(makeDraft());
+    const saved = await saveDraft(makeDraft({ id: "owner-draft" }));
 
     expect(runTransactionMock).toHaveBeenCalledOnce();
     expect(firebaseState.productDrafts.get(saved.id)).toMatchObject({
@@ -238,7 +238,7 @@ describe("Firebase transaction boundary", () => {
   });
 
   it("publishes authoritative draft data with one atomic transaction", async () => {
-    const saved = await saveDraft(makeDraft());
+    const saved = await saveDraft(makeDraft({ id: "publish-draft" }));
     firebaseState.productDrafts.set(saved.id, {
       ...firebaseState.productDrafts.get(saved.id),
       name: "Authoritative Firestore Name",

@@ -26,11 +26,23 @@ export type ProductWrite = ProductInput & {
   updatedAt: unknown;
 };
 
+export type ProductUpdateTarget = {
+  id: string;
+  expectedRevision: number;
+};
+
+export class ProductRevisionConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProductRevisionConflictError";
+  }
+}
+
 export type ProductRepositoryAdapter = {
   list: () => Promise<FirestoreDocument[]>;
   get?: (id: string) => Promise<FirestoreDocument | null>;
   subscribe?: (onData: (documents: FirestoreDocument[]) => void, onError: (error: Error) => void) => Unsubscribe;
-  save?: (id: string | undefined, product: ProductWrite) => Promise<string>;
+  save?: (target: ProductUpdateTarget | undefined, product: ProductWrite) => Promise<string>;
   delete?: (id: string) => Promise<void>;
   timestamp?: () => unknown;
 };
@@ -66,12 +78,22 @@ export const createProductRepository = (adapter: ProductRepositoryAdapter) => ({
     );
   },
 
-  async saveProduct(input: ProductInput, id?: string): Promise<string> {
+  async saveProduct(input: ProductInput, target?: ProductUpdateTarget): Promise<string> {
+    if (target !== undefined && (
+      typeof target !== "object"
+      || target === null
+      || typeof target.id !== "string"
+      || !target.id.trim()
+      || !Number.isInteger(target.expectedRevision)
+      || target.expectedRevision < 0
+    )) {
+      throw new ProductRevisionConflictError("Product updates require a valid id and expected revision.");
+    }
     const save = requireAdapterMethod(adapter.save, "save");
     const timestamp = (adapter.timestamp ?? serverTimestamp)();
-    return save(id, {
+    return save(target, {
       ...input,
-      ...(id ? {} : { createdAt: timestamp }),
+      ...(target ? {} : { createdAt: timestamp }),
       updatedAt: timestamp,
     });
   },
@@ -98,13 +120,13 @@ const firebaseProductAdapter: Required<ProductRepositoryAdapter> = {
       onError,
     );
   },
-  async save(id, product) {
-    if (id) {
+  async save(target, product) {
+    if (target) {
       await runTransaction(db, async (transaction) => {
         const ownerId = auth.currentUser?.uid;
         if (!ownerId) throw new Error("An authenticated administrator is required.");
 
-        const reference = doc(db, "products", id);
+        const reference = doc(db, "products", target.id);
         const snapshot = await transaction.get(reference);
         if (!snapshot.exists()) throw new Error("The product no longer exists.");
 
@@ -112,13 +134,18 @@ const firebaseProductAdapter: Required<ProductRepositoryAdapter> = {
         const storedRevision = typeof stored.revision === "number" && Number.isInteger(stored.revision)
           ? stored.revision
           : 0;
+        if (storedRevision !== target.expectedRevision) {
+          throw new ProductRevisionConflictError(
+            "The product changed in another session. Refresh before saving.",
+          );
+        }
         transaction.set(reference, {
           ...product,
-          revision: storedRevision + 1,
+          revision: target.expectedRevision + 1,
           updatedBy: ownerId,
         }, { merge: true });
       });
-      return id;
+      return target.id;
     }
 
     const ownerId = auth.currentUser?.uid;

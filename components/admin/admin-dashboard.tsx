@@ -10,7 +10,12 @@ import {
   type AdminSignInResult,
   type AdminSessionState,
 } from "../../lib/firebase/auth";
-import { deleteProduct, saveProduct, subscribeProducts } from "../../lib/firebase/products";
+import {
+  deleteProduct,
+  saveProduct,
+  subscribeProducts,
+  type ProductUpdateTarget,
+} from "../../lib/firebase/products";
 import type { Product, ProductInput } from "../../lib/products/types";
 import { formatWon } from "../../lib/format";
 import { CsvTools } from "./csv-tools";
@@ -21,7 +26,7 @@ export type AdminDashboardDependencies = {
   signInAdmin(email: string, password: string): Promise<AdminSignInResult>;
   signOutAdmin(): Promise<void>;
   subscribeProducts(onData: (products: Product[]) => void, onError: (error: Error) => void): () => void;
-  saveProduct(input: ProductInput, id?: string): Promise<string>;
+  saveProduct(input: ProductInput, target?: ProductUpdateTarget): Promise<string>;
   deleteProduct(id: string): Promise<void>;
 };
 
@@ -209,10 +214,12 @@ export function AdminDashboard({ dependencies = defaultDependencies }: { depende
 
   const save = async (input: ProductInput) => {
     try {
-      const id = editing === "create" || !editing ? undefined : editing.id;
-      await dependencies.saveProduct(input, id);
+      const target = editing && editing !== "create"
+        ? { id: editing.id, expectedRevision: editing.revision ?? 0 }
+        : undefined;
+      await dependencies.saveProduct(input, target);
       setEditing(null);
-      setToast(id ? "상품을 수정했습니다." : "상품을 등록했습니다.");
+      setToast(target ? "상품을 수정했습니다." : "상품을 등록했습니다.");
     } catch {
       setToast("상품을 저장하지 못했습니다. 네트워크 연결을 확인해 주세요.");
     }
@@ -224,7 +231,10 @@ export function AdminDashboard({ dependencies = defaultDependencies }: { depende
 
   const toggleStock = async (product: Product) => {
     try {
-      await dependencies.saveProduct({ ...toInput(product), stock: product.stock > 0 ? 0 : 1 }, product.id);
+      await dependencies.saveProduct(
+        { ...toInput(product), stock: product.stock > 0 ? 0 : 1 },
+        { id: product.id, expectedRevision: product.revision ?? 0 },
+      );
       setToast("재고 상태를 변경했습니다.");
     } catch {
       setToast("재고 상태를 변경하지 못했습니다.");

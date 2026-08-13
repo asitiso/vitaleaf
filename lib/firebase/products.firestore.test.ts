@@ -6,6 +6,7 @@ const {
   docMock,
   getDocsMock,
   onSnapshotMock,
+  productState,
   productCollection,
   runTransactionMock,
   serverTimestampMock,
@@ -18,6 +19,7 @@ const {
   docMock: vi.fn(),
   getDocsMock: vi.fn(),
   onSnapshotMock: vi.fn(),
+  productState: { value: {} as Record<string, unknown> },
   productCollection: { kind: "products-collection" },
   runTransactionMock: vi.fn(),
   serverTimestampMock: vi.fn(),
@@ -40,7 +42,13 @@ vi.mock("firebase/firestore", () => ({
   setDoc: vi.fn(),
 }));
 
-import { getProducts, saveProduct, subscribeProducts } from "./products";
+import {
+  ProductRevisionConflictError,
+  getProducts,
+  saveProduct,
+  subscribeProducts,
+  type ProductUpdateTarget,
+} from "./products";
 
 const baseProduct = {
   name: "Daily Omega",
@@ -79,11 +87,24 @@ beforeEach(() => {
   unsubscribeMock.mockReset();
   addDocMock.mockReset().mockResolvedValue({ id: "created-product" });
   serverTimestampMock.mockReset().mockReturnValue({ marker: "server-time" });
-  transactionGetMock.mockReset().mockResolvedValue({ exists: () => true, data: () => ({ revision: 4 }) });
+  productState.value = { revision: 4, name: "Daily Omega", stock: 12 };
+  transactionGetMock.mockReset().mockImplementation(async () => ({
+    exists: () => true,
+    data: () => structuredClone(productState.value),
+  }));
   transactionSetMock.mockReset();
-  runTransactionMock.mockReset().mockImplementation(async (_database, operation) => (
-    operation({ get: transactionGetMock, set: transactionSetMock })
-  ));
+  runTransactionMock.mockReset().mockImplementation(async (_database, operation) => {
+    let nextValue: Record<string, unknown> | null = null;
+    const result = await operation({
+      get: transactionGetMock,
+      set: (reference: unknown, value: Record<string, unknown>, options: unknown) => {
+        transactionSetMock(reference, value, options);
+        nextValue = { ...productState.value, ...structuredClone(value) };
+      },
+    });
+    if (nextValue) productState.value = nextValue;
+    return result;
+  });
   collectionMock.mockReturnValue(productCollection);
 });
 
@@ -120,10 +141,35 @@ it("adds owner metadata and revision checks to direct admin product writes", asy
     updatedBy: "admin-1",
   }));
 
-  await expect(saveProduct(baseProduct, "existing")).resolves.toBe("existing");
+  await expect(saveProduct(baseProduct, { id: "existing", expectedRevision: 4 })).resolves.toBe("existing");
   expect(transactionSetMock).toHaveBeenCalledWith(
     expect.anything(),
     expect.objectContaining({ revision: 5, updatedBy: "admin-1" }),
     { merge: true },
   );
+});
+
+it("rejects a stale whole-product update instead of overwriting a newer revision", async () => {
+  await expect(saveProduct(
+    { ...baseProduct, name: "Writer A" },
+    { id: "existing", expectedRevision: 4 },
+  )).resolves.toBe("existing");
+
+  await expect(saveProduct(
+    { ...baseProduct, stock: 0 },
+    { id: "existing", expectedRevision: 4 },
+  )).rejects.toThrow("changed in another session");
+
+  expect(productState.value).toMatchObject({ name: "Writer A", stock: 12, revision: 5 });
+});
+
+it("rejects an update target that omits its expected revision before starting a transaction", async () => {
+  const error = await saveProduct(
+    baseProduct,
+    { id: "existing" } as ProductUpdateTarget,
+  ).catch((reason: unknown) => reason);
+
+  expect(error).toBeInstanceOf(ProductRevisionConflictError);
+  expect(error).toMatchObject({ message: "Product updates require a valid id and expected revision." });
+  expect(runTransactionMock).not.toHaveBeenCalled();
 });
