@@ -2,7 +2,18 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 
+vi.mock("../../../lib/firebase/product-media", () => ({
+  uploadProductImage: vi.fn(),
+  deleteProductImage: vi.fn(),
+  validateImageFile: (candidate: Pick<File, "type" | "size">) => (
+    ["image/jpeg", "image/png", "image/webp"].includes(candidate.type) && candidate.size <= 10 * 1024 * 1024
+      ? { ok: true }
+      : { ok: false, message: "지원하지 않는 파일 형식입니다." }
+  ),
+}));
+
 import type { ProductDraft } from "../../../lib/products/types";
+import type { MediaUpload } from "./media-step";
 import { ProductWizard } from "./product-wizard";
 
 const draft = (overrides: Partial<ProductDraft> = {}): ProductDraft => ({
@@ -53,6 +64,12 @@ const propsFor = (overrides: Partial<ProductDraft> = {}) => ({
   onPreview: vi.fn(),
   onPublish: vi.fn().mockResolvedValue(undefined),
 });
+
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((nextResolve) => { resolve = nextResolve; });
+  return { promise, resolve };
+};
 
 it("moves through four labelled steps and focuses the first publish error", async () => {
   const user = userEvent.setup();
@@ -297,6 +314,19 @@ it("contains preview failures and prevents duplicate preview requests while pend
   rejectPreview(new Error("preview unavailable"));
 
   await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("미리 보기를 완료하지 못했습니다."));
+});
+
+it("blocks publishing while a product image upload is in progress", async () => {
+  const user = userEvent.setup();
+  const pending = deferred<{ url: string; storagePath: string; alt: string; order: number }>();
+  const upload = vi.fn<MediaUpload>(() => ({ promise: pending.promise, cancel: vi.fn() }));
+  render(<ProductWizard {...propsFor({ currentStep: 2 })} upload={upload} deleteImage={vi.fn()} />);
+
+  await user.upload(screen.getByLabelText("상품 이미지 추가"), new File(["image"], "front.jpg", { type: "image/jpeg" }));
+  expect(screen.getByRole("button", { name: "판매 공개" })).toBeDisabled();
+
+  pending.resolve({ url: "front.jpg", storagePath: "products/draft-1/front.jpg", alt: "front", order: 0 });
+  await waitFor(() => expect(screen.getByRole("button", { name: "판매 공개" })).toBeEnabled());
 });
 
 it("shows the same operation alert when preview throws synchronously", async () => {

@@ -6,6 +6,7 @@ import { validatePublishableDraft, type DraftValidationError } from "../../../li
 import type { ProductDraft } from "../../../lib/products/types";
 import { BasicStep } from "./basic-step";
 import { DetailsStep } from "./details-step";
+import { MediaStep, type MediaDelete, type MediaUpload } from "./media-step";
 import { SalesStep } from "./sales-step";
 import { WizardActions } from "./wizard-actions";
 
@@ -17,6 +18,8 @@ export type WizardProps = {
   onPreview(): void | Promise<void>;
   onPublish(): Promise<void>;
   mediaSlot?: ReactNode;
+  upload?: MediaUpload;
+  deleteImage?: MediaDelete;
 };
 
 type WizardStep = 1 | 2 | 3 | 4;
@@ -61,11 +64,12 @@ const focusIdFor = (field: DraftValidationError["field"]): string | null => ({
 
 const asStep = (value: number): WizardStep => value === 2 || value === 3 || value === 4 ? value : 1;
 
-export function ProductWizard({ draft, saveState, onChange, onSave, onPreview, onPublish, mediaSlot }: WizardProps) {
+export function ProductWizard({ draft, saveState, onChange, onSave, onPreview, onPublish, mediaSlot, upload, deleteImage }: WizardProps) {
   const [localState, setLocalState] = useState(() => ({ source: draft, value: draft, activeStep: draft.currentStep }));
   const [errors, setErrors] = useState<DraftValidationError[]>([]);
   const [busy, setBusy] = useState<BusyState>("idle");
   const [operationError, setOperationError] = useState("");
+  const [mediaUploading, setMediaUploading] = useState(false);
   const draftIdentity = `${draft.id}:${draft.sessionId ?? ""}`;
   const [slugState, setSlugState] = useState(() => ({ draftIdentity, wasManuallyEdited: false }));
 
@@ -178,11 +182,11 @@ export function ProductWizard({ draft, saveState, onChange, onSave, onPreview, o
       <div className="product-wizard__body" aria-live="polite">
         <p className="product-wizard__progress">{activeStep} / 4 · {current.name}</p>
         {activeStep === 1 && <BasicStep draft={workingDraft} errors={fieldErrors} slugWasManuallyEdited={slugWasManuallyEdited} onSlugEdited={() => setSlugState({ draftIdentity, wasManuallyEdited: true })} onChange={commit} />}
-        {activeStep === 2 && <section className="product-wizard__step-content" aria-labelledby="wizard-media-title"><h2 id="wizard-media-title">상품 이미지를 준비하세요</h2><p>대표 이미지와 상세 이미지는 다음 단계에서 추가할 수 있습니다.</p><div id="wizard-media-slot" tabIndex={-1} className="product-wizard__media-slot" aria-label="상품 이미지 업로드 영역" aria-invalid={Boolean(fieldErrors.media)} aria-describedby={fieldErrors.media ? "wizard-media-error" : undefined}>{mediaSlot ?? <p>이미지 업로드 기능을 준비하고 있습니다.</p>}</div>{fieldErrors.media && <small id="wizard-media-error">{fieldErrors.media}</small>}</section>}
+        {activeStep === 2 && <div id="wizard-media-slot" tabIndex={-1} className="product-wizard__media-slot" aria-label="상품 이미지 업로드 영역" aria-invalid={Boolean(fieldErrors.media)} aria-describedby={fieldErrors.media ? "wizard-media-error" : undefined}><MediaStep productId={workingDraft.id} media={workingDraft.media} onChange={(media) => commit({ ...workingDraft, media })} upload={upload} deleteImage={deleteImage} onUploadingChange={setMediaUploading} />{mediaSlot}{fieldErrors.media && <small id="wizard-media-error">{fieldErrors.media}</small>}</div>}
         {activeStep === 3 && <DetailsStep draft={workingDraft} errors={fieldErrors} onChange={commit} />}
         {activeStep === 4 && <SalesStep draft={workingDraft} errors={fieldErrors} onChange={commit} />}
       </div>
-      <WizardActions step={activeStep} busy={busy} saveState={saveState} onPrevious={() => goTo(asStep(activeStep - 1))} onNext={() => goTo(asStep(activeStep + 1))} onSave={() => void runSave()} onPreview={() => void runPreview()} onPublish={() => void runPublish()} />
+      <WizardActions step={activeStep} busy={busy} saveState={saveState} publishDisabled={mediaUploading} onPrevious={() => goTo(asStep(activeStep - 1))} onNext={() => goTo(asStep(activeStep + 1))} onSave={() => void runSave()} onPreview={() => void runPreview()} onPublish={() => void runPublish()} />
     </section>
   );
 }
