@@ -12,7 +12,7 @@ import { WizardActions } from "./wizard-actions";
 
 export type WizardProps = {
   draft: ProductDraft;
-  saveState: "idle" | "saving" | "saved" | "error";
+  saveState: "idle" | "dirty" | "saving" | "saved" | "error";
   onChange(next: ProductDraft): void;
   onSave(): Promise<void>;
   onPreview(): void | Promise<void>;
@@ -71,6 +71,7 @@ export function ProductWizard({ draft, saveState, onChange, onSave, onPreview, o
   const [operationError, setOperationError] = useState("");
   const [mediaUploading, setMediaUploading] = useState(false);
   const mediaUploadingRef = useRef(false);
+  const operationLockRef = useRef<BusyState>("idle");
   const draftIdentity = `${draft.id}:${draft.sessionId ?? ""}`;
   const [slugState, setSlugState] = useState(() => ({ draftIdentity, wasManuallyEdited: false }));
 
@@ -107,7 +108,8 @@ export function ProductWizard({ draft, saveState, onChange, onSave, onPreview, o
   };
 
   const runSave = async () => {
-    if (busy !== "idle" || saveState === "saving") return;
+    if (operationLockRef.current !== "idle") return;
+    operationLockRef.current = "saving";
     setBusy("saving");
     setOperationError("");
     try {
@@ -115,32 +117,37 @@ export function ProductWizard({ draft, saveState, onChange, onSave, onPreview, o
     } catch {
       setOperationError("임시 저장을 완료하지 못했습니다. 네트워크 연결을 확인한 뒤 다시 시도해 주세요.");
     } finally {
+      operationLockRef.current = "idle";
       setBusy("idle");
     }
   };
 
   const runPublish = async () => {
-    if (busy !== "idle" || saveState === "saving" || mediaUploadingRef.current) return;
-    const nextErrors = validatePublishableDraft(workingDraft).map((error) => ({ ...error, message: staffMessageFor(error) }));
-    setErrors(nextErrors);
-    setOperationError("");
-    if (nextErrors.length) {
-      const firstVisibleStep = Math.min(...nextErrors.map(visibleStepFor)) as WizardStep;
-      goTo(firstVisibleStep);
-      return;
-    }
+    if (operationLockRef.current !== "idle" || mediaUploadingRef.current) return;
+    operationLockRef.current = "publishing";
     setBusy("publishing");
+    setOperationError("");
     try {
+      await onSave();
+      const nextErrors = validatePublishableDraft(workingDraft).map((error) => ({ ...error, message: staffMessageFor(error) }));
+      setErrors(nextErrors);
+      if (nextErrors.length) {
+        const firstVisibleStep = Math.min(...nextErrors.map(visibleStepFor)) as WizardStep;
+        goTo(firstVisibleStep);
+        return;
+      }
       await onPublish();
     } catch {
       setOperationError("판매 공개를 완료하지 못했습니다. 저장 상태를 확인한 뒤 다시 시도해 주세요.");
     } finally {
+      operationLockRef.current = "idle";
       setBusy("idle");
     }
   };
 
   const runPreview = async () => {
-    if (busy !== "idle" || saveState === "saving") return;
+    if (operationLockRef.current !== "idle") return;
+    operationLockRef.current = "previewing";
     setBusy("previewing");
     setOperationError("");
     try {
@@ -148,6 +155,7 @@ export function ProductWizard({ draft, saveState, onChange, onSave, onPreview, o
     } catch {
       setOperationError("미리 보기를 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
+      operationLockRef.current = "idle";
       setBusy("idle");
     }
   };

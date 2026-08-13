@@ -10,7 +10,22 @@ vi.mock("../../lib/firebase/products", () => ({
   subscribeProducts: vi.fn(),
 }));
 
-import type { Product } from "../../lib/products/types";
+vi.mock("../../lib/firebase/product-drafts", () => ({
+  createDraftId: vi.fn(),
+  createProductEditDraft: vi.fn(),
+  publishDraft: vi.fn(),
+  saveDraft: vi.fn(),
+  startDraftSession: vi.fn(),
+  subscribeDrafts: vi.fn(),
+}));
+
+vi.mock("../../lib/firebase/product-media", () => ({
+  uploadProductImage: vi.fn(),
+  deleteProductImage: vi.fn(),
+  validateImageFile: vi.fn(() => ({ ok: true })),
+}));
+
+import type { Product, ProductDraft } from "../../lib/products/types";
 import { createAdminAuth } from "../../lib/firebase/auth";
 import { AdminDashboard, type AdminDashboardDependencies } from "./admin-dashboard";
 
@@ -53,6 +68,31 @@ const dependencies = (overrides: Partial<AdminDashboardDependencies> = {}): Admi
   subscribeProducts: vi.fn(),
   saveProduct: vi.fn().mockResolvedValue("saved-id"),
   deleteProduct: vi.fn().mockResolvedValue(undefined),
+  subscribeDrafts: vi.fn(),
+  createDraftId: vi.fn(() => "draft-new"),
+  startDraftSession: vi.fn((value: ProductDraft) => ({ ...value, sessionId: "session-new" })),
+  createProductEditDraft: vi.fn((value: Product) => productDraft(value)),
+  saveDraft: vi.fn(async (value: ProductDraft) => ({ ...value, revision: value.revision + 1 })),
+  publishDraft: vi.fn().mockResolvedValue(undefined),
+  uploadProductImage: vi.fn(),
+  deleteProductImage: vi.fn().mockResolvedValue(undefined),
+  ...overrides,
+});
+
+const productDraft = (value: Product = product, overrides: Partial<ProductDraft> = {}): ProductDraft => ({
+  ...value,
+  media: value.media,
+  status: "published-copy",
+  mode: "edit",
+  sessionId: "session-edit",
+  revision: 0,
+  sourceProductId: value.id,
+  sourceProductRevision: value.revision ?? 0,
+  sourceCreatedAt: value.createdAt,
+  sourceCreatedBy: value.createdBy ?? null,
+  currentStep: 1,
+  createdBy: null,
+  updatedBy: null,
   ...overrides,
 });
 
@@ -223,14 +263,15 @@ it("opens create and edit forms only after authorization", async () => {
 
   await user.click(await screen.findByRole("button", { name: "새 상품 등록" }));
   expect(screen.getByRole("heading", { name: "새 상품 등록" })).toBeVisible();
-  await user.click(screen.getByRole("button", { name: "취소" }));
+  await user.click(screen.getByRole("button", { name: "편집 닫기" }));
   await user.click(screen.getByRole("button", { name: "데일리 오메가3 수정" }));
   expect(screen.getByRole("heading", { name: "데일리 오메가3 수정" })).toBeVisible();
-  await user.click(screen.getByRole("button", { name: "상품 저장" }));
-  await waitFor(() => expect(deps.saveProduct).toHaveBeenCalledWith(
-    expect.objectContaining({ name: product.name }),
-    { id: "omega", expectedRevision: 4 },
-  ));
+  await user.click(screen.getByRole("button", { name: "임시 저장" }));
+  await waitFor(() => expect(deps.saveDraft).toHaveBeenCalledWith(expect.objectContaining({
+    id: "omega",
+    name: product.name,
+    sourceProductRevision: 4,
+  })));
 });
 
 it("moves focus into the delete dialog, traps it, closes on Escape, and restores the trigger", async () => {
@@ -263,4 +304,113 @@ it("moves focus into the delete dialog, traps it, closes on Escape, and restores
   expect(screen.queryByRole("dialog", { name: "상품 삭제 확인" })).not.toBeInTheDocument();
   expect(deleteTrigger).toHaveFocus();
   expect(deps.deleteProduct).not.toHaveBeenCalled();
+});
+
+it("flushes the authoritative edit draft and publishes once before returning to the dashboard", async () => {
+  const publishable = {
+    ...product,
+    media: [{ url: "omega.jpg", storagePath: null, alt: "오메가", order: 0 }],
+    thumbnailUrl: "omega.jpg",
+    images: ["omega.jpg"],
+    dosage: "하루 한 번",
+    ingredients: [{ name: "EPA", amount: "600mg", dailyValue: "" }],
+    origin: "한국",
+    cautions: ["권장량을 지켜 주세요."],
+  };
+  const saveDraft = vi.fn(async (value: ProductDraft) => ({ ...value, revision: 1 }));
+  const publishDraft = vi.fn().mockResolvedValue(undefined);
+  const deps = dependencies({
+    observeAdminSession: (next) => {
+      next("admin");
+      return vi.fn();
+    },
+    subscribeProducts: (onData) => {
+      onData([publishable]);
+      return vi.fn();
+    },
+    subscribeDrafts: (onData) => {
+      onData([]);
+      return vi.fn();
+    },
+    createProductEditDraft: vi.fn(() => productDraft(publishable)),
+    saveDraft,
+    publishDraft,
+  });
+  render(<AdminDashboard dependencies={deps} />);
+
+  await userEvent.click(await screen.findByRole("button", { name: `${product.name} 수정` }));
+  const publish = screen.getByRole("button", { name: "판매 공개" });
+  act(() => {
+    publish.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    publish.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+
+  await waitFor(() => expect(publishDraft).toHaveBeenCalledOnce());
+  expect(saveDraft).toHaveBeenCalledOnce();
+  expect(publishDraft).toHaveBeenCalledWith(expect.objectContaining({ revision: 1 }));
+  expect(saveDraft.mock.invocationCallOrder[0]).toBeLessThan(publishDraft.mock.invocationCallOrder[0]);
+  expect(screen.queryByRole("heading", { name: "상품 등록" })).not.toBeInTheDocument();
+});
+
+it("keeps a failed publish editable", async () => {
+  const publishable = {
+    ...product,
+    media: [{ url: "omega.jpg", storagePath: null, alt: "오메가", order: 0 }],
+    dosage: "하루 한 번",
+    ingredients: [{ name: "EPA", amount: "600mg", dailyValue: "" }],
+    origin: "한국",
+    cautions: ["권장량을 지켜 주세요."],
+  };
+  const deps = dependencies({
+    observeAdminSession: (next) => {
+      next("admin");
+      return vi.fn();
+    },
+    subscribeProducts: (onData) => {
+      onData([publishable]);
+      return vi.fn();
+    },
+    subscribeDrafts: (onData) => {
+      onData([]);
+      return vi.fn();
+    },
+    createProductEditDraft: vi.fn(() => productDraft(publishable)),
+    publishDraft: vi.fn().mockRejectedValue(new Error("offline")),
+  });
+  render(<AdminDashboard dependencies={deps} />);
+
+  await userEvent.click(await screen.findByRole("button", { name: `${product.name} 수정` }));
+  await userEvent.click(screen.getByRole("button", { name: "판매 공개" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("판매 공개를 완료하지 못했습니다");
+  expect(screen.getByRole("heading", { name: "상품 등록" })).toBeVisible();
+});
+
+it("uses the autosave confirmation before closing a dirty new draft", async () => {
+  const user = userEvent.setup();
+  const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
+  const deps = dependencies({
+    observeAdminSession: (next) => {
+      next("admin");
+      return vi.fn();
+    },
+    subscribeProducts: (onData) => {
+      onData([]);
+      return vi.fn();
+    },
+    subscribeDrafts: (onData) => {
+      onData([]);
+      return vi.fn();
+    },
+  });
+  render(<AdminDashboard dependencies={deps} />);
+
+  await user.click(await screen.findByRole("button", { name: "새 상품 등록" }));
+  await user.type(screen.getByLabelText("상품명"), "오메가");
+  await user.click(screen.getByRole("button", { name: "편집 닫기" }));
+  expect(screen.getByRole("heading", { name: "상품 등록" })).toBeVisible();
+
+  await user.click(screen.getByRole("button", { name: "편집 닫기" }));
+  expect(confirm).toHaveBeenCalledTimes(2);
+  expect(screen.queryByRole("heading", { name: "상품 등록" })).not.toBeInTheDocument();
 });

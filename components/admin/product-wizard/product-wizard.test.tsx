@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 
@@ -80,6 +80,18 @@ it("moves through four labelled steps and focuses the first publish error", asyn
 
   expect(screen.getByLabelText("상품명")).toHaveFocus();
   expect(screen.getByLabelText("상품명")).toHaveAccessibleDescription("상품명을 입력해 주세요.");
+});
+
+it("flushes the latest draft before validating a publish attempt", async () => {
+  const user = userEvent.setup();
+  const props = propsFor();
+  render(<ProductWizard {...props} />);
+
+  await user.click(screen.getByRole("button", { name: "판매 공개" }));
+
+  expect(props.onSave).toHaveBeenCalledOnce();
+  expect(props.onPublish).not.toHaveBeenCalled();
+  expect(screen.getByLabelText("상품명")).toHaveFocus();
 });
 
 it("moves to the earliest visible error step and focuses its invalid control", async () => {
@@ -327,6 +339,30 @@ it("blocks publishing while a product image upload is in progress", async () => 
 
   pending.resolve({ url: "front.jpg", storagePath: "products/draft-1/front.jpg", alt: "front", order: 0 });
   await waitFor(() => expect(screen.getByRole("button", { name: "판매 공개" })).toBeEnabled());
+});
+
+it("locks publishing synchronously before two clicks can start duplicate requests", async () => {
+  const pending = deferred<void>();
+  const onPublish = vi.fn(() => pending.promise);
+  render(<ProductWizard {...propsFor({
+    name: "오메가",
+    category: "nutrition",
+    price: 10_000,
+    stock: 1,
+    media: [{ url: "omega.jpg", storagePath: null, alt: "오메가", order: 0 }],
+    dosage: "하루 한 번",
+    ingredients: [{ name: "EPA", amount: "600mg", dailyValue: "" }],
+    origin: "한국",
+    cautions: ["권장량을 지켜 주세요."],
+  })} onPublish={onPublish} />);
+
+  const publish = screen.getByRole("button", { name: "판매 공개" });
+  act(() => {
+    publish.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    publish.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+
+  await waitFor(() => expect(onPublish).toHaveBeenCalledOnce());
 });
 
 it("keeps an upload alive when staff moves to another wizard step", async () => {
