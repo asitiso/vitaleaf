@@ -96,7 +96,8 @@ export function MediaStep({
   const deleteTriggerRef = useRef<HTMLElement | null>(null);
   const deleteCancelRef = useRef<HTMLButtonElement>(null);
   const deleteConfirmRef = useRef<HTMLButtonElement>(null);
-  const lastEmittedRef = useRef<string | null>(null);
+  const knownMediaSignaturesRef = useRef(new Set<string>());
+  const focusRequestRef = useRef<string | null>(null);
 
   if (identityRef.current !== identity) {
     productIdRef.current = productId;
@@ -143,7 +144,7 @@ export function MediaStep({
   const emit = (items = queueRef.current, source = mediaRef.current) => {
     const next = mergedMedia(items, source);
     mediaRef.current = next;
-    lastEmittedRef.current = mediaSignature(next);
+    knownMediaSignaturesRef.current.add(mediaSignature(next));
     onChangeRef.current(next);
     return next;
   };
@@ -243,16 +244,29 @@ export function MediaStep({
 
   useEffect(() => {
     const signature = mediaSignature(media);
-    if (lastEmittedRef.current === signature) return;
+    if (knownMediaSignaturesRef.current.has(signature)) return;
     media.forEach((item, rank) => ranksRef.current.set(itemKey(item), rank));
     const byKey = new Map(media.map((item) => [itemKey(item), item]));
-    const next = queueRef.current.map((item) => item.media && byKey.has(itemKey(item.media)) ? {
+    const next = queueRef.current.flatMap((item) => {
+      if (item.media && !byKey.has(itemKey(item.media))) return [];
+      if (!item.media || !byKey.has(itemKey(item.media))) return [item];
+      return [{
       ...item,
       media: byKey.get(itemKey(item.media))!,
       alt: byKey.get(itemKey(item.media))!.alt,
-    } : item);
+      }];
+    });
     replaceQueue(next);
   }, [media]);
+
+  useEffect(() => {
+    const key = focusRequestRef.current;
+    if (!key) return;
+    const target = Array.from(document.querySelectorAll<HTMLElement>("[data-media-key]")).find((item) => item.dataset.mediaKey === key && !(item as HTMLButtonElement).disabled)
+      ?? document.getElementById("product-media-files");
+    target?.focus();
+    focusRequestRef.current = null;
+  }, [queue, media, deleteError]);
 
   useEffect(() => {
     if (!deleteTarget) return;
@@ -313,14 +327,28 @@ export function MediaStep({
     if (from === to || to < 0 || to >= displayedMedia.length) return;
     const movingKey = itemKey(displayedMedia[from]!);
     const destinationKey = itemKey(displayedMedia[to]!);
-    const keys = orderedKeys().filter((key) => key !== movingKey);
-    const destinationIndex = keys.indexOf(destinationKey);
-    keys.splice(destinationIndex + (from < to ? 1 : 0), 0, movingKey);
+    const allKeys = orderedKeys();
+    const sourceIndex = allKeys.indexOf(movingKey);
+    const destinationIndex = allKeys.indexOf(destinationKey);
+    const keys = from < to
+      ? [
+        ...allKeys.slice(0, sourceIndex),
+        destinationKey,
+        movingKey,
+        ...allKeys.slice(sourceIndex + 1, destinationIndex).filter((key) => key !== destinationKey),
+        ...allKeys.slice(destinationIndex + 1),
+      ]
+      : (() => {
+        const next = allKeys.filter((key) => key !== movingKey);
+        next.splice(next.indexOf(destinationKey), 0, movingKey);
+        return next;
+      })();
     keys.forEach((key, rank) => ranksRef.current.set(key, rank));
     const nextQueue = queueRef.current.map((item) => ({ ...item, rank: ranksRef.current.get(item.media ? itemKey(item.media) : pendingKey(item.id)) ?? item.rank }));
     replaceQueue(nextQueue);
     emit(nextQueue);
     setAnnouncement(`${ordinal(to)} 이미지로 이동했습니다.`);
+    focusRequestRef.current = movingKey;
   };
 
   const requestDelete = (target: ProductMedia) => {
@@ -345,7 +373,7 @@ export function MediaStep({
       replaceQueue(nextQueue);
       emit(nextQueue, mediaRef.current.filter((item) => itemKey(item) !== deleteTarget.key));
       setDeleteTarget(null);
-      deleteTriggerRef.current?.focus();
+      focusRequestRef.current = itemKey(mergedMedia(nextQueue)[Math.min(mergedMedia(nextQueue).length - 1, 0)] ?? deleteTarget.media);
     } catch (error) {
       if (!mountedRef.current || generation !== generationRef.current) return;
       setDeleteError({ key: deleteTarget.key, message: messageFor(error) });
@@ -427,10 +455,10 @@ export function MediaStep({
               <div><strong>{index === 0 ? "대표 이미지" : `${ordinal(index)} 이미지`}</strong>{queueItem && <span>업로드 완료</span>}</div>
               <label>대체 텍스트<input aria-label={`${ordinal(index)} 이미지 대체 텍스트`} value={item.alt} onChange={(event) => updateAlt(item, event.target.value)} /></label>
               <div className="product-media-step__item-actions">
-                <button type="button" disabled={index === 0} onClick={() => move(index, index - 1)} aria-label={`${ordinal(index)} 이미지를 왼쪽으로 이동`}>왼쪽으로 이동</button>
-                <button type="button" disabled={index === displayedMedia.length - 1} onClick={() => move(index, index + 1)} aria-label={`${ordinal(index)} 이미지를 오른쪽으로 이동`}>오른쪽으로 이동</button>
-                {index !== 0 && <button type="button" onClick={() => move(index, 0)} aria-label={`${ordinal(index)} 이미지를 대표로 설정`}>대표로 설정</button>}
-                <button type="button" onClick={() => requestDelete(item)} aria-label={`${ordinal(index)} 이미지 삭제`}>삭제</button>
+                <button data-media-key={key} type="button" disabled={index === 0} onClick={() => move(index, index - 1)} aria-label={`${ordinal(index)} 이미지를 왼쪽으로 이동`}>왼쪽으로 이동</button>
+                <button data-media-key={key} type="button" disabled={index === displayedMedia.length - 1} onClick={() => move(index, index + 1)} aria-label={`${ordinal(index)} 이미지를 오른쪽으로 이동`}>오른쪽으로 이동</button>
+                {index !== 0 && <button data-media-key={key} type="button" onClick={() => move(index, 0)} aria-label={`${ordinal(index)} 이미지를 대표로 설정`}>대표로 설정</button>}
+                <button data-media-key={key} type="button" onClick={() => requestDelete(item)} aria-label={`${ordinal(index)} 이미지 삭제`}>삭제</button>
               </div>
               {deleteError?.key === key && <p role="alert">{deleteError.message} <button type="button" onClick={() => requestDelete(item)} aria-label={`${ordinal(index)} 이미지 삭제 다시 시도`}>삭제 다시 시도</button></p>}
             </article>

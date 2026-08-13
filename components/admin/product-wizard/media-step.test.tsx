@@ -137,3 +137,53 @@ it("moves an image after its destination when moving right", async () => {
     expect.objectContaining({ url: "third.jpg", order: 2 }),
   ]);
 });
+
+it("keeps hidden pending slots after a visible destination when moving right", async () => {
+  const user = userEvent.setup();
+  const first = deferred<ProductMedia>();
+  const second = deferred<ProductMedia>();
+  const upload = vi.fn<MediaUpload>()
+    .mockReturnValueOnce({ promise: first.promise, cancel: vi.fn() })
+    .mockReturnValueOnce({ promise: second.promise, cancel: vi.fn() });
+  const onChange = vi.fn();
+  render(<MediaStep productId="draft-1" media={[media("a.jpg", 0)]} onChange={onChange} upload={upload} deleteImage={vi.fn()} />);
+
+  await user.upload(screen.getByLabelText("상품 이미지 추가"), [file("p1.jpg"), file("p2.jpg")]);
+  second.resolve(media("p2.jpg", 2));
+  await screen.findByText("업로드 완료");
+  await user.click(screen.getByRole("button", { name: "첫 번째 이미지를 오른쪽으로 이동" }));
+  first.resolve(media("p1.jpg", 1));
+
+  await waitFor(() => expect(onChange).toHaveBeenLastCalledWith([
+    expect.objectContaining({ url: "p2.jpg", order: 0 }),
+    expect.objectContaining({ url: "a.jpg", order: 1 }),
+    expect.objectContaining({ url: "p1.jpg", order: 2 }),
+  ]));
+});
+
+it("removes an acknowledged upload when the controlled parent later deletes it", async () => {
+  const user = userEvent.setup();
+  const completed = deferred<ProductMedia>();
+  const upload = vi.fn<MediaUpload>(() => ({ promise: completed.promise, cancel: vi.fn() }));
+  const onChange = vi.fn();
+  const props = { productId: "draft-1", media: [media("a.jpg", 0)], onChange, upload, deleteImage: vi.fn() };
+  const view = render(<MediaStep {...props} />);
+
+  await user.upload(screen.getByLabelText("상품 이미지 추가"), file("s.jpg"));
+  completed.resolve(media("s.jpg", 1));
+  await screen.findByText("업로드 완료");
+  view.rerender(<MediaStep {...props} media={[media("a.jpg", 0), media("s.jpg", 1)]} />);
+  view.rerender(<MediaStep {...props} media={[media("a.jpg", 0)]} />);
+
+  await waitFor(() => expect(screen.queryByRole("img", { name: "s" })).not.toBeInTheDocument());
+});
+
+it("moves focus to an enabled card control after representative control disappears", async () => {
+  const user = userEvent.setup();
+  const onChange = vi.fn();
+  render(<MediaStep productId="draft-1" media={[media("a.jpg", 0), media("b.jpg", 1)]} onChange={onChange} upload={vi.fn()} deleteImage={vi.fn()} />);
+
+  await user.click(screen.getByRole("button", { name: "두 번째 이미지를 대표로 설정" }));
+
+  await waitFor(() => expect(screen.getByRole("button", { name: "첫 번째 이미지를 오른쪽으로 이동" })).toHaveFocus());
+});
