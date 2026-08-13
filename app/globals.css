@@ -663,3 +663,66 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
   .admin-ingredient-row { grid-template-columns: 1fr; }
   .admin-ingredient-row label:first-child { grid-column: auto; }
 }
+
+/* Guided product registration */
+.product-wizard { display: grid; gap: 24px; max-width: 940px; margin-top: 20px; }
+.product-wizard__header h1 { margin: 0; color: var(--color-forest); font-size: 30px; }
+.product-wizard__header > p:last-child, .product-wizard__step-content > p { margin: 7px 0 0; color: #64756c; line-height: 1.6; }
+.product-wizard__steps ol { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 0; margin: 0; list-style: none; }
+.product-wizard__steps button { width: 100%; min-height: 70px; border: 1px solid #cfdcd2; border-radius: 6px; padding: 10px; color: #52675a; background: #fff; text-align: left; cursor: pointer; }
+.product-wizard__steps button span { display: inline-grid; width: 22px; height: 22px; place-items: center; margin-right: 6px; border-radius: 50%; color: #fff; background: #9aaba0; font-size: 12px; font-weight: 800; }
+.product-wizard__steps strong, .product-wizard__steps small { display: block; }
+.product-wizard__steps strong { color: #294637; font-size: 14px; }
+.product-wizard__steps small { margin-top: 3px; color: #74847a; font-size: 11px; }
+.product-wizard__steps .is-current button { border-color: var(--color-sage); box-shadow: inset 0 0 0 1px var(--color-sage); }
+.product-wizard__steps .is-current button span, .product-wizard__steps .is-complete button span { background: var(--color-sage); }
+.product-wizard__error-summary { padding: 18px 20px; border: 1px solid #e3bbb2; border-radius: 6px; color: #7e3024; background: #fff4f1; }
+.product-wizard__error-summary h2 { margin: 0 0 12px; font-size: 17px; }
+.product-wizard__error-summary div + div { margin-top: 10px; }
+.product-wizard__error-summary ul { display: grid; gap: 4px; padding-left: 18px; margin: 4px 0 0; }
+.product-wizard__error-summary button { padding: 0; border: 0; color: inherit; background: none; font: inherit; text-decoration: underline; text-align: left; cursor: pointer; }
+.product-wizard__body { padding: 28px; border: 1px solid #d4dfd6; border-radius: 7px; background: #fff; }
+.product-wizard__progress { margin: 0 0 18px; color: var(--color-sage); font-size: 13px; font-weight: 800; }
+.product-wizard__step-content { display: grid; gap: 18px; }
+.product-wizard__step-content h2 { margin: 0; color: var(--color-forest); font-size: 23px; }
+.product-wizard__step-content > p { margin-top: -10px; }
+.product-wizard__fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.product-wizard__fields label, .product-wizard__rows label { display: grid; gap: 6px; color: #30493e; font-size: 13px; font-weight: 800; }
+.product-wizard__fields input, .product-wizard__fields select, .product-wizard__fields textarea, .product-wizard__rows input { width: 100%; min-width: 0; min-height: 44px; border: 1px solid #c8d6cb; border-radius: 4px; padding: 10px 12px; color: var(--color-ink); background: #fff; font: inherit; font-weight: 500; }
+.product-wizard__fields textarea { min-height: 96px; resize: vertical; }
+.product-wizard__fields [aria-invalid="true"], .product-wizard__rows [aria-invalid="true"] { border-color: #ac4635; }
+.product-wizard__fields small, .product-wizard__rows > small, .product-wizard__step-content > small { color: #9e3d2c; font-size: 12px; }
+.product-wizard__wide { grid-column: 1 / -1; }
+.product-wizard__checks, .product-wizard__rows { display: grid; gap: 10px; min-width: 0; padding: 17px; border: 1px solid #d8e2da; border-radius: 5px; }
+.product-wizard__checks { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.product-wizard__checks legend, .product-wizard__rows legend { padding: 0 6px; color: var(--color-forest); font-size: 14px; font-weight: 800; }
+.product-wizard__checks label { display: flex; gap: 7px; align-items: center; color: #30493e; font-size: 13px; font-weight: 700; }
+.product-wizard__checks input { width: 18px; height: 18px; accent-color: var(--color-sage); }
+.product-wizard__string-row { display: grid; grid-template-columns: 1fr auto; gap: 9px; }
+.product-wizard__ingredient-row { display: grid; grid-template-columns: 1.2fr 1fr 1fr auto; gap: 10px; align-items: end; }
+.product-wizard__rows button, .product-wizard__actions button { min-height: 44px; }
+.product-wizard__string-row > button, .product-wizard__ingredient-row > button { border: 1px solid #dfb9b2; border-radius: 4px; padding: 8px 11px; color: #993f30; background: #fff; font-weight: 700; cursor: pointer; }
+.product-wizard__rows > .admin-secondary-button { justify-self: start; }
+.product-wizard__media-slot { display: grid; min-height: 126px; place-items: center; padding: 22px; border: 2px dashed #bdd0c1; border-radius: 6px; color: #62736a; background: #f9fbf9; text-align: center; }
+.product-wizard__media-slot:focus { outline: 3px solid #bed6c6; outline-offset: 3px; }
+.product-wizard__media-slot p { margin: 0; }
+.product-wizard__actions { position: sticky; z-index: 10; bottom: 0; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding: 12px 0 max(12px, env(safe-area-inset-bottom)); background: rgb(255 254 251 / 96%); }
+
+@media (max-width: 760px) {
+  .product-wizard__steps ol { grid-template-columns: 1fr 1fr; }
+  .product-wizard__fields, .product-wizard__checks { grid-template-columns: 1fr; }
+  .product-wizard__wide { grid-column: auto; }
+  .product-wizard__ingredient-row { grid-template-columns: 1fr 1fr; }
+  .product-wizard__ingredient-row label:first-child { grid-column: 1 / -1; }
+}
+
+@media (max-width: 480px) {
+  .product-wizard__body { padding: 22px 17px; }
+  .product-wizard__steps ol { gap: 6px; }
+  .product-wizard__steps button { min-height: 66px; padding: 8px; }
+  .product-wizard__steps small { display: none; }
+  .product-wizard__ingredient-row { grid-template-columns: 1fr; }
+  .product-wizard__ingredient-row label:first-child { grid-column: auto; }
+  .product-wizard__actions { right: 0; bottom: 0; left: 0; padding: 10px 16px max(10px, env(safe-area-inset-bottom)); border-top: 1px solid #d6dfd8; box-shadow: 0 -8px 20px rgb(24 50 41 / 10%); }
+  .product-wizard__actions button { flex: 1 1 calc(50% - 8px); }
+}
