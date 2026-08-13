@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element -- local preview blobs and Firebase URLs are not next/image-compatible. */
 
-import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 
 import { deleteProductImage, uploadProductImage, validateImageFile, type UploadTaskController } from "../../../lib/firebase/product-media";
 import type { ProductMedia } from "../../../lib/products/types";
@@ -34,6 +34,7 @@ type QueueItem = {
 type DeleteTarget = { key: string; media: ProductMedia };
 
 const itemKey = (item: ProductMedia): string => item.storagePath ?? `url:${item.url}`;
+const pendingKey = (id: number): string => `pending:${id}`;
 const ordinal = (index: number): string => index === 0 ? "첫 번째" : index === 1 ? "두 번째" : `${index + 1}번째`;
 const defaultAlt = (file: File): string => file.name.replace(/\.[^.]+$/, "").trim() || "상품 이미지";
 const messageFor = (error: unknown): string => error instanceof Error && error.message.trim()
@@ -73,37 +74,74 @@ export function MediaStep({
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<{ key: string; message: string } | null>(null);
+  const [announcement, setAnnouncement] = useState("");
   const queueRef = useRef<QueueItem[]>([]);
   const mediaRef = useRef(media);
+  const onChangeRef = useRef(onChange);
   const uploadCallbackRef = useRef(onUploadingChange);
   const nextId = useRef(0);
   const dragKey = useRef<string | null>(null);
+  const ranksRef = useRef(new Map<string, number>());
+  const generationRef = useRef(0);
+  const mountedRef = useRef(true);
+  const productIdRef = useRef(productId);
+  const resetProductIdRef = useRef(productId);
+  const revokedUrlsRef = useRef(new Set<string>());
+  const deleteTriggerRef = useRef<HTMLElement | null>(null);
+  const deleteCancelRef = useRef<HTMLButtonElement>(null);
+  const deleteConfirmRef = useRef<HTMLButtonElement>(null);
 
+  if (productIdRef.current !== productId) {
+    productIdRef.current = productId;
+    generationRef.current += 1;
+  }
   mediaRef.current = media;
+  onChangeRef.current = onChange;
   uploadCallbackRef.current = onUploadingChange;
+  media.forEach((item) => {
+    if (!ranksRef.current.has(itemKey(item))) ranksRef.current.set(itemKey(item), item.order);
+  });
 
   const replaceQueue = (next: QueueItem[]) => {
     queueRef.current = next;
     setQueue(next);
   };
 
+  const revokeOwnedPreview = (url: string | null) => {
+    if (!url || revokedUrlsRef.current.has(url)) return;
+    revokedUrlsRef.current.add(url);
+    revokePreviewUrl(url);
+  };
+
   const mergedMedia = (items: QueueItem[], source = mediaRef.current): ProductMedia[] => {
     const complete = items
       .filter((item) => item.status === "complete" && item.media)
-      .sort((first, second) => first.rank - second.rank)
-      .map((item) => item.media!);
-    const completeKeys = new Set(complete.map(itemKey));
-    return reindex([...source.filter((item) => !completeKeys.has(itemKey(item))), ...complete]);
+      .map((item) => ({ item: item.media!, rank: ranksRef.current.get(itemKey(item.media!)) ?? item.rank }));
+    const completeKeys = new Set(complete.map((entry) => itemKey(entry.item)));
+    return reindex([
+      ...source.filter((item) => !completeKeys.has(itemKey(item))).map((item) => ({ item, rank: ranksRef.current.get(itemKey(item)) ?? item.order })),
+      ...complete,
+    ].sort((first, second) => first.rank - second.rank).map((entry) => entry.item));
+  };
+
+  const orderedKeys = (source = mediaRef.current): string[] => {
+    const completeKeys = new Set(queueRef.current.filter((item) => item.media).map((item) => itemKey(item.media!)));
+    return [
+      ...source.filter((item) => !completeKeys.has(itemKey(item))).map((item) => itemKey(item)),
+      ...queueRef.current.map((item) => item.media ? itemKey(item.media) : pendingKey(item.id)),
+    ].sort((first, second) => (ranksRef.current.get(first) ?? 0) - (ranksRef.current.get(second) ?? 0));
   };
 
   const emit = (items = queueRef.current, source = mediaRef.current) => {
     const next = mergedMedia(items, source);
     mediaRef.current = next;
-    onChange(next);
+    onChangeRef.current(next);
     return next;
   };
 
   const beginUpload = (id: number) => {
+    const generation = generationRef.current;
+    const uploadProductId = productIdRef.current;
     const current = queueRef.current.find((item) => item.id === id);
     if (!current) return;
     const validation = validateImageFile(current.file);
@@ -132,7 +170,7 @@ export function MediaStep({
     let controller: UploadTaskController;
     try {
       controller = upload({
-        productId,
+        productId: uploadProductId,
         file: current.file,
         alt: current.alt,
         order: current.rank,
@@ -148,13 +186,17 @@ export function MediaStep({
     replaceQueue(queueRef.current.map((item) => item.id === id ? { ...item, controller } : item));
     void controller.promise.then((uploaded) => {
       const item = queueRef.current.find((candidate) => candidate.id === id);
-      if (!item || item.controller !== controller) return;
-      revokePreviewUrl(item.previewUrl);
+      if (!mountedRef.current || generation !== generationRef.current || !item || item.controller !== controller) return;
+      revokeOwnedPreview(item.previewUrl);
+      const rank = ranksRef.current.get(pendingKey(id)) ?? item.rank;
+      ranksRef.current.delete(pendingKey(id));
+      ranksRef.current.set(itemKey(uploaded), rank);
       const next = queueRef.current.map((candidate) => candidate.id === id ? {
         ...candidate,
         previewUrl: null,
         progress: 100,
         status: "complete" as const,
+        rank,
         media: { ...uploaded, alt: candidate.alt },
         controller: null,
       } : candidate);
@@ -162,7 +204,7 @@ export function MediaStep({
       emit(next);
     }, (error) => {
       const item = queueRef.current.find((candidate) => candidate.id === id);
-      if (!item || item.controller !== controller) return;
+      if (!mountedRef.current || generation !== generationRef.current || !item || item.controller !== controller) return;
       replaceQueue(queueRef.current.map((candidate) => candidate.id === id ? {
         ...candidate,
         status: "failed",
@@ -172,10 +214,29 @@ export function MediaStep({
     });
   };
 
-  useEffect(() => () => {
+  useEffect(() => {
+    if (resetProductIdRef.current === productId) return;
+    resetProductIdRef.current = productId;
+    generationRef.current += 1;
     queueRef.current.forEach((item) => {
       item.controller?.cancel();
-      revokePreviewUrl(item.previewUrl);
+      revokeOwnedPreview(item.previewUrl);
+    });
+    ranksRef.current.clear();
+    replaceQueue([]);
+  }, [productId]);
+
+  useEffect(() => {
+    if (!deleteTarget) return;
+    deleteCancelRef.current?.focus();
+  }, [deleteTarget]);
+
+  useEffect(() => () => {
+    mountedRef.current = false;
+    generationRef.current += 1;
+    queueRef.current.forEach((item) => {
+      item.controller?.cancel();
+      revokeOwnedPreview(item.previewUrl);
     });
     uploadCallbackRef.current?.(false);
   }, []);
@@ -187,11 +248,12 @@ export function MediaStep({
   const displayedMedia = useMemo(() => mergedMedia(queue, media), [media, queue]);
 
   const addFiles = (files: FileList | File[]) => {
-    const nextItems = Array.from(files).map((file) => ({
+    const firstRank = Math.max(-1, ...Array.from(ranksRef.current.values())) + 1;
+    const nextItems = Array.from(files).map((file, index) => ({
       id: nextId.current++,
       file,
       alt: defaultAlt(file),
-      rank: mediaRef.current.length + queueRef.current.length,
+      rank: firstRank + index,
       previewUrl: null,
       progress: 0,
       status: "uploading" as const,
@@ -199,6 +261,7 @@ export function MediaStep({
       media: null,
       controller: null,
     }));
+    nextItems.forEach((item) => ranksRef.current.set(pendingKey(item.id), item.rank));
     replaceQueue([...queueRef.current, ...nextItems]);
     nextItems.forEach((item) => beginUpload(item.id));
   };
@@ -216,39 +279,66 @@ export function MediaStep({
 
   const move = (from: number, to: number) => {
     if (from === to || to < 0 || to >= displayedMedia.length) return;
-    const next = [...displayedMedia];
-    const [moved] = next.splice(from, 1);
-    next.splice(to, 0, moved!);
-    const indexed = reindex(next);
-    const ranks = new Map(indexed.map((item) => [itemKey(item), item.order]));
-    const nextQueue = queueRef.current.map((item) => item.media ? { ...item, rank: ranks.get(itemKey(item.media)) ?? item.rank } : item);
+    const movingKey = itemKey(displayedMedia[from]!);
+    const destinationKey = itemKey(displayedMedia[to]!);
+    const keys = orderedKeys().filter((key) => key !== movingKey);
+    keys.splice(keys.indexOf(destinationKey), 0, movingKey);
+    keys.forEach((key, rank) => ranksRef.current.set(key, rank));
+    const nextQueue = queueRef.current.map((item) => ({ ...item, rank: ranksRef.current.get(item.media ? itemKey(item.media) : pendingKey(item.id)) ?? item.rank }));
     replaceQueue(nextQueue);
-    emit(nextQueue, indexed.filter((item) => !queueRef.current.some((queued) => queued.media && itemKey(queued.media) === itemKey(item))));
+    emit(nextQueue);
+    setAnnouncement(`${ordinal(to)} 이미지로 이동했습니다.`);
   };
 
   const requestDelete = (target: ProductMedia) => {
+    deleteTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setDeleteError(null);
     setDeleteTarget({ key: itemKey(target), media: target });
   };
 
   const confirmDelete = async () => {
     if (!deleteTarget || deleting) return;
+    const generation = generationRef.current;
+    const deleteProductId = productIdRef.current;
     setDeleting(true);
     try {
       if (deleteTarget.media.storagePath) {
-        await deleteImage({ productId, storagePath: deleteTarget.media.storagePath });
+        await deleteImage({ productId: deleteProductId, storagePath: deleteTarget.media.storagePath });
       }
+      if (!mountedRef.current || generation !== generationRef.current) return;
       const removedQueueItems = queueRef.current.filter((item) => item.media && itemKey(item.media) === deleteTarget.key);
       const nextQueue = queueRef.current.filter((item) => !item.media || itemKey(item.media) !== deleteTarget.key);
-      removedQueueItems.forEach((item) => revokePreviewUrl(item.previewUrl));
+      removedQueueItems.forEach((item) => revokeOwnedPreview(item.previewUrl));
       replaceQueue(nextQueue);
       emit(nextQueue, mediaRef.current.filter((item) => itemKey(item) !== deleteTarget.key));
       setDeleteTarget(null);
+      deleteTriggerRef.current?.focus();
     } catch (error) {
+      if (!mountedRef.current || generation !== generationRef.current) return;
       setDeleteError({ key: deleteTarget.key, message: messageFor(error) });
       setDeleteTarget(null);
     } finally {
-      setDeleting(false);
+      if (mountedRef.current && generation === generationRef.current) setDeleting(false);
+    }
+  };
+
+  const closeDeleteDialog = () => {
+    setDeleteTarget(null);
+    deleteTriggerRef.current?.focus();
+  };
+
+  const handleDeleteDialogKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === "Escape" && !deleting) {
+      event.preventDefault();
+      closeDeleteDialog();
+    }
+    if (event.key !== "Tab") return;
+    if (event.shiftKey && document.activeElement === deleteCancelRef.current) {
+      event.preventDefault();
+      deleteConfirmRef.current?.focus();
+    } else if (!event.shiftKey && document.activeElement === deleteConfirmRef.current) {
+      event.preventDefault();
+      deleteCancelRef.current?.focus();
     }
   };
 
@@ -257,9 +347,8 @@ export function MediaStep({
     if (event.dataTransfer.files.length) addFiles(event.dataTransfer.files);
   };
 
-  const moveDraggedTo = (destination: number) => {
-    const source = dragKey.current;
-    dragKey.current = null;
+  const moveDraggedTo = (destination: number, draggedKey = dragKey.current) => {
+    const source = draggedKey;
     if (source === null) return;
     const from = displayedMedia.findIndex((item) => itemKey(item) === source);
     if (from >= 0) move(from, destination);
@@ -281,7 +370,7 @@ export function MediaStep({
       {queue.filter((item) => item.status !== "complete").map((item) => (
         <article key={item.id} className="product-media-step__upload" aria-label={`${item.file.name} 업로드 상태`}>
           {item.previewUrl && <img src={item.previewUrl} alt="" />}
-          <div><strong>{item.file.name}</strong>{item.status === "uploading" ? <><progress value={item.progress} max="100" /> <span>{item.progress}% 업로드 중</span><button type="button" onClick={() => item.controller?.cancel()}>{item.file.name} 업로드 취소</button></> : <><p role="alert">{item.error}</p><button type="button" onClick={() => beginUpload(item.id)}>{item.file.name} 다시 시도</button></>}</div>
+          <div><strong>{item.file.name}</strong>{item.status === "uploading" ? <><progress aria-label={`${item.file.name} 업로드 진행률`} value={item.progress} max="100" /> <span role="status">{item.progress}% 업로드 중</span><button type="button" onClick={() => item.controller?.cancel()}>{item.file.name} 업로드 취소</button></> : <><p role="alert">{item.error}</p><button type="button" onClick={() => beginUpload(item.id)}>{item.file.name} 다시 시도</button></>}</div>
         </article>
       ))}
 
@@ -294,11 +383,12 @@ export function MediaStep({
               key={key}
               className="product-media-step__item"
               draggable
-              onDragStart={() => { dragKey.current = key; }}
+              onDragStart={(event) => { dragKey.current = key; event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", key); }}
               onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => { event.preventDefault(); moveDraggedTo(index); }}
+              onDrop={(event) => { event.preventDefault(); moveDraggedTo(index, event.dataTransfer.getData("text/plain") || dragKey.current); }}
+              onDragEnd={() => { dragKey.current = null; }}
               onPointerDown={() => { dragKey.current = key; }}
-              onPointerUp={() => moveDraggedTo(index)}
+              onPointerUp={() => { moveDraggedTo(index); dragKey.current = null; }}
             >
               <img src={item.url} alt={item.alt} />
               <div><strong>{index === 0 ? "대표 이미지" : `${ordinal(index)} 이미지`}</strong>{queueItem && <span>업로드 완료</span>}</div>
@@ -306,7 +396,7 @@ export function MediaStep({
               <div className="product-media-step__item-actions">
                 <button type="button" disabled={index === 0} onClick={() => move(index, index - 1)} aria-label={`${ordinal(index)} 이미지를 왼쪽으로 이동`}>왼쪽으로 이동</button>
                 <button type="button" disabled={index === displayedMedia.length - 1} onClick={() => move(index, index + 1)} aria-label={`${ordinal(index)} 이미지를 오른쪽으로 이동`}>오른쪽으로 이동</button>
-                {index !== 0 && <button type="button" onClick={() => move(index, 0)}>대표로 설정</button>}
+                {index !== 0 && <button type="button" onClick={() => move(index, 0)} aria-label={`${ordinal(index)} 이미지를 대표로 설정`}>대표로 설정</button>}
                 <button type="button" onClick={() => requestDelete(item)} aria-label={`${ordinal(index)} 이미지 삭제`}>삭제</button>
               </div>
               {deleteError?.key === key && <p role="alert">{deleteError.message} <button type="button" onClick={() => requestDelete(item)} aria-label={`${ordinal(index)} 이미지 삭제 다시 시도`}>삭제 다시 시도</button></p>}
@@ -315,7 +405,9 @@ export function MediaStep({
         })}
       </div>
 
-      {deleteTarget && <div className="product-media-step__confirm" role="dialog" aria-modal="true" aria-labelledby="product-media-delete-title"><h3 id="product-media-delete-title">이미지를 삭제할까요?</h3><p>삭제한 이미지는 복구할 수 없습니다.</p><button type="button" disabled={deleting} onClick={() => setDeleteTarget(null)}>취소</button><button type="button" disabled={deleting} onClick={() => void confirmDelete()}>삭제 확인</button></div>}
+      <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
+
+      {deleteTarget && <div className="product-media-step__confirm" role="dialog" aria-modal="true" aria-labelledby="product-media-delete-title"><h3 id="product-media-delete-title">이미지를 삭제할까요?</h3><p>삭제한 이미지는 복구할 수 없습니다.</p><button ref={deleteCancelRef} type="button" disabled={deleting} onClick={closeDeleteDialog} onKeyDown={handleDeleteDialogKeyDown}>취소</button><button ref={deleteConfirmRef} type="button" disabled={deleting} onClick={() => void confirmDelete()} onKeyDown={handleDeleteDialogKeyDown}>삭제 확인</button></div>}
     </section>
   );
 }

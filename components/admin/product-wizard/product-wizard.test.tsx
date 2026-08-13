@@ -329,6 +329,22 @@ it("blocks publishing while a product image upload is in progress", async () => 
   await waitFor(() => expect(screen.getByRole("button", { name: "판매 공개" })).toBeEnabled());
 });
 
+it("keeps an upload alive when staff moves to another wizard step", async () => {
+  const user = userEvent.setup();
+  const pending = deferred<{ url: string; storagePath: string; alt: string; order: number }>();
+  const upload = vi.fn<MediaUpload>(() => ({ promise: pending.promise, cancel: vi.fn() }));
+  render(<ProductWizard {...propsFor({ currentStep: 2 })} upload={upload} deleteImage={vi.fn()} />);
+
+  await user.upload(screen.getByLabelText("상품 이미지 추가"), new File(["image"], "front.jpg", { type: "image/jpeg" }));
+  await user.click(screen.getByRole("button", { name: "다음 단계: 상세 정보" }));
+  expect(screen.getByRole("button", { name: "판매 공개" })).toBeDisabled();
+
+  pending.resolve({ url: "front.jpg", storagePath: "products/draft-1/front.jpg", alt: "front", order: 0 });
+  await waitFor(() => expect(screen.getByRole("button", { name: "판매 공개" })).toBeEnabled());
+  await user.click(screen.getByRole("button", { name: /상품 이미지/ }));
+  expect(screen.getByRole("img", { name: "front" })).toBeVisible();
+});
+
 it("shows the same operation alert when preview throws synchronously", async () => {
   const user = userEvent.setup();
   render(<ProductWizard {...propsFor()} onPreview={() => { throw new Error("preview unavailable"); }} />);

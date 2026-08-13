@@ -100,3 +100,26 @@ it("keeps an image visible when storage deletion fails and offers a retry", asyn
   expect(screen.getByRole("img", { name: "first.jpg" })).toBeVisible();
   expect(screen.getByRole("button", { name: "첫 번째 이미지 삭제 다시 시도" })).toBeVisible();
 });
+
+it("does not undo a representative choice when an earlier selected upload finishes later", async () => {
+  const user = userEvent.setup();
+  const first = deferred<ProductMedia>();
+  const second = deferred<ProductMedia>();
+  const upload = vi.fn<MediaUpload>()
+    .mockReturnValueOnce({ promise: first.promise, cancel: vi.fn() })
+    .mockReturnValueOnce({ promise: second.promise, cancel: vi.fn() });
+  const onChange = vi.fn();
+  render(<MediaStep productId="draft-1" media={[media("existing.jpg", 0)]} onChange={onChange} upload={upload} deleteImage={vi.fn()} />);
+
+  await user.upload(screen.getByLabelText("상품 이미지 추가"), [file("first.jpg"), file("second.jpg")]);
+  second.resolve(media("second.jpg", 2));
+  await screen.findByText("업로드 완료");
+  await user.click(screen.getByRole("button", { name: "두 번째 이미지를 대표로 설정" }));
+  first.resolve(media("first.jpg", 1));
+
+  await waitFor(() => expect(onChange).toHaveBeenLastCalledWith([
+    expect.objectContaining({ url: "second.jpg", order: 0 }),
+    expect.objectContaining({ url: "existing.jpg", order: 1 }),
+    expect.objectContaining({ url: "first.jpg", order: 2 }),
+  ]));
+});
