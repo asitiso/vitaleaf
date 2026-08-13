@@ -187,3 +187,25 @@ it("moves focus to an enabled card control after representative control disappea
 
   await waitFor(() => expect(screen.getByRole("button", { name: "첫 번째 이미지를 오른쪽으로 이동" })).toHaveFocus());
 });
+
+it("keeps the latest optimistic media when an older acknowledgement arrives, then accepts a later undo", async () => {
+  const user = userEvent.setup();
+  const completed = deferred<ProductMedia>();
+  const upload = vi.fn<MediaUpload>(() => ({ promise: completed.promise, cancel: vi.fn() }));
+  const props = { productId: "draft-1", media: [] as ProductMedia[], onChange: vi.fn(), upload, deleteImage: vi.fn() };
+  const view = render(<MediaStep {...props} />);
+
+  await user.upload(screen.getByLabelText("상품 이미지 추가"), file("s.jpg"));
+  completed.resolve({ ...media("s.jpg", 0), alt: "s" });
+  await screen.findByText("업로드 완료");
+  await user.type(screen.getByRole("textbox", { name: "첫 번째 이미지 대체 텍스트" }), "-T");
+  const older = [{ ...media("s.jpg", 0), alt: "s" }];
+  const latest = [{ ...media("s-new.jpg", 0), storagePath: "products/draft-1/s.jpg", alt: "s-T" }];
+
+  view.rerender(<MediaStep {...props} media={latest} />);
+  await waitFor(() => expect(screen.getByRole("textbox", { name: "첫 번째 이미지 대체 텍스트" })).toHaveValue("s-T"));
+  view.rerender(<MediaStep {...props} media={[...older]} />);
+  expect(screen.getByRole("textbox", { name: "첫 번째 이미지 대체 텍스트" })).toHaveValue("s-T");
+  view.rerender(<MediaStep {...props} media={[{ ...older[0]!, alt: "undo" }]} />);
+  await waitFor(() => expect(screen.getByRole("textbox", { name: "첫 번째 이미지 대체 텍스트" })).toHaveValue("undo"));
+});

@@ -75,6 +75,7 @@ export function MediaStep({
   onUploadingChange?(uploading: boolean): void;
 }) {
   const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [renderMedia, setRenderMedia] = useState(media);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<{ key: string; message: string } | null>(null);
@@ -104,7 +105,6 @@ export function MediaStep({
     identityRef.current = identity;
     generationRef.current += 1;
   }
-  mediaRef.current = media;
   onChangeRef.current = onChange;
   uploadCallbackRef.current = onUploadingChange;
   media.forEach((item) => {
@@ -144,6 +144,7 @@ export function MediaStep({
   const emit = (items = queueRef.current, source = mediaRef.current) => {
     const next = mergedMedia(items, source);
     mediaRef.current = next;
+    setRenderMedia(next);
     pendingEmissionSignaturesRef.current.push(mediaSignature(next));
     onChangeRef.current(next);
     return next;
@@ -247,8 +248,14 @@ export function MediaStep({
     const acknowledgement = pendingEmissionSignaturesRef.current.indexOf(signature);
     if (acknowledgement >= 0) {
       pendingEmissionSignaturesRef.current.splice(acknowledgement, 1);
+      if (signature === mediaSignature(mediaRef.current)) {
+        mediaRef.current = media;
+        setRenderMedia(media);
+      }
       return;
     }
+    mediaRef.current = media;
+    setRenderMedia(media);
     media.forEach((item, rank) => ranksRef.current.set(itemKey(item), rank));
     const byKey = new Map(media.map((item) => [itemKey(item), item]));
     const next = queueRef.current.flatMap((item) => {
@@ -296,7 +303,7 @@ export function MediaStep({
     onUploadingChange?.(queue.some((item) => item.status === "uploading"));
   }, [onUploadingChange, queue]);
 
-  const displayedMedia = useMemo(() => mergedMedia(queue, media), [media, queue]);
+  const displayedMedia = useMemo(() => mergedMedia(queue, renderMedia), [queue, renderMedia]);
 
   const addFiles = (files: FileList | File[]) => {
     const firstRank = Math.max(-1, ...Array.from(ranksRef.current.values())) + 1;
