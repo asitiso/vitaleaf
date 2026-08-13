@@ -194,6 +194,83 @@ it("keeps the adjacent repeatable input mounted and focused after removing a pre
   expect(secondInput).toBeInTheDocument();
 });
 
+it("reconciles same-draft external row changes before adding, removing, and focusing rows", async () => {
+  const user = userEvent.setup();
+  const props = propsFor({ id: "draft-external", sessionId: "session-external", currentStep: 3 });
+  const { rerender } = render(<ProductWizard {...props} />);
+
+  rerender(<ProductWizard {...props} draft={draft({
+    id: "draft-external",
+    sessionId: "session-external",
+    currentStep: 3,
+    benefits: ["첫 효능", "둘째 효능"],
+    ingredients: [{ name: "A", amount: "1mg", dailyValue: "" }, { name: "B", amount: "2mg", dailyValue: "" }],
+    certifications: ["GMP", "HACCP"],
+    cautions: ["주의 1", "주의 2"],
+  })} />);
+
+  const benefitInputs = [
+    screen.getByRole("group", { name: "효능 1" }).querySelector("input")!,
+    screen.getByRole("group", { name: "효능 2" }).querySelector("input")!,
+  ];
+  expect(new Set(benefitInputs.map((input) => input.id)).size).toBe(2);
+  expect(benefitInputs.every((input) => input.id && !input.id.includes("undefined"))).toBe(true);
+
+  await user.click(screen.getByRole("button", { name: "효능 1 삭제" }));
+  expect(benefitInputs[1]).toHaveFocus();
+  await user.click(screen.getByRole("button", { name: "효능 추가" }));
+  expect(screen.getByRole("group", { name: "효능 2" }).querySelector("input")).toHaveFocus();
+
+  rerender(<ProductWizard {...props} draft={draft({
+    id: "draft-external",
+    sessionId: "session-external",
+    currentStep: 3,
+    benefits: [],
+    ingredients: [],
+    certifications: [],
+    cautions: [],
+  })} />);
+  expect(screen.queryByRole("group", { name: "효능 1" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("group", { name: "성분 1" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("group", { name: "인증 1" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("group", { name: "주의사항 1" })).not.toBeInTheDocument();
+});
+
+it("reconciles validation-only rows when the controlled draft adds and removes their data", async () => {
+  const user = userEvent.setup();
+  const props = propsFor({
+    id: "draft-validation-row",
+    sessionId: "session-validation-row",
+    currentStep: 3,
+    name: "오메가",
+    category: "nutrition",
+    price: 10_000,
+    stock: 1,
+    media: [{ url: "omega.jpg", storagePath: null, alt: "오메가", order: 0 }],
+    dosage: "하루 한 번",
+    ingredients: [{ name: "EPA", amount: "600mg", dailyValue: "" }],
+    origin: "한국",
+    cautions: [],
+  });
+  const { rerender } = render(<ProductWizard {...props} />);
+
+  await user.click(screen.getByRole("button", { name: "판매 공개" }));
+  const virtualInput = screen.getByRole("group", { name: "주의사항 1" }).querySelector("input")!;
+  expect(virtualInput).toHaveFocus();
+
+  rerender(<ProductWizard {...props} draft={draft({ ...props.draft, cautions: ["식후에 섭취하세요."] })} />);
+  await user.click(screen.getByRole("button", { name: "판매 공개" }));
+  expect(virtualInput).toBeInTheDocument();
+
+  rerender(<ProductWizard {...props} draft={draft({ ...props.draft, cautions: [] })} />);
+  expect(screen.queryByRole("group", { name: "주의사항 1" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "주의사항 추가" }));
+  const addedInput = screen.getByRole("group", { name: "주의사항 1" }).querySelector("input")!;
+  expect(addedInput).toHaveFocus();
+  await user.click(screen.getByRole("button", { name: "주의사항 1 삭제" }));
+  expect(screen.getByRole("button", { name: "주의사항 추가" })).toHaveFocus();
+});
+
 it("prevents a second save while the first save is pending", async () => {
   const user = userEvent.setup();
   let resolveSave!: () => void;

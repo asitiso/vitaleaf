@@ -1,24 +1,49 @@
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { useId, useLayoutEffect, useMemo, useReducer, useRef } from "react";
 
 import type { Ingredient, ProductDraft } from "../../../lib/products/types";
 
 type DetailErrors = Partial<Record<"dosage" | "ingredients" | "origin" | "cautions", string>>;
 type RowKind = "benefit" | "ingredient" | "certification" | "caution";
+const rowKinds: readonly RowKind[] = ["benefit", "ingredient", "certification", "caution"];
 
 const emptyIngredient = (): Ingredient => ({ name: "", amount: "", dailyValue: "" });
 const inputId = (kind: RowKind, id: string): string => `wizard-${kind}-${id}`;
 const addButtonId = (kind: RowKind): string => `wizard-add-${kind}`;
-type RowIds = Record<RowKind, string[]>;
+type RowCounts = Record<RowKind, number>;
+type RowState = { ids: Record<RowKind, string[]>; nextId: number };
 
-const initialRowIds = (draft: ProductDraft, errors: DetailErrors, prefix: string): RowIds => {
-  let index = 0;
-  const allocate = (): string => `${prefix}-row-${index++}`;
-  return {
-    benefit: draft.benefits.map(allocate),
-    ingredient: (draft.ingredients.length ? draft.ingredients : errors.ingredients ? [emptyIngredient()] : []).map(allocate),
-    certification: draft.certifications.map(allocate),
-    caution: (draft.cautions.length ? draft.cautions : errors.cautions ? [""] : []).map(allocate),
-  };
+const emptyRowState = (): RowState => ({
+  ids: { benefit: [], ingredient: [], certification: [], caution: [] },
+  nextId: 0,
+});
+
+const reconcileRows = (state: RowState, counts: RowCounts, prefix: string): RowState => {
+  let nextId = state.nextId;
+  let changed = false;
+  const ids = {} as Record<RowKind, string[]>;
+  for (const kind of rowKinds) {
+    const current = state.ids[kind];
+    const target = counts[kind];
+    const next = current.slice(0, target);
+    while (next.length < target) next.push(`${prefix}-row-${nextId++}`);
+    if (next.length !== current.length || next.some((id, index) => id !== current[index])) changed = true;
+    ids[kind] = next;
+  }
+  return changed ? { ids, nextId } : state;
+};
+
+type RowAction =
+  | { type: "reconcile"; counts: RowCounts; prefix: string }
+  | { type: "add"; kind: RowKind; counts: RowCounts; prefix: string }
+  | { type: "remove"; kind: RowKind; index: number; counts: RowCounts; prefix: string };
+
+const rowReducer = (state: RowState, action: RowAction): RowState => {
+  const reconciled = reconcileRows(state, action.counts, action.prefix);
+  if (action.type === "reconcile") return reconciled;
+  const ids = { ...reconciled.ids, [action.kind]: [...reconciled.ids[action.kind]] };
+  if (action.type === "add") ids[action.kind].push(`${action.prefix}-row-${reconciled.nextId}`);
+  else ids[action.kind].splice(action.index, 1);
+  return { ids, nextId: action.type === "add" ? reconciled.nextId + 1 : reconciled.nextId };
 };
 
 function StringRows({
@@ -41,10 +66,11 @@ function StringRows({
   onRemove(index: number): void;
 }) {
   const visibleRows = rows.length > 0 ? rows : error ? [""] : [];
+  const renderedRows = visibleRows.slice(0, rowIds.length);
   return (
     <fieldset className="product-wizard__rows">
       <legend>{label}</legend>
-      {visibleRows.map((row, index) => {
+      {renderedRows.map((row, index) => {
         const id = rowIds[index]!;
         return (
           <div key={id} role="group" aria-label={`${label} ${index + 1}`} className="product-wizard__string-row">
@@ -60,16 +86,32 @@ function StringRows({
 
 export function DetailsStep({ draft, errors, onChange }: { draft: ProductDraft; errors: DetailErrors; onChange(next: ProductDraft): void }) {
   const rowPrefix = useId();
-  const [rowIds, setRowIds] = useState<RowIds>(() => initialRowIds(draft, errors, rowPrefix));
-  const [nextRowId, setNextRowId] = useState(() => Object.values(rowIds).reduce((total, ids) => total + ids.length, 0));
   const pendingFocus = useRef<string | null>(null);
+  const ingredientRows = draft.ingredients.length ? draft.ingredients : errors.ingredients ? [emptyIngredient()] : [];
+  const cautionRows = draft.cautions.length ? draft.cautions : errors.cautions ? [""] : [];
+  const rowCounts = useMemo<RowCounts>(() => ({
+    benefit: draft.benefits.length,
+    ingredient: ingredientRows.length,
+    certification: draft.certifications.length,
+    caution: cautionRows.length,
+  }), [draft.benefits.length, ingredientRows.length, draft.certifications.length, cautionRows.length]);
+  const [rowState, dispatch] = useReducer(rowReducer, undefined, () => reconcileRows(emptyRowState(), rowCounts, rowPrefix));
+
+  useLayoutEffect(() => {
+    dispatch({ type: "reconcile", counts: rowCounts, prefix: rowPrefix });
+  }, [rowCounts, rowPrefix]);
+
+  useLayoutEffect(() => {
+    const field = errors.dosage ? "dosage"
+      : errors.ingredients ? "ingredients"
+        : errors.origin ? "origin"
+          : errors.cautions ? "cautions"
+            : null;
+    if (!field) return;
+    document.querySelector<HTMLElement>(`[data-wizard-field="${field}"]`)?.focus();
+  }, [errors.dosage, errors.ingredients, errors.origin, errors.cautions, rowState]);
 
   const focusAfterChange = (id: string) => { pendingFocus.current = id; };
-  const makeRowId = (): string => {
-    const id = `${rowPrefix}-row-${nextRowId}`;
-    setNextRowId((current) => current + 1);
-    return id;
-  };
 
   useLayoutEffect(() => {
     const id = pendingFocus.current;
@@ -79,32 +121,32 @@ export function DetailsStep({ draft, errors, onChange }: { draft: ProductDraft; 
   }, [draft]);
 
   const addString = (kind: Exclude<RowKind, "ingredient">, field: "benefits" | "certifications" | "cautions") => {
-    const existingIds = rowIds[kind];
-    const id = draft[field].length === 0 && existingIds.length > 0 ? existingIds[0]! : makeRowId();
-    const ids = existingIds.includes(id) ? existingIds : [...existingIds, id];
-    setRowIds({ ...rowIds, [kind]: ids });
+    const reconciled = reconcileRows(rowState, rowCounts, rowPrefix);
+    const id = `${rowPrefix}-row-${reconciled.nextId}`;
+    dispatch({ type: "add", kind, counts: rowCounts, prefix: rowPrefix });
     focusAfterChange(inputId(kind, id));
     onChange({ ...draft, [field]: [...draft[field], ""] });
   };
   const removeString = (kind: Exclude<RowKind, "ingredient">, field: "benefits" | "certifications" | "cautions", index: number) => {
-    const ids = [...rowIds[kind]];
+    const ids = [...reconcileRows(rowState, rowCounts, rowPrefix).ids[kind]];
     ids.splice(index, 1);
-    setRowIds({ ...rowIds, [kind]: ids });
     const remaining = draft[field].filter((_, itemIndex) => itemIndex !== index);
+    dispatch({ type: "remove", kind, index, counts: rowCounts, prefix: rowPrefix });
     focusAfterChange(remaining.length ? inputId(kind, ids[Math.min(index, ids.length - 1)]!) : addButtonId(kind));
     onChange({ ...draft, [field]: remaining });
   };
   const addIngredient = () => {
-    const id = makeRowId();
-    setRowIds({ ...rowIds, ingredient: [...rowIds.ingredient, id] });
+    const reconciled = reconcileRows(rowState, rowCounts, rowPrefix);
+    const id = `${rowPrefix}-row-${reconciled.nextId}`;
+    dispatch({ type: "add", kind: "ingredient", counts: rowCounts, prefix: rowPrefix });
     focusAfterChange(inputId("ingredient", id));
     onChange({ ...draft, ingredients: [...draft.ingredients, emptyIngredient()] });
   };
   const removeIngredient = (index: number) => {
-    const ids = [...rowIds.ingredient];
+    const ids = [...reconcileRows(rowState, rowCounts, rowPrefix).ids.ingredient];
     ids.splice(index, 1);
-    setRowIds({ ...rowIds, ingredient: ids });
     const ingredients = draft.ingredients.filter((_, itemIndex) => itemIndex !== index);
+    dispatch({ type: "remove", kind: "ingredient", index, counts: rowCounts, prefix: rowPrefix });
     focusAfterChange(ingredients.length ? inputId("ingredient", ids[Math.min(index, ids.length - 1)]!) : addButtonId("ingredient"));
     onChange({ ...draft, ingredients });
   };
@@ -115,12 +157,10 @@ export function DetailsStep({ draft, errors, onChange }: { draft: ProductDraft; 
     onChange({ ...draft, ingredients });
   };
 
-  const benefitIds = rowIds.benefit;
-  const ingredientRows = draft.ingredients.length ? draft.ingredients : errors.ingredients ? [emptyIngredient()] : [];
-  const ingredientIds = rowIds.ingredient;
-  const certificationIds = rowIds.certification;
-  const cautionRows = draft.cautions.length ? draft.cautions : errors.cautions ? [""] : [];
-  const cautionIds = rowIds.caution;
+  const benefitIds = rowState.ids.benefit;
+  const ingredientIds = rowState.ids.ingredient;
+  const certificationIds = rowState.ids.certification;
+  const cautionIds = rowState.ids.caution;
 
   return (
     <section className="product-wizard__step-content" aria-labelledby="wizard-details-title">
@@ -134,7 +174,7 @@ export function DetailsStep({ draft, errors, onChange }: { draft: ProductDraft; 
       <StringRows label="효능" kind="benefit" rows={draft.benefits} rowIds={benefitIds} onChange={(benefits) => onChange({ ...draft, benefits })} onAdd={() => addString("benefit", "benefits")} onRemove={(index) => removeString("benefit", "benefits", index)} />
       <fieldset className="product-wizard__rows">
         <legend>성분 정보</legend>
-        {ingredientRows.map((ingredient, index) => {
+        {ingredientRows.slice(0, ingredientIds.length).map((ingredient, index) => {
           const id = ingredientIds[index]!;
           return <div key={id} role="group" aria-label={`성분 ${index + 1}`} className="product-wizard__ingredient-row"><label><span>성분명</span><input id={inputId("ingredient", id)} data-wizard-field="ingredients" value={ingredient.name} onChange={(event) => updateIngredient(index, "name", event.target.value)} aria-invalid={Boolean(errors.ingredients)} aria-describedby={errors.ingredients ? "wizard-ingredients-error" : undefined} /></label><label><span>함량</span><input value={ingredient.amount} onChange={(event) => updateIngredient(index, "amount", event.target.value)} /></label><label><span>일일 기준치</span><input value={ingredient.dailyValue} onChange={(event) => updateIngredient(index, "dailyValue", event.target.value)} /></label><button type="button" onClick={() => removeIngredient(index)} aria-label={`성분 ${index + 1} 삭제`}>삭제</button></div>;
         })}

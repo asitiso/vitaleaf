@@ -179,7 +179,7 @@ export function ProductWizard({ draft, saveState, onChange, onSave, onPreview, o
         <p className="product-wizard__progress">{activeStep} / 4 · {current.name}</p>
         {activeStep === 1 && <BasicStep draft={workingDraft} errors={fieldErrors} slugWasManuallyEdited={slugWasManuallyEdited} onSlugEdited={() => setSlugState({ draftIdentity, wasManuallyEdited: true })} onChange={commit} />}
         {activeStep === 2 && <section className="product-wizard__step-content" aria-labelledby="wizard-media-title"><h2 id="wizard-media-title">상품 이미지를 준비하세요</h2><p>대표 이미지와 상세 이미지는 다음 단계에서 추가할 수 있습니다.</p><div id="wizard-media-slot" tabIndex={-1} className="product-wizard__media-slot" aria-label="상품 이미지 업로드 영역" aria-invalid={Boolean(fieldErrors.media)} aria-describedby={fieldErrors.media ? "wizard-media-error" : undefined}>{mediaSlot ?? <p>이미지 업로드 기능을 준비하고 있습니다.</p>}</div>{fieldErrors.media && <small id="wizard-media-error">{fieldErrors.media}</small>}</section>}
-        {activeStep === 3 && <DetailsStep key={`${draftIdentity}:${Boolean(fieldErrors.ingredients)}:${Boolean(fieldErrors.cautions)}`} draft={workingDraft} errors={fieldErrors} onChange={commit} />}
+        {activeStep === 3 && <DetailsStep draft={workingDraft} errors={fieldErrors} onChange={commit} />}
         {activeStep === 4 && <SalesStep draft={workingDraft} errors={fieldErrors} onChange={commit} />}
       </div>
       <WizardActions step={activeStep} busy={busy} saveState={saveState} onPrevious={() => goTo(asStep(activeStep - 1))} onNext={() => goTo(asStep(activeStep + 1))} onSave={() => void runSave()} onPreview={() => void runPreview()} onPublish={() => void runPublish()} />
