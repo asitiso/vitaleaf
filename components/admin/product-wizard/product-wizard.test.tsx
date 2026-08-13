@@ -345,6 +345,36 @@ it("keeps an upload alive when staff moves to another wizard step", async () => 
   expect(screen.getByRole("img", { name: "front" })).toBeVisible();
 });
 
+it("resets media work for a new draft session and ignores the old upload after remount", async () => {
+  const user = userEvent.setup();
+  const oldUpload = deferred<{ url: string; storagePath: string; alt: string; order: number }>();
+  const newUpload = deferred<{ url: string; storagePath: string; alt: string; order: number }>();
+  const oldCancel = vi.fn();
+  const newCancel = vi.fn();
+  const upload = vi.fn<MediaUpload>()
+    .mockReturnValueOnce({ promise: oldUpload.promise, cancel: oldCancel })
+    .mockReturnValueOnce({ promise: newUpload.promise, cancel: newCancel });
+  const props = propsFor({ id: "draft-1", sessionId: "session-a", currentStep: 2 });
+  const view = render(<ProductWizard {...props} upload={upload} deleteImage={vi.fn()} />);
+
+  await user.upload(screen.getByLabelText("상품 이미지 추가"), new File(["old"], "old.jpg", { type: "image/jpeg" }));
+  view.rerender(<ProductWizard {...props} draft={draft({
+    ...props.draft,
+    sessionId: "session-b",
+    currentStep: 2,
+    media: [{ url: "b.jpg", storagePath: "products/draft-1/b.jpg", alt: "B", order: 0 }],
+  })} upload={upload} deleteImage={vi.fn()} />);
+
+  expect(oldCancel).toHaveBeenCalledOnce();
+  expect(screen.getByRole("img", { name: "B" })).toHaveAttribute("src", "b.jpg");
+  oldUpload.resolve({ url: "old.jpg", storagePath: "products/draft-1/old.jpg", alt: "old", order: 0 });
+  await waitFor(() => expect(screen.queryByRole("img", { name: "old" })).not.toBeInTheDocument());
+
+  await user.upload(screen.getByLabelText("상품 이미지 추가"), new File(["new"], "new.jpg", { type: "image/jpeg" }));
+  expect(screen.getByRole("button", { name: "판매 공개" })).toBeDisabled();
+  expect(newCancel).not.toHaveBeenCalled();
+});
+
 it("shows the same operation alert when preview throws synchronously", async () => {
   const user = userEvent.setup();
   render(<ProductWizard {...propsFor()} onPreview={() => { throw new Error("preview unavailable"); }} />);
