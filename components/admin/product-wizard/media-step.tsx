@@ -29,6 +29,7 @@ type QueueItem = {
   error: string;
   media: ProductMedia | null;
   controller: UploadTaskController | null;
+  attempt: number;
 };
 
 type DeleteTarget = { key: string; media: ProductMedia };
@@ -41,6 +42,7 @@ const messageFor = (error: unknown): string => error instanceof Error && error.m
   ? error.message
   : "이미지 작업을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.";
 const reindex = (items: ProductMedia[]): ProductMedia[] => items.map((item, order) => ({ ...item, order }));
+const mediaSignature = (items: ProductMedia[]): string => items.map((item) => `${itemKey(item)}:${item.order}:${item.alt}`).join("|");
 
 const makePreviewUrl = (file: File): string | null => {
   try {
@@ -57,6 +59,7 @@ const revokePreviewUrl = (url: string | null): void => {
 
 export function MediaStep({
   productId,
+  sessionId = null,
   media,
   onChange,
   upload = uploadProductImage,
@@ -64,6 +67,7 @@ export function MediaStep({
   onUploadingChange,
 }: {
   productId: string;
+  sessionId?: string | null;
   media: ProductMedia[];
   onChange(next: ProductMedia[]): void;
   upload?: MediaUpload;
@@ -84,15 +88,19 @@ export function MediaStep({
   const ranksRef = useRef(new Map<string, number>());
   const generationRef = useRef(0);
   const mountedRef = useRef(true);
+  const identity = `${productId}:${sessionId ?? "null"}`;
   const productIdRef = useRef(productId);
-  const resetProductIdRef = useRef(productId);
+  const identityRef = useRef(identity);
+  const resetIdentityRef = useRef(identity);
   const revokedUrlsRef = useRef(new Set<string>());
   const deleteTriggerRef = useRef<HTMLElement | null>(null);
   const deleteCancelRef = useRef<HTMLButtonElement>(null);
   const deleteConfirmRef = useRef<HTMLButtonElement>(null);
+  const lastEmittedRef = useRef<string | null>(null);
 
-  if (productIdRef.current !== productId) {
+  if (identityRef.current !== identity) {
     productIdRef.current = productId;
+    identityRef.current = identity;
     generationRef.current += 1;
   }
   mediaRef.current = media;
@@ -135,6 +143,7 @@ export function MediaStep({
   const emit = (items = queueRef.current, source = mediaRef.current) => {
     const next = mergedMedia(items, source);
     mediaRef.current = next;
+    lastEmittedRef.current = mediaSignature(next);
     onChangeRef.current(next);
     return next;
   };
@@ -156,8 +165,10 @@ export function MediaStep({
     }
 
     const previewUrl = current.previewUrl ?? makePreviewUrl(current.file);
+    const attempt = current.attempt + 1;
     const uploadingItem = {
       ...current,
+      attempt,
       previewUrl,
       status: "uploading" as const,
       progress: 0,
@@ -175,7 +186,8 @@ export function MediaStep({
         alt: current.alt,
         order: current.rank,
         onProgress: (progress) => {
-          replaceQueue(queueRef.current.map((item) => item.id === id && item.status === "uploading" ? { ...item, progress } : item));
+          if (!mountedRef.current || generation !== generationRef.current) return;
+          replaceQueue(queueRef.current.map((item) => item.id === id && item.status === "uploading" && item.attempt === attempt ? { ...item, progress } : item));
         },
       });
     } catch (error) {
@@ -186,7 +198,7 @@ export function MediaStep({
     replaceQueue(queueRef.current.map((item) => item.id === id ? { ...item, controller } : item));
     void controller.promise.then((uploaded) => {
       const item = queueRef.current.find((candidate) => candidate.id === id);
-      if (!mountedRef.current || generation !== generationRef.current || !item || item.controller !== controller) return;
+      if (!mountedRef.current || generation !== generationRef.current || !item || item.controller !== controller || item.attempt !== attempt) return;
       revokeOwnedPreview(item.previewUrl);
       const rank = ranksRef.current.get(pendingKey(id)) ?? item.rank;
       ranksRef.current.delete(pendingKey(id));
@@ -204,7 +216,7 @@ export function MediaStep({
       emit(next);
     }, (error) => {
       const item = queueRef.current.find((candidate) => candidate.id === id);
-      if (!mountedRef.current || generation !== generationRef.current || !item || item.controller !== controller) return;
+      if (!mountedRef.current || generation !== generationRef.current || !item || item.controller !== controller || item.attempt !== attempt) return;
       replaceQueue(queueRef.current.map((candidate) => candidate.id === id ? {
         ...candidate,
         status: "failed",
@@ -215,8 +227,8 @@ export function MediaStep({
   };
 
   useEffect(() => {
-    if (resetProductIdRef.current === productId) return;
-    resetProductIdRef.current = productId;
+    if (resetIdentityRef.current === identity) return;
+    resetIdentityRef.current = identity;
     generationRef.current += 1;
     queueRef.current.forEach((item) => {
       item.controller?.cancel();
@@ -224,21 +236,40 @@ export function MediaStep({
     });
     ranksRef.current.clear();
     replaceQueue([]);
-  }, [productId]);
+    setDeleteTarget(null);
+    setDeleteError(null);
+    setDeleting(false);
+  }, [identity]);
+
+  useEffect(() => {
+    const signature = mediaSignature(media);
+    if (lastEmittedRef.current === signature) return;
+    media.forEach((item, rank) => ranksRef.current.set(itemKey(item), rank));
+    const byKey = new Map(media.map((item) => [itemKey(item), item]));
+    const next = queueRef.current.map((item) => item.media && byKey.has(itemKey(item.media)) ? {
+      ...item,
+      media: byKey.get(itemKey(item.media))!,
+      alt: byKey.get(itemKey(item.media))!.alt,
+    } : item);
+    replaceQueue(next);
+  }, [media]);
 
   useEffect(() => {
     if (!deleteTarget) return;
     deleteCancelRef.current?.focus();
   }, [deleteTarget]);
 
-  useEffect(() => () => {
-    mountedRef.current = false;
-    generationRef.current += 1;
-    queueRef.current.forEach((item) => {
-      item.controller?.cancel();
-      revokeOwnedPreview(item.previewUrl);
-    });
-    uploadCallbackRef.current?.(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      generationRef.current += 1;
+      queueRef.current.forEach((item) => {
+        item.controller?.cancel();
+        revokeOwnedPreview(item.previewUrl);
+      });
+      uploadCallbackRef.current?.(false);
+    };
   }, []);
 
   useEffect(() => {
@@ -260,6 +291,7 @@ export function MediaStep({
       error: "",
       media: null,
       controller: null,
+      attempt: 0,
     }));
     nextItems.forEach((item) => ranksRef.current.set(pendingKey(item.id), item.rank));
     replaceQueue([...queueRef.current, ...nextItems]);
@@ -282,7 +314,8 @@ export function MediaStep({
     const movingKey = itemKey(displayedMedia[from]!);
     const destinationKey = itemKey(displayedMedia[to]!);
     const keys = orderedKeys().filter((key) => key !== movingKey);
-    keys.splice(keys.indexOf(destinationKey), 0, movingKey);
+    const destinationIndex = keys.indexOf(destinationKey);
+    keys.splice(destinationIndex + (from < to ? 1 : 0), 0, movingKey);
     keys.forEach((key, rank) => ranksRef.current.set(key, rank));
     const nextQueue = queueRef.current.map((item) => ({ ...item, rank: ranksRef.current.get(item.media ? itemKey(item.media) : pendingKey(item.id)) ?? item.rank }));
     replaceQueue(nextQueue);

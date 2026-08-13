@@ -123,3 +123,17 @@ it("does not undo a representative choice when an earlier selected upload finish
     expect.objectContaining({ url: "first.jpg", order: 2 }),
   ]));
 });
+
+it("moves an image after its destination when moving right", async () => {
+  const user = userEvent.setup();
+  const onChange = vi.fn();
+  render(<MediaStep productId="draft-1" media={[media("first.jpg", 0), media("second.jpg", 1), media("third.jpg", 2)]} onChange={onChange} upload={vi.fn()} deleteImage={vi.fn()} />);
+
+  await user.click(screen.getByRole("button", { name: "첫 번째 이미지를 오른쪽으로 이동" }));
+
+  expect(onChange).toHaveBeenLastCalledWith([
+    expect.objectContaining({ url: "second.jpg", order: 0 }),
+    expect.objectContaining({ url: "first.jpg", order: 1 }),
+    expect.objectContaining({ url: "third.jpg", order: 2 }),
+  ]);
+});
