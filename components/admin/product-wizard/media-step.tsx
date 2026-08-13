@@ -42,7 +42,7 @@ const messageFor = (error: unknown): string => error instanceof Error && error.m
   ? error.message
   : "이미지 작업을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.";
 const reindex = (items: ProductMedia[]): ProductMedia[] => items.map((item, order) => ({ ...item, order }));
-const mediaSignature = (items: ProductMedia[]): string => items.map((item) => `${itemKey(item)}:${item.order}:${item.alt}`).join("|");
+const mediaSignature = (items: ProductMedia[]): string => items.map((item) => `${itemKey(item)}:${item.url}:${item.order}:${item.alt}`).join("|");
 
 const makePreviewUrl = (file: File): string | null => {
   try {
@@ -96,7 +96,7 @@ export function MediaStep({
   const deleteTriggerRef = useRef<HTMLElement | null>(null);
   const deleteCancelRef = useRef<HTMLButtonElement>(null);
   const deleteConfirmRef = useRef<HTMLButtonElement>(null);
-  const knownMediaSignaturesRef = useRef(new Set<string>());
+  const pendingEmissionSignaturesRef = useRef<string[]>([]);
   const focusRequestRef = useRef<string | null>(null);
 
   if (identityRef.current !== identity) {
@@ -144,7 +144,7 @@ export function MediaStep({
   const emit = (items = queueRef.current, source = mediaRef.current) => {
     const next = mergedMedia(items, source);
     mediaRef.current = next;
-    knownMediaSignaturesRef.current.add(mediaSignature(next));
+    pendingEmissionSignaturesRef.current.push(mediaSignature(next));
     onChangeRef.current(next);
     return next;
   };
@@ -244,7 +244,11 @@ export function MediaStep({
 
   useEffect(() => {
     const signature = mediaSignature(media);
-    if (knownMediaSignaturesRef.current.has(signature)) return;
+    const acknowledgement = pendingEmissionSignaturesRef.current.indexOf(signature);
+    if (acknowledgement >= 0) {
+      pendingEmissionSignaturesRef.current.splice(acknowledgement, 1);
+      return;
+    }
     media.forEach((item, rank) => ranksRef.current.set(itemKey(item), rank));
     const byKey = new Map(media.map((item) => [itemKey(item), item]));
     const next = queueRef.current.flatMap((item) => {
@@ -262,7 +266,9 @@ export function MediaStep({
   useEffect(() => {
     const key = focusRequestRef.current;
     if (!key) return;
-    const target = Array.from(document.querySelectorAll<HTMLElement>("[data-media-key]")).find((item) => item.dataset.mediaKey === key && !(item as HTMLButtonElement).disabled)
+    const target = key.startsWith("retry:")
+      ? document.querySelector<HTMLElement>(`[data-media-retry-key="${key.slice(6)}"]`)
+      : Array.from(document.querySelectorAll<HTMLElement>("[data-media-key]")).find((item) => item.dataset.mediaKey === key && !(item as HTMLButtonElement).disabled)
       ?? document.getElementById("product-media-files");
     target?.focus();
     focusRequestRef.current = null;
@@ -327,22 +333,18 @@ export function MediaStep({
     if (from === to || to < 0 || to >= displayedMedia.length) return;
     const movingKey = itemKey(displayedMedia[from]!);
     const destinationKey = itemKey(displayedMedia[to]!);
-    const allKeys = orderedKeys();
-    const sourceIndex = allKeys.indexOf(movingKey);
-    const destinationIndex = allKeys.indexOf(destinationKey);
-    const keys = from < to
-      ? [
-        ...allKeys.slice(0, sourceIndex),
-        destinationKey,
-        movingKey,
-        ...allKeys.slice(sourceIndex + 1, destinationIndex).filter((key) => key !== destinationKey),
-        ...allKeys.slice(destinationIndex + 1),
-      ]
-      : (() => {
-        const next = allKeys.filter((key) => key !== movingKey);
-        next.splice(next.indexOf(destinationKey), 0, movingKey);
-        return next;
-      })();
+    const visibleKeys = new Set(displayedMedia.map(itemKey));
+    const groups: string[][] = [];
+    orderedKeys().forEach((key) => {
+      if (visibleKeys.has(key) || groups.length === 0) groups.push([key]);
+      else groups[groups.length - 1]!.push(key);
+    });
+    const sourceIndex = groups.findIndex((group) => group.includes(movingKey));
+    const destinationIndex = groups.findIndex((group) => group.includes(destinationKey));
+    const [sourceGroup] = groups.splice(sourceIndex, 1);
+    const adjustedDestination = destinationIndex - (sourceIndex < destinationIndex ? 1 : 0);
+    groups.splice(adjustedDestination + (from < to ? 1 : 0), 0, sourceGroup!);
+    const keys = groups.flat();
     keys.forEach((key, rank) => ranksRef.current.set(key, rank));
     const nextQueue = queueRef.current.map((item) => ({ ...item, rank: ranksRef.current.get(item.media ? itemKey(item.media) : pendingKey(item.id)) ?? item.rank }));
     replaceQueue(nextQueue);
@@ -378,6 +380,7 @@ export function MediaStep({
       if (!mountedRef.current || generation !== generationRef.current) return;
       setDeleteError({ key: deleteTarget.key, message: messageFor(error) });
       setDeleteTarget(null);
+      focusRequestRef.current = `retry:${deleteTarget.key}`;
     } finally {
       if (mountedRef.current && generation === generationRef.current) setDeleting(false);
     }
@@ -460,7 +463,7 @@ export function MediaStep({
                 {index !== 0 && <button data-media-key={key} type="button" onClick={() => move(index, 0)} aria-label={`${ordinal(index)} 이미지를 대표로 설정`}>대표로 설정</button>}
                 <button data-media-key={key} type="button" onClick={() => requestDelete(item)} aria-label={`${ordinal(index)} 이미지 삭제`}>삭제</button>
               </div>
-              {deleteError?.key === key && <p role="alert">{deleteError.message} <button type="button" onClick={() => requestDelete(item)} aria-label={`${ordinal(index)} 이미지 삭제 다시 시도`}>삭제 다시 시도</button></p>}
+              {deleteError?.key === key && <p role="alert">{deleteError.message} <button data-media-retry-key={key} type="button" onClick={() => requestDelete(item)} aria-label={`${ordinal(index)} 이미지 삭제 다시 시도`}>삭제 다시 시도</button></p>}
             </article>
           );
         })}

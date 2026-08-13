@@ -98,7 +98,7 @@ it("keeps an image visible when storage deletion fails and offers a retry", asyn
 
   expect(await screen.findByRole("alert")).toHaveTextContent("삭제할 수 없습니다.");
   expect(screen.getByRole("img", { name: "first.jpg" })).toBeVisible();
-  expect(screen.getByRole("button", { name: "첫 번째 이미지 삭제 다시 시도" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "첫 번째 이미지 삭제 다시 시도" })).toHaveFocus();
 });
 
 it("does not undo a representative choice when an earlier selected upload finishes later", async () => {
