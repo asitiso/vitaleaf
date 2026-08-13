@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 
@@ -65,6 +65,67 @@ it("moves through four labelled steps and focuses the first publish error", asyn
   expect(screen.getByLabelText("상품명")).toHaveAccessibleDescription("상품명을 입력해 주세요.");
 });
 
+it("moves to the earliest visible error step and focuses its invalid control", async () => {
+  const user = userEvent.setup();
+  render(<ProductWizard {...propsFor({
+    name: "오메가",
+    category: "nutrition",
+    price: 10_000,
+    stock: 1,
+    media: [{ url: "omega.jpg", storagePath: null, alt: "오메가", order: 0 }],
+    dosage: "하루 한 번",
+    ingredients: [{ name: "EPA", amount: "600mg", dailyValue: "" }],
+    origin: "",
+    cautions: [],
+  })} />);
+
+  await user.click(screen.getByRole("button", { name: "판매 공개" }));
+
+  expect(screen.getByRole("heading", { name: "상세 정보를 입력하세요" })).toBeVisible();
+  const origin = screen.getByRole("textbox", { name: /^원산지/ });
+  expect(origin).toHaveFocus();
+  expect(origin).toHaveAccessibleDescription("원산지를 입력해 주세요.");
+});
+
+it("marks the media slot invalid when publish needs an image", async () => {
+  const user = userEvent.setup();
+  render(<ProductWizard {...propsFor({
+    name: "오메가",
+    category: "nutrition",
+    price: 10_000,
+    stock: 1,
+    dosage: "하루 한 번",
+    ingredients: [{ name: "EPA", amount: "600mg", dailyValue: "" }],
+    origin: "한국",
+    cautions: ["권장량을 지켜 주세요."],
+  })} />);
+
+  await user.click(screen.getByRole("button", { name: "판매 공개" }));
+
+  expect(screen.getByLabelText("상품 이미지 업로드 영역")).toHaveAttribute("aria-invalid", "true");
+});
+
+it("focuses the first invalid repeatable input with its error description", async () => {
+  const user = userEvent.setup();
+  render(<ProductWizard {...propsFor({
+    name: "오메가",
+    category: "nutrition",
+    price: 10_000,
+    stock: 1,
+    media: [{ url: "omega.jpg", storagePath: null, alt: "오메가", order: 0 }],
+    dosage: "하루 한 번",
+    ingredients: [],
+    origin: "한국",
+    cautions: ["권장량을 지켜 주세요."],
+  })} />);
+
+  await user.click(screen.getByRole("button", { name: "판매 공개" }));
+
+  const ingredient = screen.getByRole("group", { name: "성분 1" }).querySelector("input")!;
+  expect(ingredient).toHaveFocus();
+  expect(ingredient).toHaveAccessibleDescription("이름이 있는 성분을 한 개 이상 추가해 주세요.");
+});
+
 it("keeps an automatically generated slug until staff edit it themselves", async () => {
   const user = userEvent.setup();
   const props = propsFor();
@@ -81,6 +142,21 @@ it("keeps an automatically generated slug until staff edit it themselves", async
   expect(props.onChange).toHaveBeenLastCalledWith(expect.objectContaining({ slug: "my-omega" }));
 });
 
+it("preserves a manual slug for the same draft but resets it for another editing identity", async () => {
+  const user = userEvent.setup();
+  const props = propsFor({ id: "draft-a", sessionId: "session-a" });
+  const { rerender } = render(<ProductWizard {...props} />);
+
+  await user.type(screen.getByLabelText("슬러그"), "custom-slug");
+  rerender(<ProductWizard {...props} draft={draft({ id: "draft-a", sessionId: "session-a", name: "첫 상품", slug: "custom-slug" })} />);
+  await user.type(screen.getByLabelText("상품명"), " 추가");
+  expect(props.onChange).toHaveBeenLastCalledWith(expect.objectContaining({ slug: "custom-slug" }));
+
+  rerender(<ProductWizard {...props} draft={draft({ id: "draft-b", sessionId: "session-b", name: "New", slug: "" })} />);
+  await user.type(screen.getByLabelText("상품명"), " Product");
+  expect(props.onChange).toHaveBeenLastCalledWith(expect.objectContaining({ slug: "new-product" }));
+});
+
 it("adds and removes detail rows with named controls", async () => {
   const user = userEvent.setup();
   render(<ProductWizard {...propsFor({ currentStep: 2 })} />);
@@ -90,6 +166,32 @@ it("adds and removes detail rows with named controls", async () => {
   expect(screen.getByRole("group", { name: "효능 1" })).toBeVisible();
   await user.click(screen.getByRole("button", { name: "효능 1 삭제" }));
   expect(screen.queryByRole("group", { name: "효능 1" })).not.toBeInTheDocument();
+});
+
+it("focuses the new and then nearest actionable control for every repeatable detail row", async () => {
+  const user = userEvent.setup();
+  render(<ProductWizard {...propsFor({ currentStep: 3 })} />);
+
+  for (const [label, rowName] of [["효능", "효능 1"], ["성분", "성분 1"], ["인증", "인증 1"], ["주의사항", "주의사항 1"]] as const) {
+    await user.click(screen.getByRole("button", { name: `${label} 추가` }));
+    const row = screen.getByRole("group", { name: rowName });
+    expect(row.querySelector("input")).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: `${rowName} 삭제` }));
+    expect(screen.getByRole("button", { name: `${label} 추가` })).toHaveFocus();
+  }
+});
+
+it("keeps the adjacent repeatable input mounted and focused after removing a preceding row", async () => {
+  const user = userEvent.setup();
+  render(<ProductWizard {...propsFor({ currentStep: 3 })} />);
+
+  await user.click(screen.getByRole("button", { name: "효능 추가" }));
+  await user.click(screen.getByRole("button", { name: "효능 추가" }));
+  const secondInput = screen.getByRole("group", { name: "효능 2" }).querySelector("input")!;
+  await user.click(screen.getByRole("button", { name: "효능 1 삭제" }));
+
+  expect(secondInput).toHaveFocus();
+  expect(secondInput).toBeInTheDocument();
 });
 
 it("prevents a second save while the first save is pending", async () => {
@@ -102,4 +204,29 @@ it("prevents a second save while the first save is pending", async () => {
   await user.click(screen.getByRole("button", { name: "저장 중" }));
   expect(onSave).toHaveBeenCalledTimes(1);
   resolveSave();
+});
+
+it("contains preview failures and prevents duplicate preview requests while pending", async () => {
+  const user = userEvent.setup();
+  let rejectPreview!: (error: Error) => void;
+  const onPreview = vi.fn(() => new Promise<void>((_, reject) => { rejectPreview = reject; }));
+  render(<ProductWizard {...propsFor()} onPreview={onPreview} />);
+
+  const preview = screen.getByRole("button", { name: "미리 보기" });
+  await user.click(preview);
+  expect(preview).toBeDisabled();
+  await user.click(preview);
+  expect(onPreview).toHaveBeenCalledTimes(1);
+  rejectPreview(new Error("preview unavailable"));
+
+  await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("미리 보기를 완료하지 못했습니다."));
+});
+
+it("shows the same operation alert when preview throws synchronously", async () => {
+  const user = userEvent.setup();
+  render(<ProductWizard {...propsFor()} onPreview={() => { throw new Error("preview unavailable"); }} />);
+
+  await user.click(screen.getByRole("button", { name: "미리 보기" }));
+
+  expect(screen.getByRole("alert")).toHaveTextContent("미리 보기를 완료하지 못했습니다.");
 });

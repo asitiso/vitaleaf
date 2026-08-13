@@ -14,13 +14,13 @@ export type WizardProps = {
   saveState: "idle" | "saving" | "saved" | "error";
   onChange(next: ProductDraft): void;
   onSave(): Promise<void>;
-  onPreview(): void;
+  onPreview(): void | Promise<void>;
   onPublish(): Promise<void>;
   mediaSlot?: ReactNode;
 };
 
 type WizardStep = 1 | 2 | 3 | 4;
-type BusyState = "idle" | "saving" | "publishing";
+type BusyState = "idle" | "saving" | "previewing" | "publishing";
 
 const steps: ReadonlyArray<{ number: WizardStep; name: string; description: string }> = [
   { number: 1, name: "기본 정보", description: "이름과 분류" },
@@ -30,7 +30,9 @@ const steps: ReadonlyArray<{ number: WizardStep; name: string; description: stri
 ];
 
 const visibleStepFor = (error: DraftValidationError): WizardStep => (
-  error.field === "price" || error.field === "stock" ? 4 : error.step
+  error.field === "price" || error.field === "stock" ? 4
+    : error.field === "origin" || error.field === "cautions" ? 3
+      : error.step
 );
 
 const staffMessageFor = (error: DraftValidationError): string => ({
@@ -45,16 +47,16 @@ const staffMessageFor = (error: DraftValidationError): string => ({
   cautions: "주의사항을 한 개 이상 추가해 주세요.",
 }[error.field]);
 
-const focusIdFor = (field: DraftValidationError["field"]): string => ({
+const focusIdFor = (field: DraftValidationError["field"]): string | null => ({
   name: "wizard-name",
   category: "wizard-category",
   price: "wizard-price",
   stock: "wizard-stock",
   media: "wizard-media-slot",
   dosage: "wizard-dosage",
-  ingredients: "wizard-ingredient-0",
+  ingredients: null,
   origin: "wizard-origin",
-  cautions: "wizard-cautions-0",
+  cautions: null,
 }[field]);
 
 const asStep = (value: number): WizardStep => value === 2 || value === 3 || value === 4 ? value : 1;
@@ -64,11 +66,13 @@ export function ProductWizard({ draft, saveState, onChange, onSave, onPreview, o
   const [errors, setErrors] = useState<DraftValidationError[]>([]);
   const [busy, setBusy] = useState<BusyState>("idle");
   const [operationError, setOperationError] = useState("");
-  const [slugWasManuallyEdited, setSlugWasManuallyEdited] = useState(false);
+  const draftIdentity = `${draft.id}:${draft.sessionId ?? ""}`;
+  const [slugState, setSlugState] = useState(() => ({ draftIdentity, wasManuallyEdited: false }));
 
   const hasExternalDraft = localState.source !== draft;
   const workingDraft = hasExternalDraft ? draft : localState.value;
   const activeStep = hasExternalDraft ? draft.currentStep : localState.activeStep;
+  const slugWasManuallyEdited = slugState.draftIdentity === draftIdentity && slugState.wasManuallyEdited;
 
   const errorsByStep = useMemo(() => errors.reduce<Partial<Record<WizardStep, DraftValidationError[]>>>((grouped, error) => {
     const step = visibleStepFor(error);
@@ -79,7 +83,11 @@ export function ProductWizard({ draft, saveState, onChange, onSave, onPreview, o
   useEffect(() => {
     const firstError = errorsByStep[activeStep]?.[0];
     if (!firstError) return;
-    document.getElementById(focusIdFor(firstError.field))?.focus();
+    const id = focusIdFor(firstError.field);
+    const target = id
+      ? document.getElementById(id)
+      : document.querySelector<HTMLElement>(`[data-wizard-field="${firstError.field}"]`);
+    target?.focus();
   }, [activeStep, errorsByStep]);
 
   const commit = (next: ProductDraft) => {
@@ -112,7 +120,8 @@ export function ProductWizard({ draft, saveState, onChange, onSave, onPreview, o
     setErrors(nextErrors);
     setOperationError("");
     if (nextErrors.length) {
-      goTo(visibleStepFor(nextErrors[0]!));
+      const firstVisibleStep = Math.min(...nextErrors.map(visibleStepFor)) as WizardStep;
+      goTo(firstVisibleStep);
       return;
     }
     setBusy("publishing");
@@ -120,6 +129,19 @@ export function ProductWizard({ draft, saveState, onChange, onSave, onPreview, o
       await onPublish();
     } catch {
       setOperationError("판매 공개를 완료하지 못했습니다. 저장 상태를 확인한 뒤 다시 시도해 주세요.");
+    } finally {
+      setBusy("idle");
+    }
+  };
+
+  const runPreview = async () => {
+    if (busy !== "idle" || saveState === "saving") return;
+    setBusy("previewing");
+    setOperationError("");
+    try {
+      await onPreview();
+    } catch {
+      setOperationError("미리 보기를 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
       setBusy("idle");
     }
@@ -155,12 +177,12 @@ export function ProductWizard({ draft, saveState, onChange, onSave, onPreview, o
       {operationError && <p className="admin-error" role="alert">{operationError}</p>}
       <div className="product-wizard__body" aria-live="polite">
         <p className="product-wizard__progress">{activeStep} / 4 · {current.name}</p>
-        {activeStep === 1 && <BasicStep draft={workingDraft} errors={fieldErrors} slugWasManuallyEdited={slugWasManuallyEdited} onSlugEdited={() => setSlugWasManuallyEdited(true)} onChange={commit} />}
-        {activeStep === 2 && <section className="product-wizard__step-content" aria-labelledby="wizard-media-title"><h2 id="wizard-media-title">상품 이미지를 준비하세요</h2><p>대표 이미지와 상세 이미지는 다음 단계에서 추가할 수 있습니다.</p><div id="wizard-media-slot" tabIndex={-1} className="product-wizard__media-slot" aria-describedby={fieldErrors.media ? "wizard-media-error" : undefined}>{mediaSlot ?? <p>이미지 업로드 기능을 준비하고 있습니다.</p>}</div>{fieldErrors.media && <small id="wizard-media-error">{fieldErrors.media}</small>}</section>}
-        {activeStep === 3 && <DetailsStep draft={workingDraft} errors={fieldErrors} onChange={commit} />}
+        {activeStep === 1 && <BasicStep draft={workingDraft} errors={fieldErrors} slugWasManuallyEdited={slugWasManuallyEdited} onSlugEdited={() => setSlugState({ draftIdentity, wasManuallyEdited: true })} onChange={commit} />}
+        {activeStep === 2 && <section className="product-wizard__step-content" aria-labelledby="wizard-media-title"><h2 id="wizard-media-title">상품 이미지를 준비하세요</h2><p>대표 이미지와 상세 이미지는 다음 단계에서 추가할 수 있습니다.</p><div id="wizard-media-slot" tabIndex={-1} className="product-wizard__media-slot" aria-label="상품 이미지 업로드 영역" aria-invalid={Boolean(fieldErrors.media)} aria-describedby={fieldErrors.media ? "wizard-media-error" : undefined}>{mediaSlot ?? <p>이미지 업로드 기능을 준비하고 있습니다.</p>}</div>{fieldErrors.media && <small id="wizard-media-error">{fieldErrors.media}</small>}</section>}
+        {activeStep === 3 && <DetailsStep key={`${draftIdentity}:${Boolean(fieldErrors.ingredients)}:${Boolean(fieldErrors.cautions)}`} draft={workingDraft} errors={fieldErrors} onChange={commit} />}
         {activeStep === 4 && <SalesStep draft={workingDraft} errors={fieldErrors} onChange={commit} />}
       </div>
-      <WizardActions step={activeStep} busy={busy} saveState={saveState} onPrevious={() => goTo(asStep(activeStep - 1))} onNext={() => goTo(asStep(activeStep + 1))} onSave={() => void runSave()} onPreview={onPreview} onPublish={() => void runPublish()} />
+      <WizardActions step={activeStep} busy={busy} saveState={saveState} onPrevious={() => goTo(asStep(activeStep - 1))} onNext={() => goTo(asStep(activeStep + 1))} onSave={() => void runSave()} onPreview={() => void runPreview()} onPublish={() => void runPublish()} />
     </section>
   );
 }
