@@ -73,6 +73,22 @@ describe("SiteHeader", () => {
     expect(screen.getByRole("link", { name: "피로·활력" })).toBeVisible();
   });
 
+  it("keeps the singleton category trigger linked to one deterministic menu id across renders", async () => {
+    const user = userEvent.setup();
+    const firstRender = renderHeader();
+    const firstTrigger = screen.getByRole("button", { name: "전체 카테고리" });
+
+    expect(firstTrigger).toHaveAttribute("aria-controls", "site-header-mega-menu");
+    await user.click(firstTrigger);
+    expect(screen.getByRole("region", { name: "전체 카테고리 메뉴" }))
+      .toHaveAttribute("id", "site-header-mega-menu");
+
+    firstRender.unmount();
+    renderHeader();
+    expect(screen.getByRole("button", { name: "전체 카테고리" }))
+      .toHaveAttribute("aria-controls", "site-header-mega-menu");
+  });
+
   it("closes the category menu with Escape and returns focus to its trigger", async () => {
     const user = userEvent.setup();
     renderHeader();

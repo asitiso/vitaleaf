@@ -1,13 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useCart } from "../../features/cart/cart-context";
 import { STOREFRONT_MENU } from "../../lib/navigation/storefront-menu";
 import { formatShippingBenefitBar } from "../../lib/site/policies";
 
 import { MegaMenu } from "./mega-menu";
+
+const MEGA_MENU_ID = "site-header-mega-menu";
 
 function SearchForm({ className }: { className?: string }) {
   return (
@@ -34,7 +36,6 @@ export function SiteHeader() {
   const mobileMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const mobileDrawerRef = useRef<HTMLElement>(null);
   const mobileCloseButtonRef = useRef<HTMLButtonElement>(null);
-  const megaMenuId = useId();
 
   const closeMegaMenu = (returnFocus = false) => {
     setIsMegaMenuOpen(false);
@@ -113,10 +114,10 @@ export function SiteHeader() {
         </div>
         <div ref={menuRootRef} className="site-header__navigation-row">
           <nav className="site-header__primary-nav" aria-label="주요 메뉴">
-            <button ref={categoryTriggerRef} className="site-header__category-trigger" type="button" aria-expanded={isMegaMenuOpen} aria-controls={megaMenuId} onClick={() => setIsMegaMenuOpen((isOpen) => !isOpen)}><span aria-hidden="true">☷</span> 전체 카테고리</button>
+            <button ref={categoryTriggerRef} className="site-header__category-trigger" type="button" aria-expanded={isMegaMenuOpen} aria-controls={MEGA_MENU_ID} onClick={() => setIsMegaMenuOpen((isOpen) => !isOpen)}><span aria-hidden="true">☷</span> 전체 카테고리</button>
             {STOREFRONT_MENU.header.map((item) => <Link key={item.key} href={item.href}>{item.label}</Link>)}
           </nav>
-          {isMegaMenuOpen ? <MegaMenu id={megaMenuId} onNavigate={() => closeMegaMenu()} /> : null}
+          {isMegaMenuOpen ? <MegaMenu id={MEGA_MENU_ID} onNavigate={() => closeMegaMenu()} /> : null}
         </div>
       </div>
       {isMobileMenuOpen ? (
