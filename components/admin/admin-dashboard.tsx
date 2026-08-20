@@ -312,7 +312,6 @@ const DraftEditor = forwardRef<DraftEditorHandle, {
         return;
       }
       event.preventDefault();
-      event.stopPropagation();
       try {
         navigateInternal(`${destination.pathname}${destination.search}${destination.hash}`);
       } catch {

@@ -1,6 +1,7 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Link from "next/link";
+import { useState, type MouseEvent as ReactMouseEvent } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 
 const replaceRoute = vi.hoisted(() => vi.fn());
@@ -130,6 +131,26 @@ const deferred = <T,>() => {
   });
   return { promise, resolve, reject };
 };
+
+function PersistentMenuLink({
+  onNavigate,
+}: {
+  onNavigate(event: ReactMouseEvent<HTMLAnchorElement>): void;
+}) {
+  const [isOpen, setIsOpen] = useState(true);
+  return (
+    <>
+      <span>{isOpen ? "메뉴 열림" : "메뉴 닫힘"}</span>
+      <Link
+        href="/story?from=admin"
+        onClick={(event) => {
+          setIsOpen(false);
+          onNavigate(event);
+        }}
+      >브랜드 이야기</Link>
+    </>
+  );
+}
 
 it("never mounts product write controls for a signed-out or forbidden user", async () => {
   const forbidden = dependencies({
@@ -839,6 +860,7 @@ it("uses the same unsaved confirmation before logout", async () => {
 it("guards actual product links only while the active editor has unsaved work", async () => {
   const user = userEvent.setup();
   const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValue(true);
+  const onNavigate = vi.fn();
   const deps = dependencies({
     observeAdminSession: (next) => {
       next("admin");
@@ -853,7 +875,7 @@ it("guards actual product links only while the active editor has unsaved work", 
       return vi.fn();
     },
   });
-  render(<><Link href="/products">스토어</Link><AdminDashboard dependencies={deps} /></>);
+  render(<><Link href="/products" onClick={onNavigate}>스토어</Link><AdminDashboard dependencies={deps} /></>);
 
   await user.click(await screen.findByRole("button", { name: "새 상품 등록" }));
   await user.type(screen.getByLabelText("상품명"), "오메가");
@@ -863,11 +885,15 @@ it("guards actual product links only while the active editor has unsaved work", 
   storeLink.dispatchEvent(cancelled);
   expect(cancelled.defaultPrevented).toBe(true);
   expect(screen.getByRole("heading", { name: "상품 등록" })).toBeVisible();
+  expect(onNavigate).not.toHaveBeenCalled();
+  expect(replaceRoute).not.toHaveBeenCalled();
 
   const allowed = new MouseEvent("click", { bubbles: true, cancelable: true });
   storeLink.dispatchEvent(allowed);
   expect(allowed.defaultPrevented).toBe(true);
   expect(replaceRoute).toHaveBeenCalledWith("/products");
+  expect(replaceRoute).toHaveBeenCalledTimes(1);
+  expect(onNavigate).toHaveBeenCalledTimes(1);
 
   await user.click(screen.getByRole("button", { name: "편집 닫기" }));
   confirm.mockClear();
@@ -883,8 +909,15 @@ it("replaces the sentinel with an accepted internal route and preserves the exac
   const destinationState = Object.freeze({ __NA: true, tree: ["story"], key: "destination" });
   window.history.replaceState(previousState, "", "/products");
   window.history.pushState(originalAdminState, "", "/admin/products");
+  const adminHistoryLength = window.history.length;
   const user = userEvent.setup();
   vi.spyOn(window, "confirm").mockReturnValue(true);
+  const callbackObservations: Array<{
+    defaultPrevented: boolean;
+    editorOpen: boolean;
+    pathname: string;
+    state: unknown;
+  }> = [];
   replaceRoute.mockImplementation((href: string) => {
     window.history.replaceState(destinationState, "", href);
   });
@@ -902,12 +935,32 @@ it("replaces the sentinel with an accepted internal route and preserves the exac
       return vi.fn();
     },
   });
-  const view = render(<><Link href="/story?from=admin">브랜드 이야기</Link><AdminDashboard dependencies={deps} /></>);
+  const view = render(<>
+    <PersistentMenuLink onNavigate={(event) => {
+      callbackObservations.push({
+        defaultPrevented: event.defaultPrevented,
+        editorOpen: screen.queryByRole("heading", { name: "상품 등록" }) !== null,
+        pathname: window.location.pathname,
+        state: window.history.state,
+      });
+    }} />
+    <AdminDashboard dependencies={deps} />
+  </>);
 
   await user.click(await screen.findByRole("button", { name: "새 상품 등록" }));
   await user.type(screen.getByLabelText("상품명"), "오메가");
+  expect(window.history.length).toBe(adminHistoryLength + 1);
   await user.click(screen.getByRole("link", { name: "브랜드 이야기" }));
 
+  expect(screen.getByText("메뉴 닫힘")).toBeVisible();
+  expect(callbackObservations).toEqual([{
+    defaultPrevented: true,
+    editorOpen: true,
+    pathname: "/story",
+    state: destinationState,
+  }]);
+  expect(replaceRoute).toHaveBeenCalledTimes(1);
+  expect(window.history.length).toBe(adminHistoryLength + 1);
   expect(window.location.pathname).toBe("/story");
   expect(window.location.search).toBe("?from=admin");
   expect(window.history.state).toEqual(destinationState);
