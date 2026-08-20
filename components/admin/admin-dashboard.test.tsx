@@ -365,6 +365,58 @@ it("does not replace subscriptions when sign-in and the observer authorize the s
   expect(screen.getByText("Stale subscription")).toBeVisible();
 });
 
+it("keeps a CSV draft import live when the observer already authorized the same admin", async () => {
+  const user = userEvent.setup();
+  let emitSession!: (state: AdminSessionState) => void;
+  const login = deferred<"admin">();
+  const save = deferred<ProductDraft>();
+  const saveDraft = vi.fn(() => save.promise);
+  const deps = dependencies({
+    observeAdminSession: (next) => { emitSession = next; next("signed-out"); return vi.fn(); },
+    signInAdmin: vi.fn(() => login.promise),
+    saveDraft,
+  });
+  render(<AdminDashboard dependencies={deps} />);
+
+  await user.type(screen.getByLabelText("이메일"), "admin@example.com");
+  await user.type(screen.getByLabelText("비밀번호"), "password");
+  await user.click(screen.getByRole("button", { name: "로그인" }));
+  act(() => emitSession("admin"));
+  await user.click(await screen.findByRole("tab", { name: "CSV 관리" }));
+  await user.upload(screen.getByLabelText("상품 CSV 파일"), new File(["name,category,price,stock\nA,vitamin,1000,1"], "a.csv", { type: "text/csv" }));
+  await user.click(await screen.findByRole("button", { name: "1개 상품을 임시저장으로 가져오기" }));
+  await waitFor(() => expect(saveDraft).toHaveBeenCalledOnce());
+
+  await act(async () => { login.resolve("admin"); await Promise.resolve(); });
+  await act(async () => { save.resolve(productDraft(product, { id: "csv-a", mode: "create", status: "draft" })); });
+
+  expect(await screen.findByText("상품 1개를 임시저장했습니다.")).toBeVisible();
+  expect(screen.queryByRole("button", { name: /임시저장으로 가져오기/ })).not.toBeInTheDocument();
+  expect(saveDraft).toHaveBeenCalledOnce();
+});
+
+it("ignores a completed CSV import after an observer authorization boundary", async () => {
+  const user = userEvent.setup();
+  let emitSession!: (state: AdminSessionState) => void;
+  const save = deferred<ProductDraft>();
+  const saveDraft = vi.fn(() => save.promise);
+  const deps = dependencies({
+    observeAdminSession: (next) => { emitSession = next; next("admin"); return vi.fn(); },
+    saveDraft,
+  });
+  render(<AdminDashboard dependencies={deps} />);
+  await user.click(await screen.findByRole("tab", { name: "CSV 관리" }));
+  await user.upload(screen.getByLabelText("상품 CSV 파일"), new File(["name,category,price,stock\nA,vitamin,1000,1"], "a.csv", { type: "text/csv" }));
+  await user.click(await screen.findByRole("button", { name: "1개 상품을 임시저장으로 가져오기" }));
+  await waitFor(() => expect(saveDraft).toHaveBeenCalledOnce());
+  act(() => emitSession("signed-out"));
+  await act(async () => save.resolve(productDraft(product, { id: "csv-a", mode: "create", status: "draft" })));
+
+  expect(screen.queryByText("상품 1개를 임시저장했습니다.")).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "관리자 로그인" })).toBeVisible();
+  expect(saveDraft).toHaveBeenCalledOnce();
+});
+
 it("logs in, searches products, toggles stock, and confirms deletion", async () => {
   const user = userEvent.setup();
   const saveProduct = vi.fn().mockResolvedValue("omega");
