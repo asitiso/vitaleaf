@@ -1,4 +1,4 @@
-import type { Ingredient, Product, ProductInput } from "../products/types";
+import type { Ingredient, Product, ProductDraft, ProductInput } from "../products/types";
 
 export type CsvRowError = {
   row: number;
@@ -62,6 +62,25 @@ const emptyProduct = (): ProductInput => ({
   salesRank: null,
   ratingAverage: 0,
   reviewCount: 0,
+});
+
+export const createCsvDraft = (input: ProductInput, id: string): ProductDraft => ({
+  ...input,
+  id,
+  media: [],
+  status: "draft",
+  mode: "create",
+  sessionId: null,
+  revision: 0,
+  sourceProductId: null,
+  sourceProductRevision: null,
+  sourceCreatedAt: null,
+  sourceCreatedBy: null,
+  currentStep: 1,
+  createdAt: null,
+  updatedAt: null,
+  createdBy: null,
+  updatedBy: null,
 });
 
 const encodeSpreadsheetSafe = (value: string): string => {

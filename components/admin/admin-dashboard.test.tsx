@@ -169,9 +169,14 @@ it("never mounts product write controls for a signed-out or forbidden user", asy
   expect(screen.getByText("관리자 권한이 없는 계정입니다.")).toBeVisible();
 });
 
-it("mounts CSV write controls only for an authorized admin and imports through the existing save adapter", async () => {
+it("imports valid CSV rows only as newly-sessioned review drafts without touching published products", async () => {
   const user = userEvent.setup();
   const saveProduct = vi.fn().mockResolvedValue("created-id");
+  const saveDraft = vi.fn(async (value: ProductDraft) => ({ ...value, revision: 1 }));
+  const createDraftId = vi.fn()
+    .mockReturnValueOnce("csv-draft-1")
+    .mockReturnValueOnce("csv-draft-2");
+  const startDraftSession = vi.fn((value: ProductDraft) => ({ ...value, sessionId: `session-${value.id}` }));
   const deps = dependencies({
     observeAdminSession: (next) => {
       next("admin");
@@ -182,6 +187,9 @@ it("mounts CSV write controls only for an authorized admin and imports through t
       return vi.fn();
     },
     saveProduct,
+    saveDraft,
+    createDraftId,
+    startDraftSession,
   });
   render(<AdminDashboard dependencies={deps} />);
 
@@ -191,14 +199,19 @@ it("mounts CSV write controls only for an authorized admin and imports through t
     "name,category,price,stock",
     "비타민 C,항산화,18000,20",
   ].join("\n")], "products.csv", { type: "text/csv" }));
-  await user.click(await screen.findByRole("button", { name: "1개 상품 가져오기" }));
+  await user.click(await screen.findByRole("button", { name: "1개 상품을 임시저장으로 가져오기" }));
 
-  await waitFor(() => expect(saveProduct).toHaveBeenCalledWith(expect.objectContaining({
+  await waitFor(() => expect(saveDraft).toHaveBeenCalledWith(expect.objectContaining({
+    id: "csv-draft-1",
+    sessionId: "session-csv-draft-1",
+    status: "draft",
+    mode: "create",
     name: "비타민 C",
     category: "항산화",
     price: 18_000,
     stock: 20,
   })));
+  expect(saveProduct).not.toHaveBeenCalled();
 });
 
 it("does not remount write controls when a stale admin check resolves after sign-out", async () => {

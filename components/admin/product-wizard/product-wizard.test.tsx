@@ -186,6 +186,41 @@ it("preserves a manual slug for the same draft but resets it for another editing
   expect(props.onChange).toHaveBeenLastCalledWith(expect.objectContaining({ slug: "new-product" }));
 });
 
+it("applies a category template only after confirming a non-empty draft and leaves claims and sales data unchanged", async () => {
+  const user = userEvent.setup();
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  const props = propsFor({
+    name: "기존 상품",
+    description: "이미 작성한 설명",
+    benefits: ["기존 효능"],
+    certifications: ["기존 인증"],
+    price: 25_000,
+    stock: 12,
+    ratingAverage: 4.8,
+    reviewCount: 15,
+  });
+  render(<ProductWizard {...props} />);
+
+  await user.selectOptions(screen.getByLabelText("상품 등록 양식"), "omega3");
+
+  expect(confirm).toHaveBeenCalledOnce();
+  expect(props.onChange).toHaveBeenLastCalledWith(expect.objectContaining({
+    category: "nutrition",
+    ingredients: [
+      { name: "EPA", amount: "", dailyValue: "" },
+      { name: "DHA", amount: "", dailyValue: "" },
+    ],
+    dosage: "",
+    description: "이미 작성한 설명",
+    benefits: ["기존 효능"],
+    certifications: ["기존 인증"],
+    price: 25_000,
+    stock: 12,
+    ratingAverage: 4.8,
+    reviewCount: 15,
+  }));
+});
+
 it("adds and removes detail rows with named controls", async () => {
   const user = userEvent.setup();
   render(<ProductWizard {...propsFor({ currentStep: 2 })} />);

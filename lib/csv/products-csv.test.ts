@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import type { Product } from "../products/types";
-import { parseProductCsv, serializeProducts } from "./products-csv";
+import { createCsvDraft, parseProductCsv, serializeProducts } from "./products-csv";
 
 const representativeProduct: Product = {
   id: "omega-3",
@@ -145,6 +145,44 @@ describe("parseProductCsv", () => {
         { row: 3, field: "row", message: "열 개수가 헤더와 일치하지 않습니다. 헤더 4개, 현재 행 3개입니다." },
       ],
     });
+  });
+});
+
+it("maps a valid CSV input to a new, unpublished draft identity", () => {
+  const draft = createCsvDraft({
+    name: "CSV 비타민",
+    slug: "csv-vitamin",
+    category: "vitamin",
+    concerns: [],
+    price: 18_000,
+    originalPrice: null,
+    thumbnailUrl: "",
+    images: [],
+    description: "",
+    benefits: [],
+    ingredients: [],
+    dosage: "",
+    origin: "",
+    certifications: [],
+    cautions: [],
+    stock: 20,
+    isBest: false,
+    isNew: false,
+    salesRank: null,
+    ratingAverage: 0,
+    reviewCount: 0,
+  }, "new-csv-draft");
+
+  expect(draft).toMatchObject({
+    id: "new-csv-draft",
+    status: "draft",
+    mode: "create",
+    sessionId: null,
+    revision: 0,
+    sourceProductId: null,
+    media: [],
+    name: "CSV 비타민",
+    stock: 20,
   });
 });
 

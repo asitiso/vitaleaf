@@ -52,13 +52,13 @@ it("ignores a stale file read so only the latest selection can be previewed and 
     "name,category,price,stock",
     "최신 상품,혈행,21000,5",
   ].join("\n")));
-  expect(await screen.findByText("가져올 상품 1개를 확인해 주세요.")).toBeVisible();
+  expect(await screen.findByText("임시저장할 상품 1개를 확인해 주세요.")).toBeVisible();
 
   await act(async () => pending.get("older.csv")?.([
     "name,category,price,stock",
     "오래된 상품,혈행,10000,1",
   ].join("\n")));
-  await user.click(screen.getByRole("button", { name: "1개 상품 가져오기" }));
+  await user.click(screen.getByRole("button", { name: "1개 상품을 임시저장으로 가져오기" }));
 
   expect(onImport).toHaveBeenCalledWith([
     expect.objectContaining({ name: "최신 상품", price: 21_000 }),
@@ -82,7 +82,7 @@ it("blocks all writes when any row is invalid and shows every row-field error", 
   expect(await screen.findByText("2행 판매가: 판매가는 0 이상의 숫자여야 합니다.")).toBeVisible();
   expect(screen.getByText("3행 상품명: 상품명을 입력해 주세요.")).toBeVisible();
   expect(screen.getByText("3행 재고: 재고는 0 이상의 정수여야 합니다.")).toBeVisible();
-  expect(screen.queryByRole("button", { name: /상품 가져오기/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /임시저장으로 가져오기/ })).not.toBeInTheDocument();
   expect(onImport).not.toHaveBeenCalled();
 });
 
@@ -101,12 +101,12 @@ it.each([
   ].join("\n")));
 
   expect(await screen.findByText(`2행: ${message}`)).toBeVisible();
-  expect(screen.queryByText(/가져올 상품 \d+개를 확인해 주세요/)).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: /상품 가져오기/ })).not.toBeInTheDocument();
+  expect(screen.queryByText(/임시저장할 상품 \d+개를 확인해 주세요/)).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /임시저장으로 가져오기/ })).not.toBeInTheDocument();
   expect(onImport).not.toHaveBeenCalled();
 });
 
-it("previews valid rows and requires explicit confirmation before one import", async () => {
+it("previews valid rows and requires explicit confirmation before saving drafts", async () => {
   const user = userEvent.setup();
   const onImport = vi.fn().mockResolvedValue(undefined);
   render(<CsvTools products={[]} onImport={onImport} />);
@@ -117,16 +117,38 @@ it("previews valid rows and requires explicit confirmation before one import", a
     "비타민D,뼈 건강,12000,8,false",
   ].join("\n")));
 
-  expect(await screen.findByText("가져올 상품 2개를 확인해 주세요.")).toBeVisible();
+  expect(await screen.findByText("임시저장할 상품 2개를 확인해 주세요.")).toBeVisible();
   expect(onImport).not.toHaveBeenCalled();
-  await user.click(screen.getByRole("button", { name: "2개 상품 가져오기" }));
+  await user.click(screen.getByRole("button", { name: "2개 상품을 임시저장으로 가져오기" }));
 
   await waitFor(() => expect(onImport).toHaveBeenCalledTimes(1));
   expect(onImport).toHaveBeenCalledWith([
     expect.objectContaining({ name: "오메가3", price: 35_000, isBest: true }),
     expect.objectContaining({ name: "비타민D", price: 12_000, isBest: false }),
   ]);
-  expect(await screen.findByText("상품 2개를 가져왔습니다.")).toBeVisible();
+  expect(await screen.findByText("상품 2개를 임시저장했습니다.")).toBeVisible();
+});
+
+it("keeps only failed rows available for a locked retry and reports the partial draft save", async () => {
+  const user = userEvent.setup();
+  const onImport = vi.fn()
+    .mockResolvedValueOnce({ savedCount: 1, failures: [{ input: { name: "비타민D" }, message: "offline" }] })
+    .mockResolvedValueOnce({ savedCount: 1, failures: [] });
+  render(<CsvTools products={[]} onImport={onImport} />);
+
+  await user.upload(screen.getByLabelText("상품 CSV 파일"), csvFile([
+    "name,category,price,stock",
+    "오메가3,혈행,35000,10",
+    "비타민D,뼈 건강,12000,8",
+  ].join("\n")));
+  await user.click(await screen.findByRole("button", { name: "2개 상품을 임시저장으로 가져오기" }));
+
+  expect(await screen.findByText("상품 1개를 임시저장했습니다. 1개는 저장하지 못했습니다. 다시 시도해 주세요.")).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "1개 상품을 임시저장으로 다시 시도" }));
+
+  await waitFor(() => expect(onImport).toHaveBeenCalledTimes(2));
+  expect(onImport.mock.calls[1]?.[0]).toEqual([expect.objectContaining({ name: "비타민D" })]);
+  expect(await screen.findByText("상품 1개를 임시저장했습니다.")).toBeVisible();
 });
 
 it("rejects more than 400 rows before calling the import adapter", async () => {
@@ -140,8 +162,8 @@ it("rejects more than 400 rows before calling the import adapter", async () => {
     ...rows,
   ].join("\n")));
 
-  expect(await screen.findByText("한 번에 최대 400개 상품만 가져올 수 있습니다.")).toBeVisible();
-  expect(screen.queryByRole("button", { name: /상품 가져오기/ })).not.toBeInTheDocument();
+  expect(await screen.findByText("한 번에 최대 400개 상품만 임시저장할 수 있습니다.")).toBeVisible();
+  expect(screen.queryByRole("button", { name: /임시저장으로 가져오기/ })).not.toBeInTheDocument();
   expect(onImport).not.toHaveBeenCalled();
 });
 
@@ -167,8 +189,8 @@ it("shows recoverable import and export failure states", async () => {
     "name,category,price,stock",
     "오메가3,혈행,35000,10",
   ].join("\n")));
-  await user.click(await screen.findByRole("button", { name: "1개 상품 가져오기" }));
-  expect(await screen.findByText("상품을 가져오지 못했습니다. 네트워크 연결을 확인하고 다시 시도해 주세요.")).toBeVisible();
+  await user.click(await screen.findByRole("button", { name: "1개 상품을 임시저장으로 가져오기" }));
+  expect(await screen.findByText("상품을 임시저장하지 못했습니다. 네트워크 연결을 확인하고 다시 시도해 주세요.")).toBeVisible();
 
   await user.click(screen.getByRole("button", { name: "상품 CSV 내보내기" }));
   expect(await screen.findByText("CSV 파일을 내보내지 못했습니다. 다시 시도해 주세요.")).toBeVisible();

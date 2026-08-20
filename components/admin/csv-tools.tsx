@@ -53,14 +53,26 @@ const downloadCsvInBrowser = (csv: string, filename: string): void => {
   URL.revokeObjectURL(url);
 };
 
+export type CsvDraftImportFailure = {
+  input: ProductInput;
+  message: string;
+};
+
+export type CsvDraftImportResult = {
+  savedCount: number;
+  failures: CsvDraftImportFailure[];
+};
+
 type CsvToolsProps = {
   products: readonly Product[];
-  onImport(products: ProductInput[]): Promise<void>;
+  onImportDrafts?: (products: ProductInput[]) => Promise<CsvDraftImportResult | void>;
+  // Kept temporarily so existing callers can adopt the draft-specific name without a risky all-at-once switch.
+  onImport?: (products: ProductInput[]) => Promise<CsvDraftImportResult | void>;
   downloadCsv?: (csv: string, filename: string) => void;
   readFile?: (file: File) => Promise<string>;
 };
 
-export function CsvTools({ products, onImport, downloadCsv = downloadCsvInBrowser, readFile = readUtf8File }: CsvToolsProps) {
+export function CsvTools({ products, onImportDrafts, onImport, downloadCsv = downloadCsvInBrowser, readFile = readUtf8File }: CsvToolsProps) {
   const [preview, setPreview] = useState<ProductInput[]>([]);
   const [previewGeneration, setPreviewGeneration] = useState<number | null>(null);
   const [errors, setErrors] = useState<CsvRowError[]>([]);
@@ -68,6 +80,8 @@ export function CsvTools({ products, onImport, downloadCsv = downloadCsvInBrowse
   const [operationError, setOperationError] = useState("");
   const [importing, setImporting] = useState(false);
   const selectionGeneration = useRef(0);
+  const importLock = useRef(false);
+  const importDrafts = onImportDrafts ?? onImport;
 
   const selectFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -89,11 +103,11 @@ export function CsvTools({ products, onImport, downloadCsv = downloadCsvInBrowse
         return;
       }
       if (result.valid.length === 0) {
-        setOperationError("가져올 상품이 없습니다.");
+        setOperationError("임시저장할 상품이 없습니다.");
         return;
       }
       if (result.valid.length > MAX_IMPORT_COUNT) {
-        setOperationError(`한 번에 최대 ${MAX_IMPORT_COUNT}개 상품만 가져올 수 있습니다.`);
+        setOperationError(`한 번에 최대 ${MAX_IMPORT_COUNT}개 상품만 임시저장할 수 있습니다.`);
         return;
       }
       setPreview(result.valid);
@@ -110,18 +124,30 @@ export function CsvTools({ products, onImport, downloadCsv = downloadCsvInBrowse
       || errors.length > 0
       || previewGeneration !== selectionGeneration.current
       || importing
+      || importLock.current
     ) return;
     setImporting(true);
     setOperationError("");
     setMessage("");
     try {
-      await onImport(preview);
-      setMessage(`상품 ${preview.length}개를 가져왔습니다.`);
+      if (!importDrafts) throw new Error("CSV draft import is unavailable");
+      importLock.current = true;
+      const result = await importDrafts(preview);
+      const outcome = result ?? { savedCount: preview.length, failures: [] };
+      if (outcome.failures.length > 0) {
+        const failedInputs = outcome.failures.map((failure) => failure.input);
+        setPreview(failedInputs);
+        setPreviewGeneration(selectionGeneration.current);
+        setOperationError(`상품 ${outcome.savedCount}개를 임시저장했습니다. ${failedInputs.length}개는 저장하지 못했습니다. 다시 시도해 주세요.`);
+        return;
+      }
+      setMessage(`상품 ${outcome.savedCount}개를 임시저장했습니다.`);
       setPreview([]);
       setPreviewGeneration(null);
     } catch {
-      setOperationError("상품을 가져오지 못했습니다. 네트워크 연결을 확인하고 다시 시도해 주세요.");
+      setOperationError("상품을 임시저장하지 못했습니다. 네트워크 연결을 확인하고 다시 시도해 주세요.");
     } finally {
+      importLock.current = false;
       setImporting(false);
     }
   };
@@ -145,7 +171,7 @@ export function CsvTools({ products, onImport, downloadCsv = downloadCsvInBrowse
         </div>
       </div>
       <p>
-        양식을 내려받아 한 번에 최대 400개 상품을 검증한 뒤 등록할 수 있습니다.
+        양식을 내려받아 한 번에 최대 400개 상품을 검증한 뒤 임시저장할 수 있습니다.
         배열 값은 <code>|</code>로 구분하고 값 안의 <code>|</code>와 <code>\</code>는 각각 <code>\|</code>와 <code>\\</code>로 입력해 주세요.
         원료 정보는 JSON 배열로 입력해 주세요.
       </p>
@@ -160,7 +186,7 @@ export function CsvTools({ products, onImport, downloadCsv = downloadCsvInBrowse
 
       {errors.length > 0 && (
         <div className="admin-error" role="alert">
-          <p>오류 {errors.length}개를 모두 수정한 뒤 다시 선택해 주세요. 상품은 등록되지 않았습니다.</p>
+          <p>오류 {errors.length}개를 모두 수정한 뒤 다시 선택해 주세요. 상품은 임시저장되지 않았습니다.</p>
           <ul aria-label="CSV 검증 오류">
             {errors.map((error, index) => (
               <li key={`${error.row}-${error.field}-${index}`}>
@@ -174,14 +200,18 @@ export function CsvTools({ products, onImport, downloadCsv = downloadCsvInBrowse
       {message && <p role="status">{message}</p>}
       {preview.length > 0 && (
         <div role="status">
-          <p>가져올 상품 {preview.length}개를 확인해 주세요.</p>
+          <p>임시저장할 상품 {preview.length}개를 확인해 주세요.</p>
           <button
             type="button"
             className="admin-primary-button"
             disabled={importing}
             onClick={() => void confirmImport()}
           >
-            {importing ? "가져오는 중" : `${preview.length}개 상품 가져오기`}
+            {importing
+              ? "임시저장 중"
+              : operationError
+                ? `${preview.length}개 상품을 임시저장으로 다시 시도`
+                : `${preview.length}개 상품을 임시저장으로 가져오기`}
           </button>
         </div>
       )}

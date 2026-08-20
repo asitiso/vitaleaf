@@ -84,7 +84,7 @@ function StringRows({
   );
 }
 
-export function DetailsStep({ draft, errors, onChange }: { draft: ProductDraft; errors: DetailErrors; onChange(next: ProductDraft): void }) {
+export function DetailsStep({ draft, errors, dosageHint, onChange }: { draft: ProductDraft; errors: DetailErrors; dosageHint?: string; onChange(next: ProductDraft): void }) {
   const rowPrefix = useId();
   const pendingFocus = useRef<string | null>(null);
   const ingredientRows = draft.ingredients.length ? draft.ingredients : errors.ingredients ? [emptyIngredient()] : [];
@@ -168,7 +168,7 @@ export function DetailsStep({ draft, errors, onChange }: { draft: ProductDraft; 
       <p>고객이 이해할 수 있도록 효능, 성분, 섭취 방법을 적습니다.</p>
       <div className="product-wizard__fields">
         <label className="product-wizard__wide"><span>상품 설명</span><textarea value={draft.description} rows={4} onChange={(event) => onChange({ ...draft, description: event.target.value })} /></label>
-        <label><span>섭취 방법</span><input id="wizard-dosage" data-wizard-field="dosage" name="dosage" value={draft.dosage} onChange={(event) => onChange({ ...draft, dosage: event.target.value })} aria-invalid={Boolean(errors.dosage)} aria-describedby={errors.dosage ? "wizard-dosage-error" : undefined} />{errors.dosage && <small id="wizard-dosage-error">{errors.dosage}</small>}</label>
+        <label><span>섭취 방법</span><input id="wizard-dosage" data-wizard-field="dosage" name="dosage" value={draft.dosage} placeholder={dosageHint} onChange={(event) => onChange({ ...draft, dosage: event.target.value })} aria-invalid={Boolean(errors.dosage)} aria-describedby={errors.dosage ? "wizard-dosage-error" : undefined} />{errors.dosage && <small id="wizard-dosage-error">{errors.dosage}</small>}</label>
         <label><span>원산지</span><input id="wizard-origin" data-wizard-field="origin" name="origin" value={draft.origin} onChange={(event) => onChange({ ...draft, origin: event.target.value })} aria-invalid={Boolean(errors.origin)} aria-describedby={errors.origin ? "wizard-origin-error" : undefined} />{errors.origin && <small id="wizard-origin-error">{errors.origin}</small>}</label>
       </div>
       <StringRows label="효능" kind="benefit" rows={draft.benefits} rowIds={benefitIds} onChange={(benefits) => onChange({ ...draft, benefits })} onAdd={() => addString("benefit", "benefits")} onRemove={(index) => removeString("benefit", "benefits", index)} />

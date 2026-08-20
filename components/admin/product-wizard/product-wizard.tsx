@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { validatePublishableDraft, type DraftValidationError } from "../../../lib/products/draft";
 import type { ProductDraft } from "../../../lib/products/types";
-import { BasicStep } from "./basic-step";
+import { BasicStep, dosageHintForProductTemplate } from "./basic-step";
 import { DetailsStep } from "./details-step";
 import { MediaStep, type MediaDelete, type MediaUpload } from "./media-step";
 import { SalesStep } from "./sales-step";
@@ -75,6 +75,7 @@ export function ProductWizard({ draft, saveState, onChange, onSave, onPreview, o
   const operationLockRef = useRef<BusyState>("idle");
   const draftIdentity = `${draft.id}:${draft.sessionId ?? ""}`;
   const [slugState, setSlugState] = useState(() => ({ draftIdentity, wasManuallyEdited: false }));
+  const [templateHint, setTemplateHint] = useState(() => ({ draftIdentity, value: "" }));
 
   const hasExternalDraft = localState.source !== draft;
   const workingDraft = hasExternalDraft ? draft : localState.value;
@@ -169,6 +170,7 @@ export function ProductWizard({ draft, saveState, onChange, onSave, onPreview, o
 
   const fieldErrors = Object.fromEntries((errorsByStep[activeStep] ?? []).map((error) => [error.field, error.message]));
   const current = steps[activeStep - 1]!;
+  const templateDosageHint = templateHint.draftIdentity === draftIdentity ? templateHint.value : "";
 
   return (
     <section className="product-wizard" aria-labelledby="product-wizard-title" aria-busy={busy === "publishing"}>
@@ -199,9 +201,9 @@ export function ProductWizard({ draft, saveState, onChange, onSave, onPreview, o
       {operationError && <p className="admin-error" role="alert">{operationError}</p>}
       <div className="product-wizard__body" aria-live="polite">
         <p className="product-wizard__progress">{activeStep} / 4 · {current.name}</p>
-        {activeStep === 1 && <BasicStep draft={workingDraft} errors={fieldErrors} slugWasManuallyEdited={slugWasManuallyEdited} onSlugEdited={() => setSlugState({ draftIdentity, wasManuallyEdited: true })} onChange={commit} />}
+        {activeStep === 1 && <BasicStep draft={workingDraft} errors={fieldErrors} slugWasManuallyEdited={slugWasManuallyEdited} onSlugEdited={() => setSlugState({ draftIdentity, wasManuallyEdited: true })} onTemplateApplied={(template) => setTemplateHint({ draftIdentity, value: dosageHintForProductTemplate(template) })} onChange={commit} />}
         <div hidden={activeStep !== 2} aria-hidden={activeStep !== 2}><div id="wizard-media-slot" tabIndex={activeStep === 2 ? -1 : undefined} className="product-wizard__media-slot" aria-label="상품 이미지 업로드 영역" aria-invalid={Boolean(fieldErrors.media)} aria-describedby={fieldErrors.media ? "wizard-media-error" : undefined}><MediaStep key={`${workingDraft.id}:${workingDraft.sessionId ?? "null"}`} productId={workingDraft.id} sessionId={workingDraft.sessionId} media={workingDraft.media} disabled={busy !== "idle"} onChange={(media) => commit({ ...workingDraft, media })} upload={upload} deleteImage={deleteImage} onUploadingChange={(uploading) => { mediaUploadingRef.current = uploading; setMediaUploading(uploading); }} />{mediaSlot}{activeStep === 2 && fieldErrors.media && <small id="wizard-media-error">{fieldErrors.media}</small>}</div></div>
-        {activeStep === 3 && <DetailsStep draft={workingDraft} errors={fieldErrors} onChange={commit} />}
+        {activeStep === 3 && <DetailsStep draft={workingDraft} errors={fieldErrors} dosageHint={templateDosageHint} onChange={commit} />}
         {activeStep === 4 && <SalesStep draft={workingDraft} errors={fieldErrors} onChange={commit} />}
       </div>
       <WizardActions step={activeStep} busy={busy} saveState={saveState} publishDisabled={mediaUploading} onPrevious={() => goTo(asStep(activeStep - 1))} onNext={() => goTo(asStep(activeStep + 1))} onSave={() => void runSave()} onPreview={() => void runPreview()} onPublish={() => void runPublish()} />

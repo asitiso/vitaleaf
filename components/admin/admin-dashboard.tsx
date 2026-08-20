@@ -33,6 +33,8 @@ import {
 import { deleteProductImage, uploadProductImage } from "../../lib/firebase/product-media";
 import { validatePublishableDraft } from "../../lib/products/draft";
 import type { Product, ProductDraft, ProductInput } from "../../lib/products/types";
+import { createCsvDraft } from "../../lib/csv/products-csv";
+import type { CsvDraftImportResult } from "./csv-tools";
 import { useDraftAutosave } from "../../features/admin/use-draft-autosave";
 import { useUnsavedHistoryGuard } from "../../features/admin/use-unsaved-history-guard";
 import { CsvTools } from "./csv-tools";
@@ -571,8 +573,21 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
     }
   };
 
-  const importProducts = async (inputs: ProductInput[]) => {
-    await Promise.all(inputs.map((input) => dependencies.saveProduct(input)));
+  const importDrafts = async (inputs: ProductInput[]): Promise<CsvDraftImportResult> => {
+    const attempts = inputs.map(async (input) => {
+      const id = dependencies.createDraftId();
+      const draft = dependencies.startDraftSession(createCsvDraft(input, id));
+      return dependencies.saveDraft(draft);
+    });
+    const outcomes = await Promise.allSettled(attempts);
+    return outcomes.reduce<CsvDraftImportResult>((result, outcome, index) => {
+      if (outcome.status === "fulfilled") result.savedCount += 1;
+      else result.failures.push({
+        input: inputs[index]!,
+        message: outcome.reason instanceof Error ? outcome.reason.message : "draft save failed",
+      });
+      return result;
+    }, { savedCount: 0, failures: [] });
   };
 
   const runDocumentMutation = async <T,>(
@@ -841,7 +856,7 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
 
           {view === "csv" ? (
             <section id="admin-panel-csv" className="admin-catalog" role="tabpanel" aria-labelledby="admin-tab-csv">
-              <CsvTools products={products} onImport={importProducts} />
+              <CsvTools products={products} onImportDrafts={importDrafts} />
             </section>
           ) : null}
         </>
