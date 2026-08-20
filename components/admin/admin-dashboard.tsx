@@ -436,6 +436,7 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
   const [authorizationGeneration, setAuthorizationGeneration] = useState(0);
   const [csvImporting, setCsvImporting] = useState(false);
   const authorizationGenerationRef = useRef(0);
+  const sessionRef = useRef<AdminSessionState>(session);
   const csvImportTokenRef = useRef<symbol | null>(null);
   const editorGenerationRef = useRef(0);
   const editorRef = useRef<DraftEditorHandle>(null);
@@ -454,8 +455,11 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
   }, [router]);
 
   useEffect(() => dependencies.observeAdminSession((state) => {
-    authorizationGenerationRef.current += 1;
-    setAuthorizationGeneration(authorizationGenerationRef.current);
+    if (sessionRef.current !== state) {
+      authorizationGenerationRef.current += 1;
+      setAuthorizationGeneration(authorizationGenerationRef.current);
+    }
+    sessionRef.current = state;
     setSession(state);
     setAuthMessage((current) => (
       state === "forbidden"
@@ -481,6 +485,7 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
     }
   }, (error) => {
     authorizationGenerationRef.current += 1;
+    sessionRef.current = "signed-out";
     editorGenerationRef.current += 1;
     setAuthorizationGeneration(authorizationGenerationRef.current);
     productsRef.current = [];
@@ -550,12 +555,16 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
   const login = async (email: string, password: string) => {
     const result = await dependencies.signInAdmin(email, password);
     if (result === "admin") {
-      authorizationGenerationRef.current += 1;
-      setAuthorizationGeneration(authorizationGenerationRef.current);
+      if (sessionRef.current !== "admin") {
+        authorizationGenerationRef.current += 1;
+        setAuthorizationGeneration(authorizationGenerationRef.current);
+      }
+      sessionRef.current = "admin";
       setAuthMessage("");
       setSession("admin");
     } else if (result === "forbidden") {
       authorizationGenerationRef.current += 1;
+      sessionRef.current = "forbidden";
       editorGenerationRef.current += 1;
       productsRef.current = [];
       mutationTokensRef.current.clear();

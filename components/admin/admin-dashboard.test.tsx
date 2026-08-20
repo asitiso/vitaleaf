@@ -327,7 +327,7 @@ it("keeps observer-authorized user B mounted when stale sign-in A resolves", asy
   expect(screen.getByRole("button", { name: "새 상품 등록" })).toBeVisible();
 });
 
-it("replaces subscriptions when sign-in and the observer both authorize the same session", async () => {
+it("does not replace subscriptions when sign-in and the observer authorize the same session", async () => {
   const user = userEvent.setup();
   let emitSession!: (state: AdminSessionState) => void;
   let resolveSignIn!: (state: "admin") => void;
@@ -357,14 +357,12 @@ it("replaces subscriptions when sign-in and the observer both authorize the same
   await waitFor(() => expect(productCallbacks).toHaveLength(1));
 
   act(() => emitSession("admin"));
-  await waitFor(() => expect(productCallbacks).toHaveLength(2));
+  await waitFor(() => expect(productCallbacks).toHaveLength(1));
   act(() => {
     productCallbacks[0]([{ ...product, name: "Stale subscription" }]);
-    productCallbacks[1]([{ ...product, name: "Current subscription" }]);
   });
 
-  expect(screen.queryByText("Stale subscription")).not.toBeInTheDocument();
-  expect(screen.getByText("Current subscription")).toBeVisible();
+  expect(screen.getByText("Stale subscription")).toBeVisible();
 });
 
 it("logs in, searches products, toggles stock, and confirms deletion", async () => {
