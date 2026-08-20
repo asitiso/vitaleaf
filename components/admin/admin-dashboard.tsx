@@ -29,6 +29,7 @@ import { deleteProductImage, uploadProductImage } from "../../lib/firebase/produ
 import { validatePublishableDraft } from "../../lib/products/draft";
 import type { Product, ProductDraft, ProductInput } from "../../lib/products/types";
 import { useDraftAutosave } from "../../features/admin/use-draft-autosave";
+import { useUnsavedHistoryGuard } from "../../features/admin/use-unsaved-history-guard";
 import { formatWon } from "../../lib/format";
 import { CsvTools } from "./csv-tools";
 import { ProductWizard } from "./product-wizard/product-wizard";
@@ -256,13 +257,17 @@ const DraftEditor = forwardRef<DraftEditorHandle, {
   const autosave = useDraftAutosave({ draft, save: dependencies.saveDraft, delayMs: 1_200 });
   const autosaveStatus = autosave.status;
   const confirmClose = autosave.confirmClose;
+  const hasUnsavedWork = autosaveStatus === "dirty" || autosaveStatus === "saving" || autosaveStatus === "error";
+  const allowHistoryNavigation = useUnsavedHistoryGuard({
+    active: hasUnsavedWork || publishing,
+    locked: publishing,
+    confirmExit: confirmClose,
+  });
 
   useImperativeHandle(ref, () => ({ confirmExit: confirmClose }), [confirmClose]);
 
   useEffect(() => {
-    const hasUnsavedWork = autosaveStatus === "dirty" || autosaveStatus === "saving" || autosaveStatus === "error";
     if (!hasUnsavedWork && !publishing) return;
-    const guardedUrl = window.location.href;
 
     const guardInternalNavigation = (event: MouseEvent) => {
       if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -274,21 +279,14 @@ const DraftEditor = forwardRef<DraftEditorHandle, {
       if (publishing || !confirmClose()) {
         event.preventDefault();
         event.stopPropagation();
+        return;
       }
-    };
-
-    const guardHistoryNavigation = () => {
-      if (!publishing && confirmClose()) return;
-      window.history.pushState(window.history.state, "", guardedUrl);
+      allowHistoryNavigation();
     };
 
     document.addEventListener("click", guardInternalNavigation, true);
-    window.addEventListener("popstate", guardHistoryNavigation);
-    return () => {
-      document.removeEventListener("click", guardInternalNavigation, true);
-      window.removeEventListener("popstate", guardHistoryNavigation);
-    };
-  }, [autosaveStatus, confirmClose, publishing]);
+    return () => document.removeEventListener("click", guardInternalNavigation, true);
+  }, [allowHistoryNavigation, confirmClose, hasUnsavedWork, publishing]);
 
   const close = () => {
     if (isActive() && autosave.confirmClose()) onClose();

@@ -1,0 +1,116 @@
+"use client";
+
+import { useCallback, useEffect, useRef } from "react";
+
+const EDITOR_GUARD_STATE_KEY = "__vitaleafAdminEditorHistoryGuard";
+
+type GuardPhase = "armed" | "restoring" | "replaying" | "inactive";
+
+type GuardSnapshot = {
+  guardId: string;
+  originalState: unknown;
+  originalUrl: string;
+  phase: GuardPhase;
+  position: "sentinel" | "original" | "destination";
+};
+
+const createGuardId = (): string => (
+  typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random()}`
+);
+
+const withGuardId = (state: unknown, guardId: string): Record<string, unknown> => ({
+  ...(state !== null && typeof state === "object" && !Array.isArray(state)
+    ? state as Record<string, unknown>
+    : {}),
+  [EDITOR_GUARD_STATE_KEY]: guardId,
+});
+
+const isGuardState = (state: unknown, guardId: string): boolean => (
+  state !== null
+  && typeof state === "object"
+  && (state as Record<string, unknown>)[EDITOR_GUARD_STATE_KEY] === guardId
+);
+
+export function useUnsavedHistoryGuard({
+  active,
+  locked,
+  confirmExit,
+}: {
+  active: boolean;
+  locked: boolean;
+  confirmExit(): boolean;
+}) {
+  const snapshotRef = useRef<GuardSnapshot | null>(null);
+  const lockedRef = useRef(locked);
+  const confirmExitRef = useRef(confirmExit);
+
+  useEffect(() => {
+    lockedRef.current = locked;
+    confirmExitRef.current = confirmExit;
+  }, [confirmExit, locked]);
+
+  const neutralize = useCallback(() => {
+    const snapshot = snapshotRef.current;
+    if (!snapshot || snapshot.phase === "inactive") return;
+    snapshot.phase = "inactive";
+    if (
+      snapshot.position === "sentinel"
+      && window.location.href === snapshot.originalUrl
+      && isGuardState(window.history.state, snapshot.guardId)
+    ) {
+      window.history.replaceState(snapshot.originalState, "", snapshot.originalUrl);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!active) return;
+
+    const guardId = createGuardId();
+    const originalState = window.history.state;
+    const originalUrl = window.location.href;
+    const snapshot: GuardSnapshot = {
+      guardId,
+      originalState,
+      originalUrl,
+      phase: "armed",
+      position: "sentinel",
+    };
+    snapshotRef.current = snapshot;
+    window.history.pushState(withGuardId(originalState, guardId), "", originalUrl);
+
+    const guardPopState = (event: PopStateEvent) => {
+      if (snapshot.phase === "restoring") {
+        if (isGuardState(event.state, guardId)) {
+          snapshot.phase = "armed";
+          snapshot.position = "sentinel";
+        }
+        return;
+      }
+      if (snapshot.phase === "replaying") {
+        snapshot.phase = "inactive";
+        snapshot.position = "destination";
+        return;
+      }
+      if (snapshot.phase !== "armed" || snapshot.position !== "sentinel") return;
+
+      snapshot.position = "original";
+      if (!lockedRef.current && confirmExitRef.current()) {
+        snapshot.phase = "replaying";
+        window.history.back();
+        return;
+      }
+      snapshot.phase = "restoring";
+      window.history.go(1);
+    };
+
+    window.addEventListener("popstate", guardPopState);
+    return () => {
+      window.removeEventListener("popstate", guardPopState);
+      neutralize();
+    };
+  }, [active, neutralize]);
+
+  return neutralize;
+}
