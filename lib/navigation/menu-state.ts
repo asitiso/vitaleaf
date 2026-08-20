@@ -1,12 +1,12 @@
-import { AGE_TARGETS, HEALTH_CONCERNS, PRODUCT_CATEGORIES, type TaxonomyOption } from "../catalog/taxonomy";
+import { AGE_TARGETS, HEALTH_CONCERNS, PRODUCT_CATEGORIES, taxonomyLabel, type TaxonomyOption } from "../catalog/taxonomy";
 import type { ProductFilters } from "../products/types";
 
 export const TRIAL_MAX_PRICE_WON = 30_000;
 
 export const AGE_CONCERN_GROUPS: Record<string, readonly string[]> = {
-  "30": ["장 건강", "피로·활력"],
-  "40": ["눈 건강", "혈행"],
-  "50": ["뇌 건강", "관절·뼈 건강"],
+  "30": ["gut", "energy"],
+  "40": ["eyes", "circulation"],
+  "50": ["brain", "bones"],
 };
 
 export type MenuPageState = {
@@ -104,10 +104,13 @@ export function resolveMenuState(params: SearchParams): MenuPageState {
   const promotion: MenuPageState["promotion"] = promotionValue === "today" || promotionValue === "trial" ? promotionValue : null;
   const viewValue = query.view;
   const discoveryView: MenuPageState["discoveryView"] = viewValue === "concerns" || viewValue === "ingredients" ? viewValue : null;
-  const filters = { ...parseExistingFilters(query), category: category?.label ?? "", concern: concern?.label ?? "" };
+  const filters = { ...parseExistingFilters(query), category: category?.value ?? "", concern: concern?.value ?? "" };
   const base = { filters, promotion, age, discoveryView };
 
-  if (ageOption) return { ...base, title: `${ageOption.label} 추천`, description: `${ageOption.label}의 일상 건강 관리에 맞춰 상품을 살펴보세요.`, contextLabel: `연령 추천 기준: ${AGE_CONCERN_GROUPS[ageOption.value]?.[0] ?? ""}` };
+  if (ageOption) {
+    const firstConcern = AGE_CONCERN_GROUPS[ageOption.value]?.[0] ?? "";
+    return { ...base, title: `${ageOption.label} 추천`, description: `${ageOption.label}의 일상 건강 관리에 맞춰 상품을 살펴보세요.`, contextLabel: `연령 추천 기준: ${taxonomyLabel(HEALTH_CONCERNS, firstConcern)}` };
+  }
   if (category) return { ...base, title: category.label, description: category.description };
   if (concern) return { ...base, title: `${concern.label} 상품`, description: concern.description };
   if (promotion === "today") return { ...base, title: "오늘의 혜택", description: "오늘 확인할 수 있는 혜택 상품을 모았습니다.", contextLabel: "오늘의 할인 상품" };

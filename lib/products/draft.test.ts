@@ -105,6 +105,17 @@ describe("product drafts", () => {
     ]);
   });
 
+  it("writes supported legacy taxonomy labels as canonical codes", () => {
+    const input = toPublishedProductInput(makeDraft({
+      category: "유산균",
+      concerns: ["장 건강", "면역"],
+    }));
+
+    expect(input.category).toBe("probiotic");
+    expect(input.concerns).toEqual(["gut", "immunity"]);
+  });
+
+
   it("returns a publish snapshot independent from mutable draft collections", () => {
     const draft = makeDraft({
       concerns: ["heart"],

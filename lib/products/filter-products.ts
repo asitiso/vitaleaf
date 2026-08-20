@@ -1,4 +1,10 @@
 import type { Product, ProductFilters } from "./types";
+import {
+  HEALTH_CONCERNS,
+  PRODUCT_CATEGORIES,
+  taxonomyLabel,
+  taxonomyValuesMatch,
+} from "../catalog/taxonomy";
 
 export type { ProductFilters } from "./types";
 
@@ -41,13 +47,15 @@ export const filterProducts = (products: Product[], filters: ProductFilters): Pr
       const searchableFields = [
         product.name,
         product.category,
+        taxonomyLabel(PRODUCT_CATEGORIES, product.category),
         ...product.concerns,
+        ...product.concerns.map((concern) => taxonomyLabel(HEALTH_CONCERNS, concern)),
         ...product.benefits,
         ...product.ingredients.map((ingredient) => ingredient.name),
       ];
       const matchesQuery = !query || searchableFields.some((field) => normalize(field).includes(query));
-      const matchesCategory = !category || normalize(product.category) === category;
-      const matchesConcern = !concern || product.concerns.some((item) => normalize(item) === concern);
+      const matchesCategory = !category || taxonomyValuesMatch(PRODUCT_CATEGORIES, product.category, filters.category);
+      const matchesConcern = !concern || product.concerns.some((item) => taxonomyValuesMatch(HEALTH_CONCERNS, item, filters.concern));
       const meetsMinimumPrice = filters.minPrice === null || product.price >= filters.minPrice;
       const meetsMaximumPrice = filters.maxPrice === null || product.price <= filters.maxPrice;
       const matchesStock = !filters.inStockOnly || product.stock > 0;

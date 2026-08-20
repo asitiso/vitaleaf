@@ -130,9 +130,16 @@ describe("resolveMenuState", () => {
 
   it("preserves the established age recommendation concern groups", () => {
     expect(AGE_CONCERN_GROUPS).toMatchObject({
-      "30": ["장 건강", "피로·활력"],
-      "40": ["눈 건강", "혈행"],
-      "50": ["뇌 건강", "관절·뼈 건강"],
+      "30": ["gut", "energy"],
+      "40": ["eyes", "circulation"],
+      "50": ["brain", "bones"],
+    });
+  });
+
+  it("keeps menu filter values canonical instead of converting them to display labels", () => {
+    expect(resolveMenuState({ category: "probiotic", concern: "gut" }).filters).toMatchObject({
+      category: "probiotic",
+      concern: "gut",
     });
   });
 });

@@ -4,6 +4,42 @@ export type TaxonomyOption = {
   description: string;
 };
 
+const normalizeTaxonomyText = (value: string): string => value.trim().toLocaleLowerCase("ko-KR");
+
+export const findTaxonomyOption = (
+  options: readonly TaxonomyOption[],
+  candidate: string,
+): TaxonomyOption | null => {
+  const normalized = normalizeTaxonomyText(candidate);
+  if (!normalized) return null;
+  return options.find((option) => (
+    normalizeTaxonomyText(option.value) === normalized
+    || normalizeTaxonomyText(option.label) === normalized
+  )) ?? null;
+};
+
+export const canonicalTaxonomyValue = (
+  options: readonly TaxonomyOption[],
+  candidate: string,
+): string => findTaxonomyOption(options, candidate)?.value ?? candidate.trim();
+
+export const canonicalTaxonomyValues = (
+  options: readonly TaxonomyOption[],
+  candidates: readonly string[],
+): string[] => [...new Set(candidates.map((candidate) => canonicalTaxonomyValue(options, candidate)).filter(Boolean))];
+
+export const taxonomyLabel = (
+  options: readonly TaxonomyOption[],
+  candidate: string,
+): string => findTaxonomyOption(options, candidate)?.label ?? candidate.trim();
+
+export const taxonomyValuesMatch = (
+  options: readonly TaxonomyOption[],
+  left: string,
+  right: string,
+): boolean => normalizeTaxonomyText(canonicalTaxonomyValue(options, left))
+  === normalizeTaxonomyText(canonicalTaxonomyValue(options, right));
+
 export const PRODUCT_CATEGORIES = [
   { value: "nutrition", label: "영양제", description: "매일 챙기는 기본 영양" },
   { value: "vitamin", label: "비타민", description: "비타민과 미네랄" },
@@ -20,6 +56,8 @@ export const HEALTH_CONCERNS = [
   { value: "eyes", label: "눈 건강", description: "선명한 일상을 위한 영양" },
   { value: "gut", label: "장 건강", description: "편안한 속을 위한 유산균" },
   { value: "brain", label: "뇌 건강", description: "집중과 기억을 위한 케어" },
+  { value: "circulation", label: "혈행", description: "원활한 혈행을 위한 관리" },
+  { value: "bones", label: "관절·뼈 건강", description: "튼튼한 관절과 뼈를 위한 관리" },
 ] as const satisfies readonly TaxonomyOption[];
 
 export const AGE_TARGETS = [

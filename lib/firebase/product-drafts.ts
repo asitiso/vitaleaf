@@ -21,6 +21,7 @@ import type {
 } from "../products/types";
 import { auth, db } from "./client";
 import type { FirestoreDocument, Unsubscribe } from "./products";
+import { canonicalTaxonomyValue, canonicalTaxonomyValues, HEALTH_CONCERNS, PRODUCT_CATEGORIES } from "../catalog/taxonomy";
 
 type DraftContent = ProductInput & {
   media: ProductMedia[];
@@ -164,8 +165,8 @@ const normalizeDraft = (id: string, value: unknown): ProductDraft => {
     id,
     name: asString(draft.name),
     slug: asString(draft.slug),
-    category: asString(draft.category),
-    concerns: asStringArray(draft.concerns),
+    category: canonicalTaxonomyValue(PRODUCT_CATEGORIES, asString(draft.category)),
+    concerns: canonicalTaxonomyValues(HEALTH_CONCERNS, asStringArray(draft.concerns)),
     price: asNonNegativeNumber(draft.price),
     originalPrice: asNullableNonNegativeNumber(draft.originalPrice),
     thumbnailUrl: media[0]?.url ?? asString(draft.thumbnailUrl),
@@ -203,8 +204,8 @@ const normalizeDraft = (id: string, value: unknown): ProductDraft => {
 const draftContentFrom = (source: Product | ProductDraft): DraftContent => ({
   name: source.name,
   slug: source.slug,
-  category: source.category,
-  concerns: [...source.concerns],
+  category: canonicalTaxonomyValue(PRODUCT_CATEGORIES, source.category),
+  concerns: canonicalTaxonomyValues(HEALTH_CONCERNS, source.concerns),
   price: source.price,
   originalPrice: source.originalPrice,
   thumbnailUrl: source.thumbnailUrl,

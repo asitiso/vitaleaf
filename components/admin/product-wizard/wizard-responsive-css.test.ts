@@ -115,7 +115,6 @@ describe("390px product wizard CSS contract", () => {
       media: [media],
       onChange: vi.fn(),
       upload: vi.fn(),
-      deleteImage: vi.fn(),
     }));
 
     expect(screen.getByRole("group", { name: "상품 이미지를 준비하세요" }))

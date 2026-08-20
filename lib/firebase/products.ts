@@ -39,6 +39,13 @@ export class ProductRevisionConflictError extends Error {
   }
 }
 
+export class ProductEditDraftConflictError extends Error {
+  constructor() {
+    super("A same-id edit draft exists. Publish or discard it before changing the published product.");
+    this.name = "ProductEditDraftConflictError";
+  }
+}
+
 export type ProductRepositoryAdapter = {
   list: () => Promise<FirestoreDocument[]>;
   get?: (id: string) => Promise<FirestoreDocument | null>;
@@ -138,7 +145,12 @@ const firebaseProductAdapter: Required<ProductRepositoryAdapter> = {
         if (!ownerId) throw new Error("An authenticated administrator is required.");
 
         const reference = doc(db, "products", target.id);
-        const snapshot = await transaction.get(reference);
+        const draftReference = doc(db, "productDrafts", target.id);
+        const [snapshot, draftSnapshot] = await Promise.all([
+          transaction.get(reference),
+          transaction.get(draftReference),
+        ]);
+        if (draftSnapshot.exists()) throw new ProductEditDraftConflictError();
         if (!snapshot.exists()) throw new Error("The product no longer exists.");
 
         const stored = snapshot.data();
@@ -175,7 +187,12 @@ const firebaseProductAdapter: Required<ProductRepositoryAdapter> = {
       if (!ownerId) throw new Error("An authenticated administrator is required.");
 
       const reference = doc(db, "products", target.id);
-      const snapshot = await transaction.get(reference);
+      const draftReference = doc(db, "productDrafts", target.id);
+      const [snapshot, draftSnapshot] = await Promise.all([
+        transaction.get(reference),
+        transaction.get(draftReference),
+      ]);
+      if (draftSnapshot.exists()) throw new ProductEditDraftConflictError();
       if (!snapshot.exists()) throw new Error("The product no longer exists.");
 
       const stored = snapshot.data();

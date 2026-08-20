@@ -108,6 +108,19 @@ describe("filterProducts", () => {
     expect(result.map((product) => product.id)).toEqual(["higher-reviews", "first-name", "later-name", "unranked"]);
   });
 
+  it("matches canonical taxonomy filters against both code-valued and legacy Korean products", () => {
+    const result = filterProducts(
+      [
+        makeProduct({ id: "canonical", category: "probiotic", concerns: ["gut"] }),
+        makeProduct({ id: "legacy", category: "유산균", concerns: ["장 건강"] }),
+        makeProduct({ id: "other", category: "vitamin", concerns: ["immunity"] }),
+      ],
+      { ...defaultFilters, category: "probiotic", concern: "gut" },
+    );
+
+    expect(result.map((product) => product.id)).toEqual(["canonical", "legacy"]);
+  });
+
   it("keeps equal sort values in their input order without mutating the input", () => {
     const input = [
       makeProduct({ id: "first", name: "첫째", price: 20_000, createdAt: new Date("2026-08-04T00:00:00.000Z") }),

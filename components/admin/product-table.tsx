@@ -5,6 +5,7 @@
 import { useMemo } from "react";
 
 import { formatWon } from "../../lib/format";
+import { PRODUCT_CATEGORIES, taxonomyLabel } from "../../lib/catalog/taxonomy";
 import type { Product, ProductDraft } from "../../lib/products/types";
 
 export type ProductTableRow =
@@ -20,6 +21,7 @@ type ProductTableProps = {
   statusFilter: ProductStatusFilter;
   sort: ProductSort;
   lockedIds: ReadonlySet<string>;
+  sameIdDraftIds: ReadonlySet<string>;
   statusOptions?: ProductStatusFilter[];
   onQueryChange(query: string): void;
   onStatusFilterChange(status: ProductStatusFilter): void;
@@ -108,6 +110,7 @@ export function ProductTable({
   statusFilter,
   sort,
   lockedIds,
+  sameIdDraftIds,
   statusOptions = ["all", "published", "draft", "sold-out"],
   onQueryChange,
   onStatusFilterChange,
@@ -124,7 +127,12 @@ export function ProductTable({
     const normalizedQuery = normalizedText(query);
     return rows
       .filter((row) => matchesStatus(row, statusFilter))
-      .filter((row) => !normalizedQuery || [row.value.name, row.value.id, row.value.category]
+      .filter((row) => !normalizedQuery || [
+        row.value.name,
+        row.value.id,
+        row.value.category,
+        taxonomyLabel(PRODUCT_CATEGORIES, row.value.category),
+      ]
         .some((value) => normalizedText(value).includes(normalizedQuery)))
       .sort(compareRows(sort));
   }, [query, rows, sort, statusFilter]);
@@ -163,18 +171,21 @@ export function ProductTable({
           <table className="admin-table">
             <caption>상품 관리 목록</caption>
             <thead><tr><th>상품</th><th>상태</th><th>판매 정보</th><th>최근 수정</th><th>관리</th></tr></thead>
-            <tbody>{visibleRows.map((row) => {
+            <tbody>{visibleRows.map((row, rowIndex) => {
               const item = row.value;
               const name = item.name.trim() || "이름 없는 상품";
               const media = representativeMedia(row);
               const timestamp = modifiedAt(row);
               const locked = lockedIds.has(item.id);
+              const categoryLabel = taxonomyLabel(PRODUCT_CATEGORIES, item.category);
+              const hasSameIdDraft = row.kind === "published" && sameIdDraftIds.has(item.id);
+              const draftLockReasonId = `published-draft-lock-${rowIndex}`;
               return (
                 <tr key={`${row.kind}:${item.id}`} aria-busy={locked || undefined}>
                   <td data-label="상품">
                     <div className="admin-product-cell">
                       {media ? <img src={media.url} alt={media.alt} /> : <span className="admin-product-cell__placeholder" aria-hidden="true">사진 없음</span>}
-                      <span><strong>{name}</strong><small>{item.id} · {item.category || "미분류"}</small></span>
+                      <span><strong>{name}</strong><small>{item.id} · {categoryLabel || "미분류"}</small></span>
                     </div>
                   </td>
                   <td data-label="상태"><span className={`admin-status admin-status--${row.kind === "published" && item.stock > 0 ? "published" : row.kind === "draft" ? "draft" : "sold-out"}`}>{rowStatus(row)}</span></td>
@@ -185,7 +196,8 @@ export function ProductTable({
                         type="button"
                         className={item.stock > 0 ? "admin-stock" : "admin-stock admin-stock--off"}
                         aria-label={`${name} ${item.stock > 0 ? "품절 처리" : "판매 재개"}`}
-                        disabled={locked}
+                        aria-describedby={hasSameIdDraft ? draftLockReasonId : undefined}
+                        disabled={locked || hasSameIdDraft}
                         onClick={() => onToggleStock(item)}
                       >{item.stock > 0 ? `${item.stock}개` : "품절"}</button>
                     ) : <small>{item.stock}개</small>}
@@ -199,10 +211,11 @@ export function ProductTable({
                       {row.kind === "published" ? <button type="button" disabled={locked} aria-label={`${name} 복제`} onClick={() => onDuplicate(item.id)}>복제</button> : null}
                       <button type="button" disabled={locked} aria-label={`${name} 미리 보기`} onClick={() => onPreview(row)}>미리 보기</button>
                       {row.kind === "published"
-                        ? <button type="button" disabled={locked} aria-label={`${name} 판매 중지`} onClick={() => onUnpublish(row.value)}>판매 중지</button>
+                        ? <button type="button" disabled={locked || hasSameIdDraft} aria-describedby={hasSameIdDraft ? draftLockReasonId : undefined} aria-label={`${name} 판매 중지`} onClick={() => onUnpublish(row.value)}>판매 중지</button>
                         : <button type="button" disabled={locked} aria-label={`${name} 판매 공개`} onClick={() => onPublish(row.value)}>판매 공개</button>}
-                      <button type="button" disabled={locked} aria-label={`${name} 삭제`} onClick={() => onDelete(row)}>삭제</button>
+                      <button type="button" disabled={locked || hasSameIdDraft} aria-describedby={hasSameIdDraft ? draftLockReasonId : undefined} aria-label={`${name} 삭제`} onClick={() => onDelete(row)}>삭제</button>
                     </div>
+                    {hasSameIdDraft ? <small id={draftLockReasonId}>수정 초안이 있어 재고·판매중지·삭제를 잠갔습니다.</small> : null}
                   </td>
                 </tr>
               );

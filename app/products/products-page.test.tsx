@@ -2,7 +2,9 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
-import type { Product } from "../../lib/products/types";
+import type { Product, ProductDraft } from "../../lib/products/types";
+import { toPublishedProductInput } from "../../lib/products/draft";
+import { normalizeProduct } from "../../lib/products/normalize";
 import { ProductBrowser } from "../../components/commerce/product-browser";
 
 const { getProductsMock } = vi.hoisted(() => ({ getProductsMock: vi.fn() }));
@@ -126,8 +128,8 @@ it("hydrates listing filters from URL search parameters", async () => {
   }));
 
   expect(screen.getByRole("searchbox", { name: "상품 검색" })).toHaveValue("유산균");
-  expect(screen.getByLabelText("카테고리")).toHaveValue("유산균");
-  expect(screen.getByLabelText("건강 고민")).toHaveValue("장 건강");
+  expect(screen.getByLabelText("카테고리")).toHaveValue("probiotic");
+  expect(screen.getByLabelText("건강 고민")).toHaveValue("gut");
   expect(screen.getByLabelText("최소 가격")).toHaveValue(10_000);
   expect(screen.getByLabelText("최대 가격")).toHaveValue(30_000);
   expect(screen.getByRole("checkbox", { name: "구매 가능한 상품만" })).toBeChecked();
@@ -155,8 +157,8 @@ it("normalizes existing menu slugs and age targets into catalog filters", async 
     searchParams: Promise.resolve({ category: "probiotic", concern: "gut", age: "30" }),
   }));
 
-  expect(screen.getByLabelText("카테고리")).toHaveValue("유산균");
-  expect(screen.getByLabelText("건강 고민")).toHaveValue("장 건강");
+  expect(screen.getByLabelText("카테고리")).toHaveValue("probiotic");
+  expect(screen.getByLabelText("건강 고민")).toHaveValue("gut");
   expect(screen.getByRole("searchbox", { name: "상품 검색" })).toHaveValue("");
   expect(screen.getByRole("article", { name: "장 건강 유산균" })).toBeInTheDocument();
 });
@@ -169,11 +171,11 @@ it("synchronizes filters when App Router search props change on the same route",
   expect(screen.getByRole("searchbox", { name: "상품 검색" })).toHaveValue("데일리");
 
   rerender(
-    <ProductBrowser initialProducts={products} initialFilters={{ category: "유산균" }} />,
+    <ProductBrowser initialProducts={products} initialFilters={{ category: "probiotic" }} />,
   );
 
   expect(screen.getByRole("searchbox", { name: "상품 검색" })).toHaveValue("");
-  expect(screen.getByLabelText("카테고리")).toHaveValue("유산균");
+  expect(screen.getByLabelText("카테고리")).toHaveValue("probiotic");
   expect(screen.getByRole("article", { name: "장 건강 유산균" })).toBeInTheDocument();
 });
 
@@ -219,4 +221,56 @@ it.each([
 
   expect(screen.getByRole("article", { name: expectedName })).toBeInTheDocument();
   expect(screen.getByText(`연령 추천 기준: ${concern}`)).toBeInTheDocument();
+});
+
+it.each([
+  ["40", "circulation", "혈행"],
+  ["50", "bones", "관절·뼈 건강"],
+])("keeps age %s secondary concerns matching canonical codes and legacy Korean labels", async (age, code, legacyLabel) => {
+  getProductsMock.mockResolvedValue([
+    makeProduct({ id: `${code}-canonical`, name: `${legacyLabel} 코드 상품`, slug: `${code}-canonical`, concerns: [code] }),
+    makeProduct({ id: `${code}-legacy`, name: `${legacyLabel} 기존 상품`, slug: `${code}-legacy`, concerns: [legacyLabel] }),
+    makeProduct({ id: "unrelated", name: "무관 상품", slug: "unrelated", concerns: ["gut"] }),
+  ]);
+
+  render(await ProductsPage({ searchParams: Promise.resolve({ age }) }));
+
+  expect(screen.getByRole("article", { name: `${legacyLabel} 코드 상품` })).toBeVisible();
+  expect(screen.getByRole("article", { name: `${legacyLabel} 기존 상품` })).toBeVisible();
+  expect(screen.queryByRole("article", { name: "무관 상품" })).not.toBeInTheDocument();
+});
+
+it("shows both canonical wizard values and legacy Korean labels at category, concern, and age destinations", async () => {
+  const canonicalDraft: ProductDraft = {
+    ...makeProduct({ id: "canonical", name: "새 유산균", category: "probiotic", concerns: ["gut"] }),
+    status: "draft",
+    mode: "create",
+    sessionId: "canonical-session",
+    revision: 1,
+    sourceProductId: null,
+    sourceProductRevision: null,
+    sourceCreatedAt: null,
+    sourceCreatedBy: null,
+    currentStep: 1,
+    createdBy: "admin",
+    updatedBy: "admin",
+  };
+  getProductsMock.mockResolvedValue([
+    normalizeProduct("canonical", toPublishedProductInput(canonicalDraft)),
+    normalizeProduct("legacy", makeProduct({ id: "legacy", name: "기존 유산균", category: "유산균", concerns: ["장 건강"] })),
+  ]);
+
+  const categoryView = render(await ProductsPage({ searchParams: Promise.resolve({ category: "probiotic" }) }));
+  expect(screen.getByRole("article", { name: "새 유산균" })).toBeVisible();
+  expect(screen.getByRole("article", { name: "기존 유산균" })).toBeVisible();
+  categoryView.unmount();
+
+  const concernView = render(await ProductsPage({ searchParams: Promise.resolve({ concern: "gut" }) }));
+  expect(screen.getByRole("article", { name: "새 유산균" })).toBeVisible();
+  expect(screen.getByRole("article", { name: "기존 유산균" })).toBeVisible();
+  concernView.unmount();
+
+  render(await ProductsPage({ searchParams: Promise.resolve({ age: "30" }) }));
+  expect(screen.getByRole("article", { name: "새 유산균" })).toBeVisible();
+  expect(screen.getByRole("article", { name: "기존 유산균" })).toBeVisible();
 });

@@ -1,4 +1,5 @@
 import { normalizeMedia } from "./normalize";
+import { canonicalTaxonomyValue, canonicalTaxonomyValues, HEALTH_CONCERNS, PRODUCT_CATEGORIES } from "../catalog/taxonomy";
 import type { ProductDraft, ProductInput } from "./types";
 
 export type DraftValidationError = {
@@ -38,8 +39,8 @@ export const toPublishedProductInput = (draft: ProductDraft): ProductInput & { m
   const input: ProductInput = {
     name: draft.name,
     slug: draft.slug,
-    category: draft.category,
-    concerns: [...draft.concerns],
+    category: canonicalTaxonomyValue(PRODUCT_CATEGORIES, draft.category),
+    concerns: canonicalTaxonomyValues(HEALTH_CONCERNS, draft.concerns),
     price: draft.price,
     originalPrice: draft.originalPrice,
     thumbnailUrl: draft.thumbnailUrl,

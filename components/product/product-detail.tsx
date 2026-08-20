@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { useCart } from "../../features/cart/cart-context";
 import { formatWon } from "../../lib/format";
+import { PRODUCT_CATEGORIES, taxonomyLabel } from "../../lib/catalog/taxonomy";
 import type { Product, Review } from "../../lib/products/types";
 import { formatFreeShippingCondition, STORE_POLICIES } from "../../lib/site/policies";
 import { ProductInfo } from "./product-info";
@@ -15,6 +16,46 @@ type ProductDetailProps = {
   reviews: Review[];
   reviewLoadError?: boolean;
 };
+
+type GalleryItem = {
+  url: string;
+  alt: string;
+};
+
+function fallbackGalleryAlt(productName: string, index: number): string {
+  return index === 0 ? `${productName} 대표 이미지` : `${productName} 상세 이미지 ${index + 1}`;
+}
+
+function buildProductGallery(product: Product): GalleryItem[] {
+  const canonicalMedia = [...product.media]
+    .sort((left, right) => left.order - right.order)
+    .reduce<GalleryItem[]>((gallery, media) => {
+      const url = media.url.trim();
+      if (!url || gallery.some((item) => item.url === url)) {
+        return gallery;
+      }
+
+      gallery.push({
+        url,
+        alt: media.alt.trim() || fallbackGalleryAlt(product.name, gallery.length),
+      });
+      return gallery;
+    }, []);
+
+  if (canonicalMedia.length > 0) {
+    return canonicalMedia;
+  }
+
+  return [product.thumbnailUrl, ...product.images].reduce<GalleryItem[]>((gallery, image) => {
+    const url = image.trim();
+    if (!url || gallery.some((item) => item.url === url)) {
+      return gallery;
+    }
+
+    gallery.push({ url, alt: fallbackGalleryAlt(product.name, gallery.length) });
+    return gallery;
+  }, []);
+}
 
 function getDiscountRate(product: Product): number | null {
   if (product.originalPrice === null || product.originalPrice <= product.price) {
@@ -32,8 +73,8 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
   const [failedImages, setFailedImages] = useState<Set<string>>(() => new Set());
   const soldOut = product.stock < 1;
   const discountRate = getDiscountRate(product);
-  const images = Array.from(new Set([product.thumbnailUrl, ...product.images].filter(Boolean)));
-  const selectedImage = images[selectedImageIndex] ?? "";
+  const gallery = buildProductGallery(product);
+  const selectedImage = gallery[selectedImageIndex];
 
   const decreaseQuantity = () => setQuantity((current) => Math.max(1, current - 1));
   const increaseQuantity = () => setQuantity((current) => Math.min(product.stock, current + 1));
@@ -47,13 +88,13 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
     <main className="product-detail">
       <section className="product-detail__gallery" aria-label={`${product.name} 이미지 갤러리`}>
         <div className="product-detail__main-image">
-          {selectedImage && !failedImages.has(selectedImage) ? (
+          {selectedImage && !failedImages.has(selectedImage.url) ? (
             // Firestore accepts merchant-managed image URLs from arbitrary hosts.
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={selectedImage}
-              alt={`${product.name} 이미지 ${selectedImageIndex + 1}`}
-              onError={() => setFailedImages((current) => new Set(current).add(selectedImage))}
+              src={selectedImage.url}
+              alt={selectedImage.alt}
+              onError={() => setFailedImages((current) => new Set(current).add(selectedImage.url))}
             />
           ) : (
             <div className="product-detail__image-fallback" role="img" aria-label={`${product.name} 이미지 준비 중`}>
@@ -63,25 +104,25 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
             </div>
           )}
         </div>
-        {images.length > 1 ? (
+        {gallery.length > 1 ? (
           <div className="product-detail__thumbnails" aria-label="상품 이미지 선택">
-            {images.map((image, index) => (
+            {gallery.map((image, index) => (
               <button
                 type="button"
-                key={image}
+                key={image.url}
                 aria-label={`이미지 ${index + 1} 보기`}
                 aria-pressed={selectedImageIndex === index}
                 onClick={() => setSelectedImageIndex(index)}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={image} alt="" loading="lazy" />
+                <img src={image.url} alt="" loading="lazy" />
               </button>
             ))}
           </div>
         ) : null}
       </section>
       <section className="product-detail__summary">
-        <p className="product-detail__category">{product.category}</p>
+        <p className="product-detail__category">{taxonomyLabel(PRODUCT_CATEGORIES, product.category)}</p>
         <h1>{product.name}</h1>
         {product.description ? <p className="product-detail__description">{product.description}</p> : null}
         <div className="product-detail__price-row">

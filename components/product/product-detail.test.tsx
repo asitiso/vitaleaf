@@ -146,12 +146,43 @@ it("switches gallery images and shows a named fallback when the selected image f
   render(<ProductDetail product={product} reviews={[]} />);
 
   await userEvent.click(screen.getByRole("button", { name: "이미지 2 보기" }));
-  const image = screen.getByRole("img", { name: "데일리 오메가3 이미지 2" });
+  const image = screen.getByRole("img", { name: "Omega 3 side" });
   expect(image).toHaveAttribute("src", "https://images.example.com/omega-3-side.jpg");
 
   fireEvent.error(image);
 
   expect(screen.getByRole("img", { name: "데일리 오메가3 이미지 준비 중" })).toBeInTheDocument();
+});
+
+it("orders the canonical media gallery and renders each stored alt instead of legacy image fields", async () => {
+  render(<ProductDetail product={{
+    ...product,
+    thumbnailUrl: "legacy-main.jpg",
+    images: ["legacy-main.jpg", "legacy-detail.jpg"],
+    media: [
+      { url: "side.jpg", storagePath: null, alt: "오메가3 용기 측면", order: 4 },
+      { url: "front.jpg", storagePath: null, alt: "오메가3 용기 정면", order: 1 },
+    ],
+  }} reviews={[]} />);
+
+  expect(screen.getByRole("img", { name: "오메가3 용기 정면" })).toHaveAttribute("src", "front.jpg");
+  expect(screen.queryByRole("img", { name: /legacy/i })).not.toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("button", { name: "이미지 2 보기" }));
+  expect(screen.getByRole("img", { name: "오메가3 용기 측면" })).toHaveAttribute("src", "side.jpg");
+});
+
+it("uses deterministic Korean alt fallbacks only for legacy gallery fields", async () => {
+  render(<ProductDetail product={{
+    ...product,
+    thumbnailUrl: "legacy-main.jpg",
+    images: ["legacy-detail.jpg"],
+    media: [],
+  }} reviews={[]} />);
+
+  expect(screen.getByRole("img", { name: "데일리 오메가3 대표 이미지" })).toHaveAttribute("src", "legacy-main.jpg");
+  await userEvent.click(screen.getByRole("button", { name: "이미지 2 보기" }));
+  expect(screen.getByRole("img", { name: "데일리 오메가3 상세 이미지 2" })).toHaveAttribute("src", "legacy-detail.jpg");
 });
 
 it("limits core benefits and exposes controlled information regions with a semantic ingredient table", async () => {

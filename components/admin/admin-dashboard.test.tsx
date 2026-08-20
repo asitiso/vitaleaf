@@ -101,7 +101,6 @@ const dependencies = (overrides: Partial<AdminDashboardDependencies> = {}): Admi
     stock: 0,
   })),
   uploadProductImage: vi.fn(),
-  deleteProductImage: vi.fn().mockResolvedValue(undefined),
   ...overrides,
 });
 
@@ -453,6 +452,35 @@ it("logs in, searches products, toggles stock, and confirms deletion", async () 
   await user.click(screen.getByRole("button", { name: "삭제 확인" }));
   await waitFor(() => expect(deleteProduct).toHaveBeenCalledWith({ id: "omega", expectedRevision: 4 }));
   expect(await screen.findByText("상품을 삭제했습니다.")).toBeVisible();
+});
+
+it("blocks quick stock, unpublish, and published deletion while a same-id edit draft exists", async () => {
+  const user = userEvent.setup();
+  const editDraft = productDraft(product, { mode: "edit" });
+  const deps = dependencies({
+    subscribeProducts: (onData) => {
+      onData([product]);
+      return vi.fn();
+    },
+    subscribeDrafts: (onData) => {
+      onData([editDraft]);
+      return vi.fn();
+    },
+  });
+  render(<AdminDashboard dependencies={deps} />);
+
+  await user.type(screen.getByLabelText("이메일"), "admin@example.com");
+  await user.type(screen.getByLabelText("비밀번호"), "password");
+  await user.click(screen.getByRole("button", { name: "로그인" }));
+
+  expect(await screen.findByText("수정 초안이 있어 재고·판매중지·삭제를 잠갔습니다.")).toBeVisible();
+  expect(screen.getByRole("button", { name: "데일리 오메가3 품절 처리" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "데일리 오메가3 판매 중지" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "데일리 오메가3 삭제" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "데일리 오메가3 수정" })).toBeEnabled();
+  expect(deps.saveProduct).not.toHaveBeenCalled();
+  expect(deps.unpublishProduct).not.toHaveBeenCalled();
+  expect(deps.deleteProduct).not.toHaveBeenCalled();
 });
 
 it("opens create and edit forms only after authorization", async () => {

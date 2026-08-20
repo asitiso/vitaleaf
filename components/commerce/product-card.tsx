@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { formatWon } from "../../lib/format";
+import { PRODUCT_CATEGORIES, taxonomyLabel } from "../../lib/catalog/taxonomy";
 import type { Product } from "../../lib/products/types";
 
 const discountRate = (product: Product): number | null => {
@@ -36,7 +37,7 @@ export function ProductCard({ product, rank }: { product: Product; rank?: number
           {product.stock < 1 ? <span className="product-card__sold-out">품절</span> : null}
         </div>
         <div className="product-card__content">
-          <span className="product-card__category">{product.category}</span>
+          <span className="product-card__category">{taxonomyLabel(PRODUCT_CATEGORIES, product.category)}</span>
           <h3>{product.name}</h3>
           {product.benefits.length ? (
             <ul className="product-card__benefits" aria-label="주요 기능성">

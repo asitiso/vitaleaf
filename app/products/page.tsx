@@ -2,6 +2,7 @@ import { ProductBrowser } from "../../components/commerce/product-browser";
 import { getServerProducts } from "../../lib/firebase/server-read";
 import { AGE_CONCERN_GROUPS, resolveMenuState, TRIAL_MAX_PRICE_WON } from "../../lib/navigation/menu-state";
 import type { Product } from "../../lib/products/types";
+import { HEALTH_CONCERNS, taxonomyValuesMatch } from "../../lib/catalog/taxonomy";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -24,7 +25,9 @@ export default async function ProductsPage({ searchParams }: { searchParams?: Pr
   }
 
   const ageConcerns = menuState.age ? AGE_CONCERN_GROUPS[menuState.age] : undefined;
-  if (ageConcerns) products = products.filter((product) => product.concerns.some((concern) => ageConcerns.includes(concern)));
+  if (ageConcerns) products = products.filter((product) => product.concerns.some((concern) => (
+    ageConcerns.some((ageConcern) => taxonomyValuesMatch(HEALTH_CONCERNS, concern, ageConcern))
+  )));
 
   return <main className="products-page">
     <header className="products-page__header"><p>VITALEAF SHOP</p><h1>{menuState.title}</h1><span>{menuState.description}</span></header>

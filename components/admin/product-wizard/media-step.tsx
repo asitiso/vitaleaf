@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 
-import { deleteProductImage, uploadProductImage, validateImageFile, type UploadTaskController } from "../../../lib/firebase/product-media";
+import { uploadProductImage, validateImageFile, type UploadTaskController } from "../../../lib/firebase/product-media";
 import type { ProductMedia } from "../../../lib/products/types";
 
 export type MediaUpload = (args: {
@@ -14,8 +14,6 @@ export type MediaUpload = (args: {
   order: number;
   onProgress(percent: number): void;
 }) => UploadTaskController;
-
-export type MediaDelete = (args: { productId: string; storagePath: string }) => Promise<void>;
 
 type QueueStatus = "uploading" | "failed" | "complete";
 type QueueItem = {
@@ -63,7 +61,6 @@ export function MediaStep({
   media,
   onChange,
   upload = uploadProductImage,
-  deleteImage = deleteProductImage,
   onUploadingChange,
   disabled = false,
 }: {
@@ -72,15 +69,12 @@ export function MediaStep({
   media: ProductMedia[];
   onChange(next: ProductMedia[]): void;
   upload?: MediaUpload;
-  deleteImage?: MediaDelete;
   onUploadingChange?(uploading: boolean): void;
   disabled?: boolean;
 }) {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [renderMedia, setRenderMedia] = useState(media);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<{ key: string; message: string } | null>(null);
   const [announcement, setAnnouncement] = useState("");
   const queueRef = useRef<QueueItem[]>([]);
   const mediaRef = useRef(media);
@@ -242,8 +236,6 @@ export function MediaStep({
     ranksRef.current.clear();
     replaceQueue([]);
     setDeleteTarget(null);
-    setDeleteError(null);
-    setDeleting(false);
   }, [identity]);
 
   useEffect(() => {
@@ -282,7 +274,7 @@ export function MediaStep({
       ?? document.getElementById("product-media-files");
     target?.focus();
     focusRequestRef.current = null;
-  }, [queue, media, deleteError]);
+  }, [queue, media]);
 
   useEffect(() => {
     if (!deleteTarget) return;
@@ -369,35 +361,18 @@ export function MediaStep({
   const requestDelete = (target: ProductMedia) => {
     if (disabled) return;
     deleteTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setDeleteError(null);
     setDeleteTarget({ key: itemKey(target), media: target });
   };
 
-  const confirmDelete = async () => {
-    if (disabled || !deleteTarget || deleting) return;
-    const generation = generationRef.current;
-    const deleteProductId = productIdRef.current;
-    setDeleting(true);
-    try {
-      if (deleteTarget.media.storagePath) {
-        await deleteImage({ productId: deleteProductId, storagePath: deleteTarget.media.storagePath });
-      }
-      if (!mountedRef.current || generation !== generationRef.current) return;
-      const removedQueueItems = queueRef.current.filter((item) => item.media && itemKey(item.media) === deleteTarget.key);
-      const nextQueue = queueRef.current.filter((item) => !item.media || itemKey(item.media) !== deleteTarget.key);
-      removedQueueItems.forEach((item) => revokeOwnedPreview(item.previewUrl));
-      replaceQueue(nextQueue);
-      emit(nextQueue, mediaRef.current.filter((item) => itemKey(item) !== deleteTarget.key));
-      setDeleteTarget(null);
-      focusRequestRef.current = itemKey(mergedMedia(nextQueue)[Math.min(mergedMedia(nextQueue).length - 1, 0)] ?? deleteTarget.media);
-    } catch (error) {
-      if (!mountedRef.current || generation !== generationRef.current) return;
-      setDeleteError({ key: deleteTarget.key, message: messageFor(error) });
-      setDeleteTarget(null);
-      focusRequestRef.current = `retry:${deleteTarget.key}`;
-    } finally {
-      if (mountedRef.current && generation === generationRef.current) setDeleting(false);
-    }
+  const confirmDelete = () => {
+    if (disabled || !deleteTarget) return;
+    const removedQueueItems = queueRef.current.filter((item) => item.media && itemKey(item.media) === deleteTarget.key);
+    const nextQueue = queueRef.current.filter((item) => !item.media || itemKey(item.media) !== deleteTarget.key);
+    removedQueueItems.forEach((item) => revokeOwnedPreview(item.previewUrl));
+    replaceQueue(nextQueue);
+    const nextMedia = emit(nextQueue, mediaRef.current.filter((item) => itemKey(item) !== deleteTarget.key));
+    setDeleteTarget(null);
+    focusRequestRef.current = nextMedia[0] ? itemKey(nextMedia[0]) : null;
   };
 
   const closeDeleteDialog = () => {
@@ -406,7 +381,7 @@ export function MediaStep({
   };
 
   const handleDeleteDialogKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.key === "Escape" && !deleting) {
+    if (event.key === "Escape") {
       event.preventDefault();
       closeDeleteDialog();
     }
@@ -489,7 +464,6 @@ export function MediaStep({
                 {index !== 0 && <button data-media-key={key} type="button" disabled={disabled} onClick={() => move(index, 0)} aria-label={`${ordinal(index)} 이미지를 대표로 설정`}>대표로 설정</button>}
                 <button data-media-key={key} type="button" disabled={disabled} onClick={() => requestDelete(item)} aria-label={`${ordinal(index)} 이미지 삭제`}>삭제</button>
               </div>
-              {deleteError?.key === key && <p role="alert">{deleteError.message} <button data-media-retry-key={key} type="button" disabled={disabled} onClick={() => requestDelete(item)} aria-label={`${ordinal(index)} 이미지 삭제 다시 시도`}>삭제 다시 시도</button></p>}
             </article>
           );
         })}
@@ -497,7 +471,7 @@ export function MediaStep({
 
       <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
 
-      {deleteTarget && <div className="product-media-step__confirm" role="dialog" aria-modal="true" aria-labelledby="product-media-delete-title"><h3 id="product-media-delete-title">이미지를 삭제할까요?</h3><p>삭제한 이미지는 복구할 수 없습니다.</p><button ref={deleteCancelRef} type="button" disabled={deleting} onClick={closeDeleteDialog} onKeyDown={handleDeleteDialogKeyDown}>취소</button><button ref={deleteConfirmRef} type="button" disabled={disabled || deleting} onClick={() => void confirmDelete()} onKeyDown={handleDeleteDialogKeyDown}>삭제 확인</button></div>}
+      {deleteTarget && <div className="product-media-step__confirm" role="dialog" aria-modal="true" aria-labelledby="product-media-delete-title"><h3 id="product-media-delete-title">이미지를 삭제할까요?</h3><p>상품 초안에서만 제거합니다. 저장 파일은 참조 안전성을 위해 자동 삭제하지 않습니다.</p><button ref={deleteCancelRef} type="button" onClick={closeDeleteDialog} onKeyDown={handleDeleteDialogKeyDown}>취소</button><button ref={deleteConfirmRef} type="button" disabled={disabled} onClick={confirmDelete} onKeyDown={handleDeleteDialogKeyDown}>삭제 확인</button></div>}
     </section>
   );
 }

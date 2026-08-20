@@ -1,6 +1,12 @@
 import { useState } from "react";
 
-import { PRODUCT_CATEGORIES, HEALTH_CONCERNS, PRODUCT_TEMPLATES } from "../../../lib/catalog/taxonomy";
+import {
+  canonicalTaxonomyValue,
+  canonicalTaxonomyValues,
+  PRODUCT_CATEGORIES,
+  HEALTH_CONCERNS,
+  PRODUCT_TEMPLATES,
+} from "../../../lib/catalog/taxonomy";
 import type { ProductDraft } from "../../../lib/products/types";
 
 type FieldErrors = Partial<Record<"name" | "category", string>>;
@@ -77,6 +83,8 @@ export function BasicStep({
   onTemplateApplied(template: ProductTemplateValue): void;
 }) {
   const [selectedTemplate, setSelectedTemplate] = useState("");
+  const categoryValue = canonicalTaxonomyValue(PRODUCT_CATEGORIES, draft.category);
+  const concernValues = canonicalTaxonomyValues(HEALTH_CONCERNS, draft.concerns);
   const updateName = (name: string) => {
     const slug = slugWasManuallyEdited ? draft.slug : toSlug(name);
     onChange({ ...draft, name, slug });
@@ -84,8 +92,8 @@ export function BasicStep({
 
   const updateConcern = (concern: string, checked: boolean) => {
     const concerns = checked
-      ? [...draft.concerns, concern]
-      : draft.concerns.filter((item) => item !== concern);
+      ? [...new Set([...concernValues, concern])]
+      : concernValues.filter((item) => item !== concern);
     onChange({ ...draft, concerns });
   };
 
@@ -152,7 +160,7 @@ export function BasicStep({
             id="wizard-category"
             name="category"
             aria-label="상품 분류"
-            value={draft.category}
+            value={categoryValue}
             onChange={(event) => onChange({ ...draft, category: event.target.value })}
             aria-invalid={Boolean(errors.category)}
             aria-describedby={errors.category ? "wizard-category-error" : undefined}
@@ -169,7 +177,7 @@ export function BasicStep({
           <label key={option.value}>
             <input
               type="checkbox"
-              checked={draft.concerns.includes(option.value)}
+              checked={concernValues.includes(option.value)}
               onChange={(event) => updateConcern(option.value, event.target.checked)}
             />
             {option.label}

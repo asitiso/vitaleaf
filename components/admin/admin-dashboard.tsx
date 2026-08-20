@@ -30,7 +30,7 @@ import {
   subscribeDrafts,
   unpublishProduct,
 } from "../../lib/firebase/product-drafts";
-import { deleteProductImage, uploadProductImage } from "../../lib/firebase/product-media";
+import { uploadProductImage } from "../../lib/firebase/product-media";
 import { validatePublishableDraft } from "../../lib/products/draft";
 import type { Product, ProductDraft, ProductInput } from "../../lib/products/types";
 import { createCsvDraft } from "../../lib/csv/products-csv";
@@ -40,7 +40,7 @@ import { useUnsavedHistoryGuard } from "../../features/admin/use-unsaved-history
 import { CsvTools } from "./csv-tools";
 import { ProductTable, type ProductSort, type ProductStatusFilter, type ProductTableRow } from "./product-table";
 import { ProductWizard } from "./product-wizard/product-wizard";
-import type { MediaDelete, MediaUpload } from "./product-wizard/media-step";
+import type { MediaUpload } from "./product-wizard/media-step";
 
 export type AdminDashboardDependencies = {
   observeAdminSession(next: (state: AdminSessionState) => void, onError: (error: unknown) => void): () => void;
@@ -59,7 +59,6 @@ export type AdminDashboardDependencies = {
   discardDraft(draft: ProductDraft): Promise<void>;
   duplicateProductToDraft(productId: string): Promise<ProductDraft>;
   uploadProductImage: MediaUpload;
-  deleteProductImage: MediaDelete;
 };
 
 const defaultDependencies: Omit<AdminDashboardDependencies, "duplicateProductToDraft"> = {
@@ -78,7 +77,6 @@ const defaultDependencies: Omit<AdminDashboardDependencies, "duplicateProductToD
   unpublishProduct,
   discardDraft,
   uploadProductImage,
-  deleteProductImage,
 };
 
 const blankDraft = (id: string): ProductDraft => ({
@@ -393,7 +391,6 @@ const DraftEditor = forwardRef<DraftEditorHandle, {
         onPublish={publish}
         onPublishingChange={onPublishingChange}
         upload={dependencies.uploadProductImage}
-        deleteImage={dependencies.deleteProductImage}
       />
     </section>
   );
@@ -406,6 +403,7 @@ const dashboardViews: readonly DashboardView[] = ["published", "drafts", "csv"];
 export function AdminDashboard({ dependencies: providedDependencies }: { dependencies?: AdminDashboardDependencies }) {
   const router = useRouter();
   const productsRef = useRef<Product[]>([]);
+  const draftsRef = useRef<ProductDraft[]>([]);
   const runtimeDefaultDependencies = useMemo<AdminDashboardDependencies>(() => ({
     ...defaultDependencies,
     duplicateProductToDraft: (productId) => {
@@ -469,6 +467,7 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
     if (state !== "admin") {
       editorGenerationRef.current += 1;
       productsRef.current = [];
+      draftsRef.current = [];
       mutationTokensRef.current.clear();
       setProducts([]);
       setDrafts([]);
@@ -489,6 +488,7 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
     editorGenerationRef.current += 1;
     setAuthorizationGeneration(authorizationGenerationRef.current);
     productsRef.current = [];
+    draftsRef.current = [];
     mutationTokensRef.current.clear();
     setProducts([]);
     setDrafts([]);
@@ -531,6 +531,7 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
     let active = true;
     const unsubscribe = dependencies.subscribeDrafts((nextDrafts) => {
       if (!active || authorizationGenerationRef.current !== subscriptionGeneration) return;
+      draftsRef.current = nextDrafts;
       setDrafts(nextDrafts);
       setDraftError("");
     }, () => {
@@ -551,6 +552,10 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
     () => drafts.map((value) => ({ kind: "draft", value })),
     [drafts],
   );
+  const sameIdEditDraftIds = useMemo<ReadonlySet<string>>(
+    () => new Set(drafts.filter((draft) => draft.mode === "edit").map((draft) => draft.id)),
+    [drafts],
+  );
 
   const login = async (email: string, password: string) => {
     const result = await dependencies.signInAdmin(email, password);
@@ -567,6 +572,7 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
       sessionRef.current = "forbidden";
       editorGenerationRef.current += 1;
       productsRef.current = [];
+      draftsRef.current = [];
       mutationTokensRef.current.clear();
       setAuthorizationGeneration(authorizationGenerationRef.current);
       setProducts([]);
@@ -644,15 +650,27 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
     }
   };
 
-  const toggleStock = (product: Product) => void runDocumentMutation(
-    product.id,
-    () => dependencies.saveProduct(
-      { ...toInput(product), stock: product.stock > 0 ? 0 : 1 },
-      { id: product.id, expectedRevision: product.revision ?? 0 },
-    ),
-    () => setToast("재고 상태를 변경했습니다."),
-    "재고 상태를 변경하지 못했습니다.",
-  );
+  const hasSameIdEditDraft = (productId: string): boolean => draftsRef.current.some((draft) => (
+    draft.id === productId && draft.mode === "edit"
+  ));
+
+  const showSameIdDraftReason = () => setToast("수정 초안을 먼저 공개하거나 삭제한 뒤 판매 상태를 변경해 주세요.");
+
+  const toggleStock = (product: Product) => {
+    if (hasSameIdEditDraft(product.id)) {
+      showSameIdDraftReason();
+      return;
+    }
+    void runDocumentMutation(
+      product.id,
+      () => dependencies.saveProduct(
+        { ...toInput(product), stock: product.stock > 0 ? 0 : 1 },
+        { id: product.id, expectedRevision: product.revision ?? 0 },
+      ),
+      () => setToast("재고 상태를 변경했습니다."),
+      "재고 상태를 변경하지 못했습니다.",
+    );
+  };
 
   const duplicateProduct = (productId: string) => void runDocumentMutation(
     productId,
@@ -690,6 +708,11 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
     const operation = pendingOperation;
     if (!operation) return;
     const { row } = operation;
+    if (row.kind === "published" && hasSameIdEditDraft(row.value.id)) {
+      closePendingOperation(operation);
+      showSameIdDraftReason();
+      return;
+    }
     if (operation.action === "unpublish") {
       if (row.kind !== "published") return;
       void runDocumentMutation(
@@ -835,6 +858,7 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
                   statusOptions={["all", "published", "sold-out"]}
                   sort={sort}
                   lockedIds={lockedIds}
+                  sameIdDraftIds={sameIdEditDraftIds}
                   onQueryChange={setQuery}
                   onStatusFilterChange={setPublishedStatus}
                   onSortChange={setSort}
@@ -842,8 +866,8 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
                   onDuplicate={duplicateProduct}
                   onPreview={previewRow}
                   onPublish={publishSavedDraft}
-                  onUnpublish={(value) => setPendingOperation({ action: "unpublish", row: { kind: "published", value } })}
-                  onDelete={(row) => setPendingOperation({ action: "delete", row })}
+                  onUnpublish={(value) => hasSameIdEditDraft(value.id) ? showSameIdDraftReason() : setPendingOperation({ action: "unpublish", row: { kind: "published", value } })}
+                  onDelete={(row) => row.kind === "published" && hasSameIdEditDraft(row.value.id) ? showSameIdDraftReason() : setPendingOperation({ action: "delete", row })}
                   onToggleStock={toggleStock}
                 />
               )}
@@ -863,6 +887,7 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
                   statusOptions={["all", "draft"]}
                   sort={sort}
                   lockedIds={lockedIds}
+                  sameIdDraftIds={sameIdEditDraftIds}
                   onQueryChange={setQuery}
                   onStatusFilterChange={setDraftStatus}
                   onSortChange={setSort}

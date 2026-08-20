@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { formatWon } from "../../lib/format";
+import { canonicalTaxonomyValues, HEALTH_CONCERNS, PRODUCT_CATEGORIES, taxonomyLabel } from "../../lib/catalog/taxonomy";
 import { filterProducts } from "../../lib/products/filter-products";
 import type { Product, ProductFilters as ProductFilterValues } from "../../lib/products/types";
 import { ProductFilters } from "./product-filters";
@@ -39,8 +40,8 @@ const uniqueValues = (values: string[]): string[] =>
 const activeChips = (filters: ProductFilterValues): Chip[] => {
   const chips: Chip[] = [];
   if (filters.query) chips.push({ key: "query", label: `검색어 ${filters.query}`, reset: { query: "" } });
-  if (filters.category) chips.push({ key: "category", label: `카테고리 ${filters.category}`, reset: { category: "" } });
-  if (filters.concern) chips.push({ key: "concern", label: `건강 고민 ${filters.concern}`, reset: { concern: "" } });
+  if (filters.category) chips.push({ key: "category", label: `카테고리 ${taxonomyLabel(PRODUCT_CATEGORIES, filters.category)}`, reset: { category: "" } });
+  if (filters.concern) chips.push({ key: "concern", label: `건강 고민 ${taxonomyLabel(HEALTH_CONCERNS, filters.concern)}`, reset: { concern: "" } });
   if (filters.minPrice !== null) chips.push({ key: "minPrice", label: `최소 가격 ${formatWon(filters.minPrice)}`, reset: { minPrice: null } });
   if (filters.maxPrice !== null) chips.push({ key: "maxPrice", label: `최대 가격 ${formatWon(filters.maxPrice)}`, reset: { maxPrice: null } });
   if (filters.inStockOnly) chips.push({ key: "inStockOnly", label: "재고 있음", reset: { inStockOnly: false } });
@@ -58,8 +59,8 @@ export function ProductBrowser({
   const startingFilters = useMemo(() => ({ ...defaultProductFilters, ...initialFilters }), [initialFilters]);
   const [filters, setFilters] = useState<ProductFilterValues>(startingFilters);
   const [previousStartingFilters, setPreviousStartingFilters] = useState(startingFilters);
-  const categories = useMemo(() => uniqueValues(initialProducts.map((product) => product.category)), [initialProducts]);
-  const concerns = useMemo(() => uniqueValues(initialProducts.flatMap((product) => product.concerns)), [initialProducts]);
+  const categories = useMemo(() => uniqueValues(canonicalTaxonomyValues(PRODUCT_CATEGORIES, initialProducts.map((product) => product.category))), [initialProducts]);
+  const concerns = useMemo(() => uniqueValues(canonicalTaxonomyValues(HEALTH_CONCERNS, initialProducts.flatMap((product) => product.concerns))), [initialProducts]);
   const ingredients = useMemo(
     () => uniqueValues(initialProducts.flatMap((product) => product.ingredients.map((ingredient) => ingredient.name))),
     [initialProducts],
@@ -100,7 +101,7 @@ export function ProductBrowser({
                   type="button"
                   onClick={() => updateFilters(discoveryView === "concerns" ? { concern: value } : { query: value })}
                 >
-                  {value}
+                  {discoveryView === "concerns" ? taxonomyLabel(HEALTH_CONCERNS, value) : value}
                 </button>
               ))}
             </div>

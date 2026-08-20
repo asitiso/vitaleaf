@@ -85,17 +85,20 @@ const documents = [
 
 beforeEach(() => {
   collectionMock.mockReset();
-  docMock.mockReset().mockReturnValue({ kind: "existing-product" });
+  docMock.mockReset().mockImplementation((_database, collectionName: string) => ({
+    kind: collectionName === "productDrafts" ? "existing-draft" : "existing-product",
+  }));
   getDocsMock.mockReset();
   onSnapshotMock.mockReset();
   unsubscribeMock.mockReset();
   addDocMock.mockReset().mockResolvedValue({ id: "created-product" });
   serverTimestampMock.mockReset().mockReturnValue({ marker: "server-time" });
   productState.value = { revision: 4, name: "Daily Omega", stock: 12 };
-  transactionGetMock.mockReset().mockImplementation(async () => ({
-    exists: () => true,
-    data: () => structuredClone(productState.value),
-  }));
+  transactionGetMock.mockReset().mockImplementation(async (reference: { kind: string }) => (
+    reference.kind === "existing-draft"
+      ? { exists: () => false, data: () => undefined }
+      : { exists: () => true, data: () => structuredClone(productState.value) }
+  ));
   transactionDeleteMock.mockReset();
   transactionSetMock.mockReset();
   runTransactionMock.mockReset().mockImplementation(async (_database, operation) => {
@@ -167,6 +170,28 @@ it("rejects a stale whole-product update instead of overwriting a newer revision
   )).rejects.toThrow("changed in another session");
 
   expect(productState.value).toMatchObject({ name: "Writer A", stock: 12, revision: 5 });
+});
+
+it("atomically rejects direct stock updates and deletion when a same-id draft exists", async () => {
+  docMock.mockImplementation((_database, collectionName: string) => ({
+    kind: collectionName === "productDrafts" ? "existing-draft" : "existing-product",
+  }));
+  transactionGetMock.mockImplementation(async (reference: { kind: string }) => (
+    reference.kind === "existing-draft"
+      ? { exists: () => true, data: () => ({ mode: "edit" }) }
+      : { exists: () => true, data: () => structuredClone(productState.value) }
+  ));
+
+  await expect(saveProduct(
+    { ...baseProduct, stock: 0 },
+    { id: "existing", expectedRevision: 4 },
+  )).rejects.toThrow("same-id edit draft");
+  await expect(deleteProduct({ id: "existing", expectedRevision: 4 }))
+    .rejects.toThrow("same-id edit draft");
+
+  expect(transactionSetMock).not.toHaveBeenCalled();
+  expect(transactionDeleteMock).not.toHaveBeenCalled();
+  expect(productState.value).toMatchObject({ stock: 12, revision: 4 });
 });
 
 it("rejects an update target that omits its expected revision before starting a transaction", async () => {

@@ -82,6 +82,14 @@ it("moves through four labelled steps and focuses the first publish error", asyn
   expect(screen.getByLabelText("상품명")).toHaveAccessibleDescription("상품명을 입력해 주세요.");
 });
 
+it("shows legacy Korean taxonomy values in the canonical wizard controls", () => {
+  render(<ProductWizard {...propsFor({ category: "유산균", concerns: ["장 건강", "면역"] })} />);
+
+  expect(screen.getByLabelText("상품 분류")).toHaveValue("probiotic");
+  expect(screen.getByRole("checkbox", { name: "장 건강" })).toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "면역" })).toBeChecked();
+});
+
 it("flushes the latest draft before validating a publish attempt", async () => {
   const user = userEvent.setup();
   const props = propsFor();
@@ -395,7 +403,7 @@ it("blocks publishing while a product image upload is in progress", async () => 
   const user = userEvent.setup();
   const pending = deferred<{ url: string; storagePath: string; alt: string; order: number }>();
   const upload = vi.fn<MediaUpload>(() => ({ promise: pending.promise, cancel: vi.fn() }));
-  render(<ProductWizard {...propsFor({ currentStep: 2 })} upload={upload} deleteImage={vi.fn()} />);
+  render(<ProductWizard {...propsFor({ currentStep: 2 })} upload={upload} />);
 
   await user.upload(screen.getByLabelText("상품 이미지 추가"), new File(["image"], "front.jpg", { type: "image/jpeg" }));
   expect(screen.getByRole("button", { name: "판매 공개" })).toBeDisabled();
@@ -448,7 +456,7 @@ it("blocks drop, drag, pointer, and media change paths for the full deferred pub
     ingredients: [{ name: "EPA", amount: "600mg", dailyValue: "" }],
     origin: "한국",
     cautions: ["권장량을 지켜 주세요."],
-  })} onChange={onChange} onPublish={onPublish} upload={upload} deleteImage={vi.fn()} />);
+  })} onChange={onChange} onPublish={onPublish} upload={upload} />);
 
   await userEvent.click(screen.getByRole("button", { name: "판매 공개" }));
   await waitFor(() => expect(onPublish).toHaveBeenCalledOnce());
@@ -481,7 +489,7 @@ it("keeps an upload alive when staff moves to another wizard step", async () => 
   const user = userEvent.setup();
   const pending = deferred<{ url: string; storagePath: string; alt: string; order: number }>();
   const upload = vi.fn<MediaUpload>(() => ({ promise: pending.promise, cancel: vi.fn() }));
-  render(<ProductWizard {...propsFor({ currentStep: 2 })} upload={upload} deleteImage={vi.fn()} />);
+  render(<ProductWizard {...propsFor({ currentStep: 2 })} upload={upload} />);
 
   await user.upload(screen.getByLabelText("상품 이미지 추가"), new File(["image"], "front.jpg", { type: "image/jpeg" }));
   await user.click(screen.getByRole("button", { name: "다음 단계: 상세 정보" }));
@@ -503,7 +511,7 @@ it("resets media work for a new draft session and ignores the old upload after r
     .mockReturnValueOnce({ promise: oldUpload.promise, cancel: oldCancel })
     .mockReturnValueOnce({ promise: newUpload.promise, cancel: newCancel });
   const props = propsFor({ id: "draft-1", sessionId: "session-a", currentStep: 2 });
-  const view = render(<ProductWizard {...props} upload={upload} deleteImage={vi.fn()} />);
+  const view = render(<ProductWizard {...props} upload={upload} />);
 
   await user.upload(screen.getByLabelText("상품 이미지 추가"), new File(["old"], "old.jpg", { type: "image/jpeg" }));
   view.rerender(<ProductWizard {...props} draft={draft({
@@ -511,7 +519,7 @@ it("resets media work for a new draft session and ignores the old upload after r
     sessionId: "session-b",
     currentStep: 2,
     media: [{ url: "b.jpg", storagePath: "products/draft-1/b.jpg", alt: "B", order: 0 }],
-  })} upload={upload} deleteImage={vi.fn()} />);
+  })} upload={upload} />);
 
   expect(oldCancel).toHaveBeenCalledOnce();
   expect(screen.getByRole("img", { name: "B" })).toHaveAttribute("src", "b.jpg");

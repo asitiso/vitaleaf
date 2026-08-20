@@ -91,6 +91,7 @@ function TableHarness({
       statusFilter={status}
       sort={sort}
       lockedIds={lockedIds}
+      sameIdDraftIds={new Set()}
       onQueryChange={setQuery}
       onStatusFilterChange={setStatus}
       onSortChange={setSort}
@@ -125,6 +126,18 @@ it("searches names, IDs, and categories and filters published, draft, and sold-o
   await user.selectOptions(screen.getByRole("combobox", { name: "상태 필터" }), "draft");
   expect(screen.getByText("루테인 초안")).toBeVisible();
   expect(screen.queryByText("비타민 D")).not.toBeInTheDocument();
+});
+
+it("searches a canonical category by the Korean label shown to staff", async () => {
+  const user = userEvent.setup();
+  render(<TableHarness tableRows={[
+    { kind: "published", value: product({ id: "probiotic", name: "프로바이오틱스 캡슐", category: "probiotic" }) },
+  ]} />);
+
+  await user.type(screen.getByRole("searchbox", { name: "상품 검색" }), "유산균");
+
+  expect(screen.getByText("프로바이오틱스 캡슐")).toBeVisible();
+  expect(screen.getByText(/probiotic · 유산균/)).toBeVisible();
 });
 
 it("sorts by latest modification by default and exposes media, status, timestamp, and relevant actions", () => {

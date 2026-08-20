@@ -1,4 +1,5 @@
 import type { ProductFilters as ProductFilterValues } from "../../lib/products/types";
+import { HEALTH_CONCERNS, PRODUCT_CATEGORIES, taxonomyLabel } from "../../lib/catalog/taxonomy";
 
 type ProductFiltersProps = {
   filters: ProductFilterValues;
@@ -36,7 +37,7 @@ export function ProductFilters({ filters, categories, concerns, onChange, onRese
         <span>카테고리</span>
         <select value={filters.category} onChange={(event) => onChange({ category: event.target.value })}>
           <option value="">전체 카테고리</option>
-          {categories.map((category) => <option key={category} value={category}>{category}</option>)}
+          {categories.map((category) => <option key={category} value={category}>{taxonomyLabel(PRODUCT_CATEGORIES, category)}</option>)}
         </select>
       </label>
 
@@ -44,7 +45,7 @@ export function ProductFilters({ filters, categories, concerns, onChange, onRese
         <span>건강 고민</span>
         <select value={filters.concern} onChange={(event) => onChange({ concern: event.target.value })}>
           <option value="">모든 건강 고민</option>
-          {concerns.map((concern) => <option key={concern} value={concern}>{concern}</option>)}
+          {concerns.map((concern) => <option key={concern} value={concern}>{taxonomyLabel(HEALTH_CONCERNS, concern)}</option>)}
         </select>
       </label>
 

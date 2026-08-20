@@ -180,6 +180,8 @@ describe("repository boundaries", () => {
       ...makeDraft(),
       id: undefined,
       name: "",
+      category: "유산균",
+      concerns: ["장 건강", "면역"],
       sessionId: "session-existing",
       revision: 3,
       ingredients: [null, {}, { name: "   " }, { name: " EPA ", amount: "600mg" }],
@@ -189,6 +191,8 @@ describe("repository boundaries", () => {
     await expect(getDraft("incomplete")).resolves.toMatchObject({
       id: "incomplete",
       name: "",
+      category: "probiotic",
+      concerns: ["gut", "immunity"],
       revision: 3,
       ingredients: [{ name: "EPA", amount: "600mg", dailyValue: "" }],
     });
