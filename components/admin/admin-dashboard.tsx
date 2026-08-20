@@ -436,7 +436,7 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
   const [authorizationGeneration, setAuthorizationGeneration] = useState(0);
   const [csvImporting, setCsvImporting] = useState(false);
   const authorizationGenerationRef = useRef(0);
-  const sessionRef = useRef<AdminSessionState>(session);
+  const sessionRef = useRef<AdminSessionState | "loading">(session);
   const csvImportTokenRef = useRef<symbol | null>(null);
   const editorGenerationRef = useRef(0);
   const editorRef = useRef<DraftEditorHandle>(null);
