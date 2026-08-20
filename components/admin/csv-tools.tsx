@@ -61,27 +61,28 @@ export type CsvDraftImportFailure = {
 export type CsvDraftImportResult = {
   savedCount: number;
   failures: CsvDraftImportFailure[];
+  stale?: boolean;
 };
 
 type CsvToolsProps = {
   products: readonly Product[];
-  onImportDrafts?: (products: ProductInput[]) => Promise<CsvDraftImportResult | void>;
-  // Kept temporarily so existing callers can adopt the draft-specific name without a risky all-at-once switch.
-  onImport?: (products: ProductInput[]) => Promise<CsvDraftImportResult | void>;
+  onImportDrafts(products: ProductInput[]): Promise<CsvDraftImportResult>;
+  importing?: boolean;
   downloadCsv?: (csv: string, filename: string) => void;
   readFile?: (file: File) => Promise<string>;
 };
 
-export function CsvTools({ products, onImportDrafts, onImport, downloadCsv = downloadCsvInBrowser, readFile = readUtf8File }: CsvToolsProps) {
+export function CsvTools({ products, onImportDrafts, importing = false, downloadCsv = downloadCsvInBrowser, readFile = readUtf8File }: CsvToolsProps) {
   const [preview, setPreview] = useState<ProductInput[]>([]);
   const [previewGeneration, setPreviewGeneration] = useState<number | null>(null);
   const [errors, setErrors] = useState<CsvRowError[]>([]);
   const [message, setMessage] = useState("");
-  const [operationError, setOperationError] = useState("");
-  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState("");
+  const [exportError, setExportError] = useState("");
+  const [localImporting, setLocalImporting] = useState(false);
   const selectionGeneration = useRef(0);
+  const previewGenerationRef = useRef<number | null>(null);
   const importLock = useRef(false);
-  const importDrafts = onImportDrafts ?? onImport;
 
   const selectFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -91,7 +92,8 @@ export function CsvTools({ products, onImportDrafts, onImport, downloadCsv = dow
     setPreviewGeneration(null);
     setErrors([]);
     setMessage("");
-    setOperationError("");
+    previewGenerationRef.current = null;
+    setImportError("");
     if (!file) return;
 
     try {
@@ -103,18 +105,19 @@ export function CsvTools({ products, onImportDrafts, onImport, downloadCsv = dow
         return;
       }
       if (result.valid.length === 0) {
-        setOperationError("임시저장할 상품이 없습니다.");
+        setImportError("임시저장할 상품이 없습니다.");
         return;
       }
       if (result.valid.length > MAX_IMPORT_COUNT) {
-        setOperationError(`한 번에 최대 ${MAX_IMPORT_COUNT}개 상품만 임시저장할 수 있습니다.`);
+        setImportError(`한 번에 최대 ${MAX_IMPORT_COUNT}개 상품만 임시저장할 수 있습니다.`);
         return;
       }
       setPreview(result.valid);
       setPreviewGeneration(generation);
+      previewGenerationRef.current = generation;
     } catch {
       if (generation !== selectionGeneration.current) return;
-      setOperationError("CSV 파일을 읽지 못했습니다. UTF-8 형식인지 확인해 주세요.");
+      setImportError("CSV 파일을 읽지 못했습니다. UTF-8 형식인지 확인해 주세요.");
     }
   };
 
@@ -123,42 +126,45 @@ export function CsvTools({ products, onImportDrafts, onImport, downloadCsv = dow
       preview.length === 0
       || errors.length > 0
       || previewGeneration !== selectionGeneration.current
+      || localImporting
       || importing
       || importLock.current
     ) return;
-    setImporting(true);
-    setOperationError("");
+    const batch = preview;
+    const batchGeneration = previewGeneration;
+    setLocalImporting(true);
+    setImportError("");
     setMessage("");
     try {
-      if (!importDrafts) throw new Error("CSV draft import is unavailable");
       importLock.current = true;
-      const result = await importDrafts(preview);
-      const outcome = result ?? { savedCount: preview.length, failures: [] };
+      const outcome = (await onImportDrafts(batch)) ?? { savedCount: batch.length, failures: [] };
+      if (outcome.stale || selectionGeneration.current !== batchGeneration || previewGenerationRef.current !== batchGeneration) return;
       if (outcome.failures.length > 0) {
         const failedInputs = outcome.failures.map((failure) => failure.input);
         setPreview(failedInputs);
         setPreviewGeneration(selectionGeneration.current);
-        setOperationError(`상품 ${outcome.savedCount}개를 임시저장했습니다. ${failedInputs.length}개는 저장하지 못했습니다. 다시 시도해 주세요.`);
+        setImportError(`상품 ${outcome.savedCount}개를 임시저장했습니다. ${failedInputs.length}개는 저장하지 못했습니다. 다시 시도해 주세요.`);
         return;
       }
       setMessage(`상품 ${outcome.savedCount}개를 임시저장했습니다.`);
       setPreview([]);
       setPreviewGeneration(null);
     } catch {
-      setOperationError("상품을 임시저장하지 못했습니다. 네트워크 연결을 확인하고 다시 시도해 주세요.");
+      if (selectionGeneration.current === batchGeneration && previewGenerationRef.current === batchGeneration) {
+        setImportError("상품을 임시저장하지 못했습니다. 네트워크 연결을 확인하고 다시 시도해 주세요.");
+      }
     } finally {
       importLock.current = false;
-      setImporting(false);
+      setLocalImporting(false);
     }
   };
 
   const exportProducts = () => {
-    setOperationError("");
-    setMessage("");
+    setExportError("");
     try {
       downloadCsv(serializeProducts(products), "products.csv");
     } catch {
-      setOperationError("CSV 파일을 내보내지 못했습니다. 다시 시도해 주세요.");
+      setExportError("CSV 파일을 내보내지 못했습니다. 다시 시도해 주세요.");
     }
   };
 
@@ -181,7 +187,7 @@ export function CsvTools({ products, onImportDrafts, onImport, downloadCsv = dow
       </div>
       <label>
         <span>상품 CSV 파일</span>
-        <input aria-label="상품 CSV 파일" type="file" accept=".csv,text/csv" onChange={(event) => void selectFile(event)} />
+        <input aria-label="상품 CSV 파일" type="file" accept=".csv,text/csv" disabled={importing} onChange={(event) => void selectFile(event)} />
       </label>
 
       {errors.length > 0 && (
@@ -196,7 +202,8 @@ export function CsvTools({ products, onImportDrafts, onImport, downloadCsv = dow
           </ul>
         </div>
       )}
-      {operationError && <p className="admin-error" role="alert">{operationError}</p>}
+      {importError && <p className="admin-error" role="alert">{importError}</p>}
+      {exportError && <p className="admin-error" role="alert">{exportError}</p>}
       {message && <p role="status">{message}</p>}
       {preview.length > 0 && (
         <div role="status">
@@ -204,12 +211,12 @@ export function CsvTools({ products, onImportDrafts, onImport, downloadCsv = dow
           <button
             type="button"
             className="admin-primary-button"
-            disabled={importing}
+            disabled={localImporting || importing}
             onClick={() => void confirmImport()}
           >
-            {importing
+            {localImporting || importing
               ? "임시저장 중"
-              : operationError
+              : importError
                 ? `${preview.length}개 상품을 임시저장으로 다시 시도`
                 : `${preview.length}개 상품을 임시저장으로 가져오기`}
           </button>

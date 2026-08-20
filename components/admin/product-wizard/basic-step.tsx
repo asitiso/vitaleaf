@@ -46,20 +46,19 @@ export const applyProductTemplate = (draft: ProductDraft, template: ProductTempl
   };
 };
 
-const hasDraftContent = (draft: ProductDraft): boolean => (
-  draft.name.trim().length > 0
-  || draft.slug.trim().length > 0
-  || draft.category.trim().length > 0
-  || draft.concerns.length > 0
-  || draft.description.trim().length > 0
-  || draft.benefits.length > 0
-  || draft.ingredients.length > 0
-  || draft.dosage.trim().length > 0
-  || draft.origin.trim().length > 0
-  || draft.certifications.length > 0
-  || draft.cautions.length > 0
-  || draft.price > 0
-  || draft.stock > 0
+export const hasDraftContent = (draft: ProductDraft): boolean => (
+  Object.entries(draft).some(([key, value]) => ![
+    "id", "status", "mode", "sessionId", "revision", "sourceProductId", "sourceProductRevision",
+    "sourceCreatedAt", "sourceCreatedBy", "currentStep", "createdAt", "updatedAt", "createdBy", "updatedBy",
+  ].includes(key) && (
+    key === "originalPrice" || key === "salesRank"
+      ? value !== null
+      : Array.isArray(value)
+        ? value.length > 0
+        : typeof value === "string"
+          ? value.trim().length > 0
+          : value !== null && value !== false && value !== 0
+  ))
 );
 
 export function BasicStep({

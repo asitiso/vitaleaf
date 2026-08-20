@@ -35,6 +35,12 @@ const product: Product = {
 
 const csvFile = (contents: string) => new File([contents], "products.csv", { type: "text/csv;charset=utf-8" });
 
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((nextResolve) => { resolve = nextResolve; });
+  return { promise, resolve };
+};
+
 it("ignores a stale file read so only the latest selection can be previewed and imported", async () => {
   const user = userEvent.setup();
   const onImport = vi.fn().mockResolvedValue(undefined);
@@ -42,7 +48,7 @@ it("ignores a stale file read so only the latest selection can be previewed and 
   const readFile = vi.fn((file: File) => new Promise<string>((resolve) => {
     pending.set(file.name, resolve);
   }));
-  render(<CsvTools products={[]} onImport={onImport} readFile={readFile} />);
+  render(<CsvTools products={[]} onImportDrafts={onImport} readFile={readFile} />);
 
   await user.upload(screen.getByLabelText("상품 CSV 파일"), new File(["older"], "older.csv", { type: "text/csv" }));
   await user.upload(screen.getByLabelText("상품 CSV 파일"), new File(["latest"], "latest.csv", { type: "text/csv" }));
@@ -71,7 +77,7 @@ it("ignores a stale file read so only the latest selection can be previewed and 
 it("blocks all writes when any row is invalid and shows every row-field error", async () => {
   const user = userEvent.setup();
   const onImport = vi.fn();
-  render(<CsvTools products={[]} onImport={onImport} />);
+  render(<CsvTools products={[]} onImportDrafts={onImport} />);
 
   await user.upload(screen.getByLabelText("상품 CSV 파일"), csvFile([
     "name,category,price,stock",
@@ -93,7 +99,7 @@ it.each([
 ])("blocks preview and writes for malformed CSV structure: %s", async (row, message) => {
   const user = userEvent.setup();
   const onImport = vi.fn();
-  render(<CsvTools products={[]} onImport={onImport} />);
+  render(<CsvTools products={[]} onImportDrafts={onImport} />);
 
   await user.upload(screen.getByLabelText("상품 CSV 파일"), csvFile([
     "name,category,price,stock",
@@ -109,7 +115,7 @@ it.each([
 it("previews valid rows and requires explicit confirmation before saving drafts", async () => {
   const user = userEvent.setup();
   const onImport = vi.fn().mockResolvedValue(undefined);
-  render(<CsvTools products={[]} onImport={onImport} />);
+  render(<CsvTools products={[]} onImportDrafts={onImport} />);
 
   await user.upload(screen.getByLabelText("상품 CSV 파일"), csvFile([
     "name,category,price,stock,isBest",
@@ -134,7 +140,7 @@ it("keeps only failed rows available for a locked retry and reports the partial 
   const onImport = vi.fn()
     .mockResolvedValueOnce({ savedCount: 1, failures: [{ input: { name: "비타민D" }, message: "offline" }] })
     .mockResolvedValueOnce({ savedCount: 1, failures: [] });
-  render(<CsvTools products={[]} onImport={onImport} />);
+  render(<CsvTools products={[]} onImportDrafts={onImport} />);
 
   await user.upload(screen.getByLabelText("상품 CSV 파일"), csvFile([
     "name,category,price,stock",
@@ -151,11 +157,32 @@ it("keeps only failed rows available for a locked retry and reports the partial 
   expect(await screen.findByText("상품 1개를 임시저장했습니다.")).toBeVisible();
 });
 
+it.each([
+  [{ savedCount: 1, failures: [] }, "상품 1개를 임시저장했습니다."],
+  [{ savedCount: 0, failures: [{ input: { name: "A" }, message: "offline" }] }, "저장하지 못했습니다"],
+])("does not let a completed old import replace a newer file preview", async (result, absentText) => {
+  const user = userEvent.setup();
+  const pending = deferred<unknown>();
+  const onImportDrafts = vi.fn(() => pending.promise as Promise<never>);
+  render(<CsvTools products={[]} onImportDrafts={onImportDrafts} />);
+
+  await user.upload(screen.getByLabelText("상품 CSV 파일"), csvFile("name,category,price,stock\nA,vitamin,1000,1"));
+  await user.click(await screen.findByRole("button", { name: "1개 상품을 임시저장으로 가져오기" }));
+  await user.upload(screen.getByLabelText("상품 CSV 파일"), csvFile("name,category,price,stock\nB,vitamin,2000,2"));
+  expect(await screen.findByText("임시저장할 상품 1개를 확인해 주세요.")).toBeVisible();
+
+  await act(async () => pending.resolve(result));
+
+  expect(screen.getByText("임시저장할 상품 1개를 확인해 주세요.")).toBeVisible();
+  expect(screen.queryByText(absentText)).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "1개 상품을 임시저장으로 가져오기" })).toBeEnabled();
+});
+
 it("rejects more than 400 rows before calling the import adapter", async () => {
   const user = userEvent.setup();
   const onImport = vi.fn();
   const rows = Array.from({ length: 401 }, (_, index) => `상품 ${index + 1},기타,1000,1`);
-  render(<CsvTools products={[]} onImport={onImport} />);
+  render(<CsvTools products={[]} onImportDrafts={onImport} />);
 
   await user.upload(screen.getByLabelText("상품 CSV 파일"), csvFile([
     "name,category,price,stock",
@@ -170,7 +197,7 @@ it("rejects more than 400 rows before calling the import adapter", async () => {
 it("links the exact public template and exports Excel-compatible BOM CSV", async () => {
   const user = userEvent.setup();
   const downloadCsv = vi.fn();
-  render(<CsvTools products={[product]} onImport={vi.fn()} downloadCsv={downloadCsv} />);
+  render(<CsvTools products={[product]} onImportDrafts={vi.fn()} downloadCsv={downloadCsv} />);
 
   expect(screen.getByRole("link", { name: "CSV 양식 다운로드" })).toHaveAttribute("href", "/products-template.csv");
   expect(screen.getByRole("link", { name: "CSV 양식 다운로드" })).toHaveAttribute("download", "products-template.csv");
@@ -183,7 +210,7 @@ it("shows recoverable import and export failure states", async () => {
   const user = userEvent.setup();
   const onImport = vi.fn().mockRejectedValue(new Error("firestore unavailable"));
   const downloadCsv = vi.fn(() => { throw new Error("download unavailable"); });
-  render(<CsvTools products={[product]} onImport={onImport} downloadCsv={downloadCsv} />);
+  render(<CsvTools products={[product]} onImportDrafts={onImport} downloadCsv={downloadCsv} />);
 
   await user.upload(screen.getByLabelText("상품 CSV 파일"), csvFile([
     "name,category,price,stock",

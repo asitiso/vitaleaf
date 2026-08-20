@@ -221,6 +221,30 @@ it("applies a category template only after confirming a non-empty draft and leav
   }));
 });
 
+it("requires confirmation for media-only and rating-only drafts, but not an empty draft", async () => {
+  const user = userEvent.setup();
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  confirm.mockClear();
+  const mediaOnly = propsFor({ media: [{ url: "only.jpg", storagePath: null, alt: "", order: 0 }] });
+  const { rerender } = render(<ProductWizard {...mediaOnly} />);
+
+  await user.selectOptions(screen.getByLabelText("상품 등록 양식"), "vitamin");
+  expect(confirm).toHaveBeenCalledOnce();
+  expect(mediaOnly.onChange).not.toHaveBeenCalled();
+
+  const ratingOnly = propsFor({ ratingAverage: 4.5, reviewCount: 1 });
+  rerender(<ProductWizard {...ratingOnly} />);
+  await user.selectOptions(screen.getByLabelText("상품 등록 양식"), "vitamin");
+  expect(confirm).toHaveBeenCalledTimes(2);
+  expect(ratingOnly.onChange).not.toHaveBeenCalled();
+
+  const empty = propsFor();
+  rerender(<ProductWizard {...empty} />);
+  await user.selectOptions(screen.getByLabelText("상품 등록 양식"), "vitamin");
+  expect(confirm).toHaveBeenCalledTimes(2);
+  expect(empty.onChange).toHaveBeenCalledOnce();
+});
+
 it("adds and removes detail rows with named controls", async () => {
   const user = userEvent.setup();
   render(<ProductWizard {...propsFor({ currentStep: 2 })} />);

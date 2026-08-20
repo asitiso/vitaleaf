@@ -434,7 +434,9 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
   const [editorGuardActive, setEditorGuardActive] = useState(false);
   const [editorGeneration, setEditorGeneration] = useState(0);
   const [authorizationGeneration, setAuthorizationGeneration] = useState(0);
+  const [csvImporting, setCsvImporting] = useState(false);
   const authorizationGenerationRef = useRef(0);
+  const csvImportTokenRef = useRef<symbol | null>(null);
   const editorGenerationRef = useRef(0);
   const editorRef = useRef<DraftEditorHandle>(null);
   const tabRefs = useRef<Record<DashboardView, HTMLButtonElement | null>>({
@@ -574,20 +576,33 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
   };
 
   const importDrafts = async (inputs: ProductInput[]): Promise<CsvDraftImportResult> => {
-    const attempts = inputs.map(async (input) => {
-      const id = dependencies.createDraftId();
-      const draft = dependencies.startDraftSession(createCsvDraft(input, id));
-      return dependencies.saveDraft(draft);
-    });
-    const outcomes = await Promise.allSettled(attempts);
-    return outcomes.reduce<CsvDraftImportResult>((result, outcome, index) => {
-      if (outcome.status === "fulfilled") result.savedCount += 1;
-      else result.failures.push({
-        input: inputs[index]!,
-        message: outcome.reason instanceof Error ? outcome.reason.message : "draft save failed",
+    if (csvImportTokenRef.current) throw new Error("CSV import already in progress");
+    const token = Symbol("csv-import");
+    const importGeneration = authorizationGenerationRef.current;
+    csvImportTokenRef.current = token;
+    setCsvImporting(true);
+    try {
+      const attempts = inputs.map(async (input) => {
+        const id = dependencies.createDraftId();
+        const draft = dependencies.startDraftSession(createCsvDraft(input, id));
+        return dependencies.saveDraft(draft);
       });
-      return result;
-    }, { savedCount: 0, failures: [] });
+      const outcomes = await Promise.allSettled(attempts);
+      const result = outcomes.reduce<CsvDraftImportResult>((result, outcome, index) => {
+        if (outcome.status === "fulfilled") result.savedCount += 1;
+        else result.failures.push({
+          input: inputs[index]!,
+          message: outcome.reason instanceof Error ? outcome.reason.message : "draft save failed",
+        });
+        return result;
+      }, { savedCount: 0, failures: [] });
+      return authorizationGenerationRef.current === importGeneration ? result : { ...result, stale: true };
+    } finally {
+      if (csvImportTokenRef.current === token) {
+        csvImportTokenRef.current = null;
+        setCsvImporting(false);
+      }
+    }
   };
 
   const runDocumentMutation = async <T,>(
@@ -751,8 +766,8 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
     <main className="admin-page">
       <header className="admin-page-header">
         <div><p className="admin-eyebrow">VITALEAF ADMIN</p><h1>상품 관리</h1><span>상품 정보와 판매 상태를 한곳에서 관리하세요.</span></div>
-        <button type="button" className="admin-secondary-button" disabled={editorPublishing} onClick={() => {
-          if (editorPublishing || editorRef.current && !editorRef.current.confirmExit()) return;
+        <button type="button" className="admin-secondary-button" disabled={editorPublishing || csvImporting} onClick={() => {
+          if (editorPublishing || csvImporting || editorRef.current && !editorRef.current.confirmExit()) return;
           void dependencies.signOutAdmin();
         }}>로그아웃</button>
       </header>
@@ -792,9 +807,9 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
       ) : (
         <>
           <div className="admin-view-tabs" role="tablist" aria-label="상품 관리 보기">
-            <button ref={(node) => { tabRefs.current.published = node; }} id="admin-tab-published" type="button" role="tab" tabIndex={view === "published" ? 0 : -1} aria-label="판매 상품" aria-describedby="admin-tab-published-count" aria-selected={view === "published"} aria-controls="admin-panel-published" onClick={() => setView("published")} onKeyDown={(event) => handleTabKeyDown(event, "published")}>판매 상품 <span id="admin-tab-published-count">{products.length}개</span></button>
-            <button ref={(node) => { tabRefs.current.drafts = node; }} id="admin-tab-drafts" type="button" role="tab" tabIndex={view === "drafts" ? 0 : -1} aria-label="임시 저장" aria-describedby="admin-tab-drafts-count" aria-selected={view === "drafts"} aria-controls="admin-panel-drafts" onClick={() => setView("drafts")} onKeyDown={(event) => handleTabKeyDown(event, "drafts")}>임시 저장 <span id="admin-tab-drafts-count">{drafts.length}개</span></button>
-            <button ref={(node) => { tabRefs.current.csv = node; }} id="admin-tab-csv" type="button" role="tab" tabIndex={view === "csv" ? 0 : -1} aria-label="CSV 관리" aria-selected={view === "csv"} aria-controls="admin-panel-csv" onClick={() => setView("csv")} onKeyDown={(event) => handleTabKeyDown(event, "csv")}>CSV 관리</button>
+            <button ref={(node) => { tabRefs.current.published = node; }} id="admin-tab-published" type="button" disabled={csvImporting} role="tab" tabIndex={view === "published" ? 0 : -1} aria-label="판매 상품" aria-describedby="admin-tab-published-count" aria-selected={view === "published"} aria-controls="admin-panel-published" onClick={() => setView("published")} onKeyDown={(event) => handleTabKeyDown(event, "published")}>판매 상품 <span id="admin-tab-published-count">{products.length}개</span></button>
+            <button ref={(node) => { tabRefs.current.drafts = node; }} id="admin-tab-drafts" type="button" disabled={csvImporting} role="tab" tabIndex={view === "drafts" ? 0 : -1} aria-label="임시 저장" aria-describedby="admin-tab-drafts-count" aria-selected={view === "drafts"} aria-controls="admin-panel-drafts" onClick={() => setView("drafts")} onKeyDown={(event) => handleTabKeyDown(event, "drafts")}>임시 저장 <span id="admin-tab-drafts-count">{drafts.length}개</span></button>
+            <button ref={(node) => { tabRefs.current.csv = node; }} id="admin-tab-csv" type="button" disabled={csvImporting} role="tab" tabIndex={view === "csv" ? 0 : -1} aria-label="CSV 관리" aria-selected={view === "csv"} aria-controls="admin-panel-csv" onClick={() => setView("csv")} onKeyDown={(event) => handleTabKeyDown(event, "csv")}>CSV 관리</button>
           </div>
 
           {view === "published" ? (
@@ -856,7 +871,7 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
 
           {view === "csv" ? (
             <section id="admin-panel-csv" className="admin-catalog" role="tabpanel" aria-labelledby="admin-tab-csv">
-              <CsvTools products={products} onImportDrafts={importDrafts} />
+              <CsvTools products={products} importing={csvImporting} onImportDrafts={importDrafts} />
             </section>
           ) : null}
         </>
