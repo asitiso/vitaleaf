@@ -11,6 +11,7 @@ const {
   runTransactionMock,
   serverTimestampMock,
   transactionGetMock,
+  transactionDeleteMock,
   transactionSetMock,
   unsubscribeMock,
 } = vi.hoisted(() => ({
@@ -24,6 +25,7 @@ const {
   runTransactionMock: vi.fn(),
   serverTimestampMock: vi.fn(),
   transactionGetMock: vi.fn(),
+  transactionDeleteMock: vi.fn(),
   transactionSetMock: vi.fn(),
   unsubscribeMock: vi.fn(),
 }));
@@ -44,9 +46,11 @@ vi.mock("firebase/firestore", () => ({
 
 import {
   ProductRevisionConflictError,
+  deleteProduct,
   getProducts,
   saveProduct,
   subscribeProducts,
+  type ProductDeleteTarget,
   type ProductUpdateTarget,
 } from "./products";
 
@@ -92,11 +96,13 @@ beforeEach(() => {
     exists: () => true,
     data: () => structuredClone(productState.value),
   }));
+  transactionDeleteMock.mockReset();
   transactionSetMock.mockReset();
   runTransactionMock.mockReset().mockImplementation(async (_database, operation) => {
     let nextValue: Record<string, unknown> | null = null;
     const result = await operation({
       get: transactionGetMock,
+      delete: transactionDeleteMock,
       set: (reference: unknown, value: Record<string, unknown>, options: unknown) => {
         transactionSetMock(reference, value, options);
         nextValue = { ...productState.value, ...structuredClone(value) };
@@ -171,5 +177,31 @@ it("rejects an update target that omits its expected revision before starting a 
 
   expect(error).toBeInstanceOf(ProductRevisionConflictError);
   expect(error).toMatchObject({ message: "Product updates require a valid id and expected revision." });
+  expect(runTransactionMock).not.toHaveBeenCalled();
+});
+
+it("rejects a stale published-product deletion and leaves the newer product intact", async () => {
+  productState.value = { revision: 5, name: "Newer writer", stock: 7 };
+
+  await expect(deleteProduct({ id: "existing", expectedRevision: 4 }))
+    .rejects.toThrow("changed in another session");
+
+  expect(transactionDeleteMock).not.toHaveBeenCalled();
+  expect(productState.value).toEqual({ revision: 5, name: "Newer writer", stock: 7 });
+});
+
+it("deletes a published product exactly once when its rendered revision is current", async () => {
+  await expect(deleteProduct({ id: "existing", expectedRevision: 4 })).resolves.toBeUndefined();
+
+  expect(transactionDeleteMock).toHaveBeenCalledTimes(1);
+  expect(transactionDeleteMock).toHaveBeenCalledWith({ kind: "existing-product" });
+});
+
+it("rejects a deletion target without an expected revision before starting a transaction", async () => {
+  const error = await deleteProduct({ id: "existing" } as ProductDeleteTarget)
+    .catch((reason: unknown) => reason);
+
+  expect(error).toBeInstanceOf(ProductRevisionConflictError);
+  expect(error).toMatchObject({ message: "Product deletions require a valid id and expected revision." });
   expect(runTransactionMock).not.toHaveBeenCalled();
 });

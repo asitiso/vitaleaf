@@ -3,6 +3,12 @@ import userEvent from "@testing-library/user-event";
 import Link from "next/link";
 import { afterEach, expect, it, vi } from "vitest";
 
+const replaceRoute = vi.hoisted(() => vi.fn());
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: replaceRoute }),
+}));
+
 vi.mock("../../lib/firebase/client", () => ({ auth: {}, db: {} }));
 
 vi.mock("../../lib/firebase/products", () => ({
@@ -35,6 +41,7 @@ import { AdminDashboard, type AdminDashboardDependencies } from "./admin-dashboa
 
 afterEach(() => {
   vi.restoreAllMocks();
+  replaceRoute.mockReset();
   window.history.replaceState({}, "", "/");
 });
 
@@ -360,7 +367,7 @@ it("logs in, searches products, toggles stock, and confirms deletion", async () 
   expect(screen.getByRole("dialog", { name: "상품 삭제 확인" })).toBeVisible();
   expect(deleteProduct).not.toHaveBeenCalled();
   await user.click(screen.getByRole("button", { name: "삭제 확인" }));
-  await waitFor(() => expect(deleteProduct).toHaveBeenCalledWith("omega"));
+  await waitFor(() => expect(deleteProduct).toHaveBeenCalledWith({ id: "omega", expectedRevision: 4 }));
   expect(await screen.findByText("상품을 삭제했습니다.")).toBeVisible();
 });
 
@@ -859,7 +866,8 @@ it("guards actual product links only while the active editor has unsaved work", 
 
   const allowed = new MouseEvent("click", { bubbles: true, cancelable: true });
   storeLink.dispatchEvent(allowed);
-  expect(allowed.defaultPrevented).toBe(false);
+  expect(allowed.defaultPrevented).toBe(true);
+  expect(replaceRoute).toHaveBeenCalledWith("/products");
 
   await user.click(screen.getByRole("button", { name: "편집 닫기" }));
   confirm.mockClear();
@@ -867,6 +875,134 @@ it("guards actual product links only while the active editor has unsaved work", 
   storeLink.dispatchEvent(afterClose);
   expect(afterClose.defaultPrevented).toBe(false);
   expect(confirm).not.toHaveBeenCalled();
+});
+
+it("replaces the sentinel with an accepted internal route and preserves the exact two-Back state sequence", async () => {
+  const previousState = Object.freeze({ __NA: true, tree: ["products"], key: "previous" });
+  const originalAdminState = Object.freeze({ __NA: true, tree: ["admin"], key: "original" });
+  const destinationState = Object.freeze({ __NA: true, tree: ["story"], key: "destination" });
+  window.history.replaceState(previousState, "", "/products");
+  window.history.pushState(originalAdminState, "", "/admin/products");
+  const user = userEvent.setup();
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  replaceRoute.mockImplementation((href: string) => {
+    window.history.replaceState(destinationState, "", href);
+  });
+  const deps = dependencies({
+    observeAdminSession: (next) => {
+      next("admin");
+      return vi.fn();
+    },
+    subscribeProducts: (onData) => {
+      onData([]);
+      return vi.fn();
+    },
+    subscribeDrafts: (onData) => {
+      onData([]);
+      return vi.fn();
+    },
+  });
+  const view = render(<><Link href="/story?from=admin">브랜드 이야기</Link><AdminDashboard dependencies={deps} /></>);
+
+  await user.click(await screen.findByRole("button", { name: "새 상품 등록" }));
+  await user.type(screen.getByLabelText("상품명"), "오메가");
+  await user.click(screen.getByRole("link", { name: "브랜드 이야기" }));
+
+  expect(window.location.pathname).toBe("/story");
+  expect(window.location.search).toBe("?from=admin");
+  expect(window.history.state).toEqual(destinationState);
+  view.unmount();
+
+  act(() => window.history.back());
+  await waitFor(() => expect(window.location.pathname).toBe("/admin/products"));
+  expect(window.history.state).toEqual(originalAdminState);
+
+  act(() => window.history.back());
+  await waitFor(() => expect(window.location.pathname).toBe("/products"));
+  expect(window.history.state).toEqual(previousState);
+});
+
+it("keeps the same sentinel armed when router replace throws, rejects, or returns without a route commit", async () => {
+  const originalAdminState = Object.freeze({ __NA: true, tree: ["admin"], key: "original" });
+  window.history.replaceState({ __NA: true, tree: ["products"], key: "previous" }, "", "/products");
+  window.history.pushState(originalAdminState, "", "/admin/products");
+  const user = userEvent.setup();
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  replaceRoute
+    .mockImplementationOnce(() => { throw new Error("navigation rejected"); })
+    .mockRejectedValueOnce(new Error("async navigation rejected"))
+    .mockImplementationOnce(() => undefined);
+  const deps = dependencies({
+    observeAdminSession: (next) => {
+      next("admin");
+      return vi.fn();
+    },
+    subscribeProducts: (onData) => {
+      onData([]);
+      return vi.fn();
+    },
+    subscribeDrafts: (onData) => {
+      onData([]);
+      return vi.fn();
+    },
+  });
+  render(<><Link href="/story">브랜드 이야기</Link><AdminDashboard dependencies={deps} /></>);
+
+  await user.click(await screen.findByRole("button", { name: "새 상품 등록" }));
+  await user.type(screen.getByLabelText("상품명"), "오메가");
+  const sentinelState = window.history.state;
+  const link = screen.getByRole("link", { name: "브랜드 이야기" });
+
+  expect(() => link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))).not.toThrow();
+  expect(window.location.pathname).toBe("/admin/products");
+  expect(window.history.state).toEqual(sentinelState);
+
+  await act(async () => {
+    link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    await Promise.resolve();
+  });
+  expect(window.location.pathname).toBe("/admin/products");
+  expect(window.history.state).toEqual(sentinelState);
+
+  link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+  expect(window.location.pathname).toBe("/admin/products");
+  expect(window.history.state).toEqual(sentinelState);
+  expect(confirm).toHaveBeenCalledTimes(3);
+  expect(replaceRoute).toHaveBeenCalledTimes(3);
+});
+
+it("ignores a same-document hash link without changing or disarming the sentinel", async () => {
+  window.history.replaceState({ __NA: true, tree: ["admin"], key: "original" }, "", "/admin/products");
+  const user = userEvent.setup();
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  const deps = dependencies({
+    observeAdminSession: (next) => {
+      next("admin");
+      return vi.fn();
+    },
+    subscribeProducts: (onData) => {
+      onData([]);
+      return vi.fn();
+    },
+    subscribeDrafts: (onData) => {
+      onData([]);
+      return vi.fn();
+    },
+  });
+  render(<><Link href="#catalog">목록 위치</Link><AdminDashboard dependencies={deps} /></>);
+
+  await user.click(await screen.findByRole("button", { name: "새 상품 등록" }));
+  await user.type(screen.getByLabelText("상품명"), "오메가");
+  const sentinelState = window.history.state;
+  const hashClick = new MouseEvent("click", { bubbles: true, cancelable: true });
+  screen.getByRole("link", { name: "목록 위치" }).dispatchEvent(hashClick);
+
+  expect(hashClick.defaultPrevented).toBe(true);
+  expect(window.location.pathname).toBe("/admin/products");
+  expect(window.location.hash).toBe("");
+  expect(window.history.state).toEqual(sentinelState);
+  expect(confirm).not.toHaveBeenCalled();
+  expect(replaceRoute).not.toHaveBeenCalled();
 });
 
 it("keeps router state on the admin sentinel until Back is confirmed, then replays Back once", async () => {
@@ -1235,6 +1371,52 @@ it("keeps one search across published and draft views and duplicates by product 
   await user.click(screen.getByRole("tab", { name: "임시 저장" }));
   expect(screen.getByRole("searchbox", { name: "상품 검색" })).toHaveValue("오메가");
   expect(screen.getByText("오메가 작업 초안")).toBeVisible();
+});
+
+it("exposes tab counts and uses roving focus with Arrow, Home, and End keys", async () => {
+  const user = userEvent.setup();
+  const deps = dependencies({
+    observeAdminSession: (next) => {
+      next("admin");
+      return vi.fn();
+    },
+    subscribeProducts: (onData) => {
+      onData([product, { ...product, id: "vitamin", name: "비타민 D" }]);
+      return vi.fn();
+    },
+    subscribeDrafts: (onData) => {
+      onData([productDraft(product, { id: "omega-draft", name: "오메가 작업 초안" })]);
+      return vi.fn();
+    },
+  });
+  render(<AdminDashboard dependencies={deps} />);
+
+  const publishedTab = await screen.findByRole("tab", { name: "판매 상품" });
+  const draftsTab = screen.getByRole("tab", { name: "임시 저장" });
+  const csvTab = screen.getByRole("tab", { name: "CSV 관리" });
+  expect(publishedTab).toHaveAccessibleDescription("2개");
+  expect(draftsTab).toHaveAccessibleDescription("1개");
+  expect(publishedTab).toHaveAttribute("tabindex", "0");
+  expect(draftsTab).toHaveAttribute("tabindex", "-1");
+  expect(csvTab).toHaveAttribute("tabindex", "-1");
+
+  publishedTab.focus();
+  await user.keyboard("{ArrowRight}");
+  expect(draftsTab).toHaveFocus();
+  expect(draftsTab).toHaveAttribute("aria-selected", "true");
+  expect(draftsTab).toHaveAttribute("tabindex", "0");
+
+  await user.keyboard("{End}");
+  expect(csvTab).toHaveFocus();
+  expect(csvTab).toHaveAttribute("aria-selected", "true");
+
+  await user.keyboard("{Home}");
+  expect(publishedTab).toHaveFocus();
+  expect(publishedTab).toHaveAttribute("aria-selected", "true");
+
+  await user.keyboard("{ArrowLeft}");
+  expect(csvTab).toHaveFocus();
+  expect(csvTab).toHaveAttribute("aria-selected", "true");
 });
 
 it("guards unpublish and draft deletion, restores focus, and keeps each operation locked to its document", async () => {

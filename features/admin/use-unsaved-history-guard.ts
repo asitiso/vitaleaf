@@ -110,6 +110,4 @@ export function useUnsavedHistoryGuard({
     };
     window.history.pushState(withGuardId(originalState, guardId), "", originalUrl);
   }, [active]);
-
-  return neutralize;
 }

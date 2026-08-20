@@ -1,6 +1,7 @@
 "use client";
 
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 
 import {
   getAdminAuthErrorMessage,
@@ -14,6 +15,7 @@ import {
   deleteProduct,
   saveProduct,
   subscribeProducts,
+  type ProductDeleteTarget,
   type ProductUpdateTarget,
 } from "../../lib/firebase/products";
 import {
@@ -44,7 +46,7 @@ export type AdminDashboardDependencies = {
   signOutAdmin(): Promise<void>;
   subscribeProducts(onData: (products: Product[]) => void, onError: (error: Error) => void): () => void;
   saveProduct(input: ProductInput, target?: ProductUpdateTarget): Promise<string>;
-  deleteProduct(id: string): Promise<void>;
+  deleteProduct(target: ProductDeleteTarget): Promise<void>;
   subscribeDrafts(onData: (drafts: ProductDraft[]) => void, onError: (error: Error) => void): () => void;
   createDraftId(): string;
   startDraftSession(draft: ProductDraft): ProductDraft;
@@ -256,7 +258,7 @@ const DraftEditor = forwardRef<DraftEditorHandle, {
   publishing: boolean;
   onPublishingChange(publishing: boolean): void;
   onGuardingChange(active: boolean): void;
-  allowHistoryNavigation(): void;
+  navigateInternal(destination: string): void;
 }>(function DraftEditor({
   initialDraft,
   dependencies,
@@ -266,7 +268,7 @@ const DraftEditor = forwardRef<DraftEditorHandle, {
   publishing,
   onPublishingChange,
   onGuardingChange,
-  allowHistoryNavigation,
+  navigateInternal,
 }, ref) {
   const [draft, setDraft] = useState(initialDraft);
   const publishLockRef = useRef(false);
@@ -298,17 +300,29 @@ const DraftEditor = forwardRef<DraftEditorHandle, {
 
       const destination = new URL(target.href, window.location.href);
       if (destination.origin !== window.location.origin) return;
+      const current = new URL(window.location.href);
+      if (destination.pathname === current.pathname && destination.search === current.search) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       if (publishing || !confirmClose()) {
         event.preventDefault();
         event.stopPropagation();
         return;
       }
-      allowHistoryNavigation();
+      event.preventDefault();
+      event.stopPropagation();
+      try {
+        navigateInternal(`${destination.pathname}${destination.search}${destination.hash}`);
+      } catch {
+        // The sentinel remains armed so the employee can retry navigation safely.
+      }
     };
 
     document.addEventListener("click", guardInternalNavigation, true);
     return () => document.removeEventListener("click", guardInternalNavigation, true);
-  }, [allowHistoryNavigation, confirmClose, hasUnsavedWork, publishing]);
+  }, [confirmClose, hasUnsavedWork, navigateInternal, publishing]);
 
   const close = () => {
     if (isActive() && autosave.confirmClose()) onClose();
@@ -386,8 +400,10 @@ const DraftEditor = forwardRef<DraftEditorHandle, {
 
 type DashboardView = "published" | "drafts" | "csv";
 type PendingOperation = { action: "unpublish" | "delete"; row: ProductTableRow };
+const dashboardViews: readonly DashboardView[] = ["published", "drafts", "csv"];
 
 export function AdminDashboard({ dependencies: providedDependencies }: { dependencies?: AdminDashboardDependencies }) {
+  const router = useRouter();
   const productsRef = useRef<Product[]>([]);
   const runtimeDefaultDependencies = useMemo<AdminDashboardDependencies>(() => ({
     ...defaultDependencies,
@@ -420,11 +436,19 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
   const authorizationGenerationRef = useRef(0);
   const editorGenerationRef = useRef(0);
   const editorRef = useRef<DraftEditorHandle>(null);
+  const tabRefs = useRef<Record<DashboardView, HTMLButtonElement | null>>({
+    published: null,
+    drafts: null,
+    csv: null,
+  });
   const mutationTokensRef = useRef(new Map<string, symbol>());
-  const allowHistoryNavigation = useUnsavedHistoryGuard({
+  useUnsavedHistoryGuard({
     active: editorGuardActive || editorPublishing,
     locked: editorPublishing,
   });
+  const navigateInternal = useCallback((destination: string) => {
+    router.replace(destination);
+  }, [router]);
 
   useEffect(() => dependencies.observeAdminSession((state) => {
     authorizationGenerationRef.current += 1;
@@ -645,7 +669,7 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
     void runDocumentMutation(
       row.value.id,
       () => row.kind === "published"
-        ? dependencies.deleteProduct(row.value.id)
+        ? dependencies.deleteProduct({ id: row.value.id, expectedRevision: row.value.revision ?? 0 })
         : dependencies.discardDraft(row.value),
       () => {
         closePendingOperation(operation);
@@ -686,6 +710,21 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
     else continueDraft(row.value);
   };
 
+  const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, currentView: DashboardView) => {
+    const currentIndex = dashboardViews.indexOf(currentView);
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % dashboardViews.length;
+    if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + dashboardViews.length) % dashboardViews.length;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = dashboardViews.length - 1;
+    if (nextIndex === null) return;
+
+    event.preventDefault();
+    const nextView = dashboardViews[nextIndex]!;
+    setView(nextView);
+    tabRefs.current[nextView]?.focus();
+  };
+
   if (session === "loading" || session === "checking") {
     return <main className="admin-state" role="status">관리자 권한을 확인하는 중입니다.</main>;
   }
@@ -713,7 +752,7 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
           initialDraft={editingDraft}
           dependencies={dependencies}
           isActive={() => editorGenerationRef.current === editorGeneration}
-          allowHistoryNavigation={allowHistoryNavigation}
+          navigateInternal={navigateInternal}
           publishing={editorPublishing}
           onPublishingChange={(publishing) => {
             if (editorGenerationRef.current === editorGeneration) setEditorPublishing(publishing);
@@ -739,9 +778,9 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
       ) : (
         <>
           <div className="admin-view-tabs" role="tablist" aria-label="상품 관리 보기">
-            <button id="admin-tab-published" type="button" role="tab" aria-label="판매 상품" aria-selected={view === "published"} aria-controls="admin-panel-published" onClick={() => setView("published")}>판매 상품 <span aria-hidden="true">{products.length}</span></button>
-            <button id="admin-tab-drafts" type="button" role="tab" aria-label="임시 저장" aria-selected={view === "drafts"} aria-controls="admin-panel-drafts" onClick={() => setView("drafts")}>임시 저장 <span aria-hidden="true">{drafts.length}</span></button>
-            <button id="admin-tab-csv" type="button" role="tab" aria-label="CSV 관리" aria-selected={view === "csv"} aria-controls="admin-panel-csv" onClick={() => setView("csv")}>CSV 관리</button>
+            <button ref={(node) => { tabRefs.current.published = node; }} id="admin-tab-published" type="button" role="tab" tabIndex={view === "published" ? 0 : -1} aria-label="판매 상품" aria-describedby="admin-tab-published-count" aria-selected={view === "published"} aria-controls="admin-panel-published" onClick={() => setView("published")} onKeyDown={(event) => handleTabKeyDown(event, "published")}>판매 상품 <span id="admin-tab-published-count">{products.length}개</span></button>
+            <button ref={(node) => { tabRefs.current.drafts = node; }} id="admin-tab-drafts" type="button" role="tab" tabIndex={view === "drafts" ? 0 : -1} aria-label="임시 저장" aria-describedby="admin-tab-drafts-count" aria-selected={view === "drafts"} aria-controls="admin-panel-drafts" onClick={() => setView("drafts")} onKeyDown={(event) => handleTabKeyDown(event, "drafts")}>임시 저장 <span id="admin-tab-drafts-count">{drafts.length}개</span></button>
+            <button ref={(node) => { tabRefs.current.csv = node; }} id="admin-tab-csv" type="button" role="tab" tabIndex={view === "csv" ? 0 : -1} aria-label="CSV 관리" aria-selected={view === "csv"} aria-controls="admin-panel-csv" onClick={() => setView("csv")} onKeyDown={(event) => handleTabKeyDown(event, "csv")}>CSV 관리</button>
           </div>
 
           {view === "published" ? (

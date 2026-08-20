@@ -74,13 +74,19 @@ const handlers = () => ({
   onToggleStock: vi.fn(),
 });
 
-function TableHarness({ lockedIds = new Set<string>() }: { lockedIds?: ReadonlySet<string> }) {
+function TableHarness({
+  lockedIds = new Set<string>(),
+  tableRows = rows,
+}: {
+  lockedIds?: ReadonlySet<string>;
+  tableRows?: ProductTableRow[];
+}) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<ProductStatusFilter>("all");
   const [sort, setSort] = useState<ProductSort>("modified-desc");
   return (
     <ProductTable
-      rows={rows}
+      rows={tableRows}
       query={query}
       statusFilter={status}
       sort={sort}
@@ -148,4 +154,24 @@ it("locks only the document with an in-flight mutation", () => {
   expect(screen.getByRole("button", { name: "데일리 오메가3 삭제" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "비타민 D 수정" })).toBeEnabled();
   expect(screen.getByRole("button", { name: "루테인 초안 판매 공개" })).toBeEnabled();
+});
+
+it("falls back from invalid updated dates, renders fully invalid dates as unsaved, and sorts deterministically", () => {
+  const fallbackDate = new Date("2026-08-20T03:00:00.000Z");
+  const invalidDate = new Date(Number.NaN);
+  const dateRows: ProductTableRow[] = [
+    { kind: "published", value: product({ id: "zulu", name: "Zulu", updatedAt: invalidDate, createdAt: invalidDate }) },
+    { kind: "published", value: product({ id: "fallback", name: "Fallback", updatedAt: invalidDate, createdAt: fallbackDate }) },
+    { kind: "published", value: product({ id: "alpha", name: "Alpha", updatedAt: invalidDate, createdAt: invalidDate }) },
+  ];
+
+  render(<TableHarness tableRows={dateRows} />);
+
+  const bodyRows = screen.getAllByRole("row").slice(1);
+  expect(within(bodyRows[0]!).getByText("Fallback")).toBeVisible();
+  expect(bodyRows[0]!.querySelector("time")).toHaveAttribute("datetime", "2026-08-20T03:00:00.000Z");
+  expect(within(bodyRows[1]!).getByText("Alpha")).toBeVisible();
+  expect(within(bodyRows[1]!).getByText("저장 전")).toBeVisible();
+  expect(within(bodyRows[2]!).getByText("Zulu")).toBeVisible();
+  expect(within(bodyRows[2]!).getByText("저장 전")).toBeVisible();
 });

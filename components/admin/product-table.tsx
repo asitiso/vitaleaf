@@ -63,7 +63,13 @@ const matchesStatus = (row: ProductTableRow, status: ProductStatusFilter): boole
   return row.kind === "published" && row.value.stock === 0;
 };
 
-const modifiedAt = (row: ProductTableRow): Date | null => row.value.updatedAt ?? row.value.createdAt;
+const finiteDate = (value: Date | null): Date | null => (
+  value instanceof Date && Number.isFinite(value.getTime()) ? value : null
+);
+
+const modifiedAt = (row: ProductTableRow): Date | null => (
+  finiteDate(row.value.updatedAt) ?? finiteDate(row.value.createdAt)
+);
 
 const compareRows = (sort: ProductSort) => (left: ProductTableRow, right: ProductTableRow): number => {
   if (sort === "name-asc") {

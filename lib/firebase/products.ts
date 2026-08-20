@@ -1,7 +1,6 @@
 import {
   addDoc,
   collection,
-  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -31,6 +30,8 @@ export type ProductUpdateTarget = {
   expectedRevision: number;
 };
 
+export type ProductDeleteTarget = ProductUpdateTarget;
+
 export class ProductRevisionConflictError extends Error {
   constructor(message: string) {
     super(message);
@@ -43,7 +44,7 @@ export type ProductRepositoryAdapter = {
   get?: (id: string) => Promise<FirestoreDocument | null>;
   subscribe?: (onData: (documents: FirestoreDocument[]) => void, onError: (error: Error) => void) => Unsubscribe;
   save?: (target: ProductUpdateTarget | undefined, product: ProductWrite) => Promise<string>;
-  delete?: (id: string) => Promise<void>;
+  delete?: (target: ProductDeleteTarget) => Promise<void>;
   timestamp?: () => unknown;
 };
 
@@ -98,9 +99,19 @@ export const createProductRepository = (adapter: ProductRepositoryAdapter) => ({
     });
   },
 
-  async deleteProduct(id: string): Promise<void> {
+  async deleteProduct(target: ProductDeleteTarget): Promise<void> {
+    if (
+      typeof target !== "object"
+      || target === null
+      || typeof target.id !== "string"
+      || !target.id.trim()
+      || !Number.isInteger(target.expectedRevision)
+      || target.expectedRevision < 0
+    ) {
+      throw new ProductRevisionConflictError("Product deletions require a valid id and expected revision.");
+    }
     const remove = requireAdapterMethod(adapter.delete, "delete");
-    await remove(id);
+    await remove(target);
   },
 });
 
@@ -158,8 +169,26 @@ const firebaseProductAdapter: Required<ProductRepositoryAdapter> = {
     });
     return reference.id;
   },
-  async delete(id) {
-    await deleteDoc(doc(db, "products", id));
+  async delete(target) {
+    await runTransaction(db, async (transaction) => {
+      const ownerId = auth.currentUser?.uid;
+      if (!ownerId) throw new Error("An authenticated administrator is required.");
+
+      const reference = doc(db, "products", target.id);
+      const snapshot = await transaction.get(reference);
+      if (!snapshot.exists()) throw new Error("The product no longer exists.");
+
+      const stored = snapshot.data();
+      const storedRevision = typeof stored.revision === "number" && Number.isInteger(stored.revision)
+        ? stored.revision
+        : 0;
+      if (storedRevision !== target.expectedRevision) {
+        throw new ProductRevisionConflictError(
+          "The product changed in another session. Refresh before deleting.",
+        );
+      }
+      transaction.delete(reference);
+    });
   },
   timestamp: serverTimestamp,
 };
