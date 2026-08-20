@@ -169,6 +169,45 @@ describe("useDraftAutosave", () => {
     expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ name: "C" }));
   });
 
+  it.each(["resolve", "reject"] as const)(
+    "detaches an old identity save when it later %ss so the new identity flushes immediately",
+    async (settlement) => {
+      vi.useFakeTimers();
+      const pendingA = deferred<ProductDraft>();
+      const save = vi.fn()
+        .mockImplementationOnce(() => pendingA.promise)
+        .mockImplementationOnce(async (value: ProductDraft) => ({ ...value, revision: 7 }));
+      const draftA = draft("A", { id: "draft-a", sessionId: "session-a" });
+      const draftAEdited = draft("A edited", { id: "draft-a", sessionId: "session-a" });
+      const draftB = draft("B", { id: "draft-b", sessionId: "session-b" });
+      const { result, rerender } = renderHook(
+        ({ value }) => useDraftAutosave({ draft: value, save, delayMs: 1_200 }),
+        { initialProps: { value: draftA } },
+      );
+
+      rerender({ value: draftAEdited });
+      await act(async () => { await vi.advanceTimersByTimeAsync(1_200); });
+      expect(save).toHaveBeenCalledOnce();
+      rerender({ value: draftB });
+
+      let flushed!: Promise<ProductDraft>;
+      await act(async () => {
+        flushed = result.current.flush();
+        await Promise.resolve();
+      });
+      expect(save).toHaveBeenCalledTimes(2);
+      expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ id: "draft-b", name: "B" }));
+
+      await act(async () => {
+        if (settlement === "resolve") pendingA.resolve({ ...draftAEdited, revision: 3 });
+        else pendingA.reject(new Error("old identity failed"));
+        await expect(flushed).resolves.toMatchObject({ id: "draft-b", name: "B", revision: 7 });
+      });
+      expect(result.current.status).toBe("saved");
+      expect(result.current.draft).toMatchObject({ id: "draft-b", name: "B", revision: 7 });
+    },
+  );
+
   it("flushes pending changes once and cancels their debounce timer", async () => {
     vi.useFakeTimers();
     const save = vi.fn(async (value: ProductDraft) => ({ ...value, revision: 1 }));

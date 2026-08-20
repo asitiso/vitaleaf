@@ -7,6 +7,38 @@ import { createAdminAuth, getAdminAuthErrorMessage } from "./auth";
 const stableSession = (uid: string | null) => () => ({ uid, generation: 1 });
 
 describe("createAdminAuth", () => {
+  it("invalidates the previous admin synchronously while each observed UID is checked", async () => {
+    let emitUser!: (user: { uid: string } | null) => void;
+    let resolveA!: (record: { role: string }) => void;
+    let resolveB!: (record: { role: string }) => void;
+    const readAdmin = vi.fn((uid: string) => new Promise<{ role: string }>((resolve) => {
+      if (uid === "admin-a") resolveA = resolve;
+      else resolveB = resolve;
+    }));
+    const states: string[] = [];
+    const adminAuth = createAdminAuth({
+      signIn: vi.fn(),
+      readAdmin,
+      signOut: vi.fn(),
+      observe: vi.fn((next) => {
+        emitUser = next;
+        return vi.fn();
+      }),
+      getSession: stableSession(null),
+    });
+
+    adminAuth.observeAdminSession((state) => states.push(state), vi.fn());
+    emitUser({ uid: "admin-a" });
+    expect(states).toEqual(["checking"]);
+    resolveA({ role: "admin" });
+    await vi.waitFor(() => expect(states).toEqual(["checking", "admin"]));
+
+    emitUser({ uid: "admin-b" });
+    expect(states).toEqual(["checking", "admin", "checking"]);
+    resolveB({ role: "admin" });
+    await vi.waitFor(() => expect(states.at(-1)).toBe("admin"));
+  });
+
   it("returns stale instead of admin when login A finishes after sign-out", async () => {
     let resolveRole!: (record: { role: string }) => void;
     let session = { uid: "admin-a" as string | null, generation: 1 };
@@ -97,8 +129,28 @@ describe("createAdminAuth", () => {
     });
 
     adminAuth.observeAdminSession((state) => states.push(state), vi.fn());
-    await vi.waitFor(() => expect(states).toEqual(["forbidden"]));
+    await vi.waitFor(() => expect(states).toEqual(["checking", "forbidden"]));
     expect(signOut).toHaveBeenCalledOnce();
+  });
+
+  it("emits forbidden before its sign-out produces the raw signed-out observation", async () => {
+    let emitUser!: (user: { uid: string } | null) => void;
+    const states: string[] = [];
+    const adminAuth = createAdminAuth({
+      signIn: vi.fn(),
+      readAdmin: vi.fn().mockResolvedValue({ role: "staff" }),
+      signOut: vi.fn(async () => { emitUser(null); }),
+      observe: vi.fn((next) => {
+        emitUser = next;
+        return vi.fn();
+      }),
+      getSession: stableSession("staff-1"),
+    });
+
+    adminAuth.observeAdminSession((state) => states.push(state), vi.fn());
+    emitUser({ uid: "staff-1" });
+
+    await vi.waitFor(() => expect(states).toEqual(["checking", "forbidden", "signed-out"]));
   });
 
   it("discards a stale admin verification after the observed user signs out", async () => {
@@ -127,7 +179,7 @@ describe("createAdminAuth", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(states).toEqual(["signed-out"]);
+    expect(states).toEqual(["checking", "signed-out"]);
   });
 
   it("does not sign out a new user when an older forbidden check resolves", async () => {
@@ -163,7 +215,7 @@ describe("createAdminAuth", () => {
     resolveNewUser({ role: "admin" });
     await Promise.resolve();
     await Promise.resolve();
-    expect(states).toEqual(["admin"]);
+    expect(states).toEqual(["checking", "checking", "admin"]);
   });
 });
 

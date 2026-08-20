@@ -666,6 +666,7 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
 
 /* Guided product registration */
 .product-wizard { display: grid; gap: 24px; max-width: 940px; margin-top: 20px; }
+.product-wizard__publishing-boundary { display: grid; gap: 24px; min-width: 0; padding: 0; border: 0; margin: 0; }
 .product-wizard__header h1 { margin: 0; color: var(--color-forest); font-size: 30px; }
 .product-wizard__header > p:last-child, .product-wizard__step-content > p { margin: 7px 0 0; color: #64756c; line-height: 1.6; }
 .product-wizard__steps ol { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 0; margin: 0; list-style: none; }

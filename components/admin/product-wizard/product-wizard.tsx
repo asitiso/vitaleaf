@@ -17,6 +17,7 @@ export type WizardProps = {
   onSave(): Promise<void>;
   onPreview(): void | Promise<void>;
   onPublish(): Promise<void>;
+  onPublishingChange?(publishing: boolean): void;
   mediaSlot?: ReactNode;
   upload?: MediaUpload;
   deleteImage?: MediaDelete;
@@ -64,7 +65,7 @@ const focusIdFor = (field: DraftValidationError["field"]): string | null => ({
 
 const asStep = (value: number): WizardStep => value === 2 || value === 3 || value === 4 ? value : 1;
 
-export function ProductWizard({ draft, saveState, onChange, onSave, onPreview, onPublish, mediaSlot, upload, deleteImage }: WizardProps) {
+export function ProductWizard({ draft, saveState, onChange, onSave, onPreview, onPublish, onPublishingChange, mediaSlot, upload, deleteImage }: WizardProps) {
   const [localState, setLocalState] = useState(() => ({ source: draft, value: draft, activeStep: draft.currentStep }));
   const [errors, setErrors] = useState<DraftValidationError[]>([]);
   const [busy, setBusy] = useState<BusyState>("idle");
@@ -125,6 +126,7 @@ export function ProductWizard({ draft, saveState, onChange, onSave, onPreview, o
   const runPublish = async () => {
     if (operationLockRef.current !== "idle" || mediaUploadingRef.current) return;
     operationLockRef.current = "publishing";
+    onPublishingChange?.(true);
     setBusy("publishing");
     setOperationError("");
     try {
@@ -141,6 +143,7 @@ export function ProductWizard({ draft, saveState, onChange, onSave, onPreview, o
       setOperationError("판매 공개를 완료하지 못했습니다. 저장 상태를 확인한 뒤 다시 시도해 주세요.");
     } finally {
       operationLockRef.current = "idle";
+      onPublishingChange?.(false);
       setBusy("idle");
     }
   };
@@ -152,8 +155,12 @@ export function ProductWizard({ draft, saveState, onChange, onSave, onPreview, o
     setOperationError("");
     try {
       await onPreview();
-    } catch {
-      setOperationError("미리 보기를 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    } catch (error) {
+      setOperationError(
+        error instanceof Error && error.message === "PREVIEW_POPUP_BLOCKED"
+          ? "미리 보기 창을 열 수 없습니다. 브라우저 팝업 차단을 해제한 뒤 다시 시도해 주세요."
+          : "미리 보기를 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+      );
     } finally {
       operationLockRef.current = "idle";
       setBusy("idle");
@@ -164,7 +171,9 @@ export function ProductWizard({ draft, saveState, onChange, onSave, onPreview, o
   const current = steps[activeStep - 1]!;
 
   return (
-    <section className="product-wizard" aria-labelledby="product-wizard-title">
+    <section className="product-wizard" aria-labelledby="product-wizard-title" aria-busy={busy === "publishing"}>
+      <fieldset className="product-wizard__publishing-boundary" disabled={busy === "publishing"}>
+        <legend className="sr-only">상품 편집</legend>
       <header className="product-wizard__header">
         <p className="admin-eyebrow">GUIDED PRODUCT REGISTRATION</p>
         <h1 id="product-wizard-title">상품 등록</h1>
@@ -196,6 +205,7 @@ export function ProductWizard({ draft, saveState, onChange, onSave, onPreview, o
         {activeStep === 4 && <SalesStep draft={workingDraft} errors={fieldErrors} onChange={commit} />}
       </div>
       <WizardActions step={activeStep} busy={busy} saveState={saveState} publishDisabled={mediaUploading} onPrevious={() => goTo(asStep(activeStep - 1))} onNext={() => goTo(asStep(activeStep + 1))} onSave={() => void runSave()} onPreview={() => void runPreview()} onPublish={() => void runPublish()} />
+      </fieldset>
     </section>
   );
 }

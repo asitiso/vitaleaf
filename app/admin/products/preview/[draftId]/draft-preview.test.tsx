@@ -4,12 +4,15 @@ import { beforeEach, expect, it, vi } from "vitest";
 
 vi.mock("../../../../../lib/firebase/client", () => ({ auth: {}, db: {} }));
 vi.mock("../../../../../lib/firebase/product-drafts", () => ({ getDraft: vi.fn() }));
-vi.mock("../../../../../lib/firebase/auth", () => ({ observeAdminSession: vi.fn() }));
+vi.mock("../../../../../lib/firebase/auth", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../../../../lib/firebase/auth")>(),
+  observeAdminSession: vi.fn(),
+}));
 vi.mock("../../../../../lib/firebase/reviews", () => ({ getApprovedReviews: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 import { CartProvider } from "../../../../../features/cart/cart-context";
-import type { AdminSessionState } from "../../../../../lib/firebase/auth";
+import { createAdminAuth, type AdminSessionState } from "../../../../../lib/firebase/auth";
 import type { ProductDraft } from "../../../../../lib/products/types";
 import { DraftPreview, type DraftPreviewDependencies } from "./draft-preview";
 
@@ -114,6 +117,113 @@ it("never renders a stale draft after authorization is revoked", async () => {
     await pending.promise;
   });
   expect(screen.queryByRole("heading", { name: draft.name })).not.toBeInTheDocument();
+});
+
+it("clears an administrator draft while the next raw UID is still being authorized", async () => {
+  let emit!: (state: AdminSessionState) => void;
+  const pendingA = deferred<ProductDraft | null>();
+  const getDraft = vi.fn()
+    .mockImplementationOnce(() => pendingA.promise)
+    .mockResolvedValueOnce({ ...draft, id: "draft-b", name: "Admin B draft" });
+  const deps = dependencies({
+    observeAdminSession: (next) => {
+      emit = next;
+      return vi.fn();
+    },
+    getDraft,
+  });
+  render(<CartProvider><DraftPreview draftId="draft-1" dependencies={deps} /></CartProvider>);
+
+  act(() => emit("admin"));
+  expect(await screen.findByRole("status")).toBeVisible();
+  act(() => emit("checking"));
+  expect(screen.getByRole("status")).toBeVisible();
+
+  await act(async () => {
+    pendingA.resolve(draft);
+    await pendingA.promise;
+  });
+  expect(screen.queryByRole("heading", { name: draft.name })).not.toBeInTheDocument();
+
+  act(() => emit("admin"));
+  expect(await screen.findByRole("heading", { name: "Admin B draft" })).toBeVisible();
+});
+
+it("never renders administrator A's deferred draft while raw UID B's role is pending", async () => {
+  let emitUser!: (user: { uid: string } | null) => void;
+  const roleA = deferred<{ role: string } | null>();
+  const roleB = deferred<{ role: string } | null>();
+  const pendingDraftA = deferred<ProductDraft | null>();
+  const auth = createAdminAuth({
+    observe: (next) => {
+      emitUser = next;
+      return vi.fn();
+    },
+    readAdmin: vi.fn((uid: string) => uid === "admin-a" ? roleA.promise : roleB.promise),
+    signIn: vi.fn(),
+    signOut: vi.fn(),
+    getSession: vi.fn(() => ({ uid: null, generation: 0 })),
+  });
+  const getDraft = vi.fn()
+    .mockImplementationOnce(() => pendingDraftA.promise)
+    .mockResolvedValueOnce({ ...draft, id: "draft-b", name: "Administrator B draft" });
+  render(
+    <CartProvider>
+      <DraftPreview
+        draftId="shared-draft"
+        dependencies={{ observeAdminSession: auth.observeAdminSession, getDraft }}
+      />
+    </CartProvider>,
+  );
+
+  act(() => emitUser({ uid: "admin-a" }));
+  expect(screen.getByRole("status")).toBeVisible();
+  await act(async () => {
+    roleA.resolve({ role: "admin" });
+    await roleA.promise;
+  });
+  expect(await screen.findByRole("status")).toBeVisible();
+
+  act(() => emitUser({ uid: "admin-b" }));
+  expect(screen.getByRole("status")).toBeVisible();
+  await act(async () => {
+    pendingDraftA.resolve({ ...draft, name: "Administrator A draft" });
+    await pendingDraftA.promise;
+  });
+  expect(screen.queryByRole("heading", { name: "Administrator A draft" })).not.toBeInTheDocument();
+
+  await act(async () => {
+    roleB.resolve({ role: "admin" });
+    await roleB.promise;
+  });
+  expect(await screen.findByRole("heading", { name: "Administrator B draft" })).toBeVisible();
+});
+
+it("clears the old draft and enters loading immediately when the preview draft id changes", async () => {
+  const pendingB = deferred<ProductDraft | null>();
+  const deps = dependencies({
+    observeAdminSession: (next) => {
+      next("admin");
+      return vi.fn();
+    },
+    getDraft: vi.fn()
+      .mockResolvedValueOnce({ ...draft, id: "draft-a", name: "Draft A" })
+      .mockImplementationOnce(() => pendingB.promise),
+  });
+  const view = render(
+    <CartProvider><DraftPreview draftId="draft-a" dependencies={deps} /></CartProvider>,
+  );
+
+  expect(await screen.findByRole("heading", { name: "Draft A" })).toBeVisible();
+  view.rerender(<CartProvider><DraftPreview draftId="draft-b" dependencies={deps} /></CartProvider>);
+  expect(screen.getByRole("status")).toBeVisible();
+  expect(screen.queryByRole("heading", { name: "Draft A" })).not.toBeInTheDocument();
+
+  await act(async () => {
+    pendingB.resolve({ ...draft, id: "draft-b", name: "Current B draft" });
+    await pendingB.promise;
+  });
+  expect(screen.getByRole("heading", { name: "Current B draft" })).toBeVisible();
 });
 
 it("shows forbidden sessions without touching the draft repository", async () => {

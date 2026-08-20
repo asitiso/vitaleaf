@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
 import {
   getAdminAuthErrorMessage,
@@ -230,33 +230,72 @@ function DeleteProductDialog({
   );
 }
 
-function DraftEditor({
-  initialDraft,
-  dependencies,
-  onClose,
-  onPublished,
-}: {
+type DraftEditorHandle = {
+  confirmExit(): boolean;
+};
+
+const DraftEditor = forwardRef<DraftEditorHandle, {
   initialDraft: ProductDraft;
   dependencies: AdminDashboardDependencies;
   onClose(): void;
   onPublished(): void;
-}) {
+  publishing: boolean;
+  onPublishingChange(publishing: boolean): void;
+}>(function DraftEditor({
+  initialDraft,
+  dependencies,
+  onClose,
+  onPublished,
+  publishing,
+  onPublishingChange,
+}, ref) {
   const [draft, setDraft] = useState(initialDraft);
   const publishLockRef = useRef(false);
   const autosave = useDraftAutosave({ draft, save: dependencies.saveDraft, delayMs: 1_200 });
+  const autosaveStatus = autosave.status;
+  const confirmClose = autosave.confirmClose;
+
+  useImperativeHandle(ref, () => ({ confirmExit: confirmClose }), [confirmClose]);
+
+  useEffect(() => {
+    const hasUnsavedWork = autosaveStatus === "dirty" || autosaveStatus === "saving" || autosaveStatus === "error";
+    if (!hasUnsavedWork && !publishing) return;
+
+    const guardInternalNavigation = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const target = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>("a[href]") : null;
+      if (!target || target.hasAttribute("download") || (target.target && target.target !== "_self")) return;
+
+      const destination = new URL(target.href, window.location.href);
+      if (destination.origin !== window.location.origin) return;
+      if (publishing || !confirmClose()) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+
+    document.addEventListener("click", guardInternalNavigation, true);
+    return () => document.removeEventListener("click", guardInternalNavigation, true);
+  }, [autosaveStatus, confirmClose, publishing]);
 
   const close = () => {
     if (autosave.confirmClose()) onClose();
   };
 
   const preview = async () => {
-    const saved = await autosave.flush();
     const previewWindow = window.open(
-      `/admin/products/preview/${encodeURIComponent(saved.id)}`,
+      "",
       "_blank",
-      "noopener,noreferrer",
     );
-    if (!previewWindow) throw new Error("The browser blocked the draft preview window.");
+    if (!previewWindow) throw new Error("PREVIEW_POPUP_BLOCKED");
+    previewWindow.opener = null;
+    try {
+      const saved = await autosave.flush();
+      previewWindow.location.href = `/admin/products/preview/${encodeURIComponent(saved.id)}`;
+    } catch (error) {
+      previewWindow.close();
+      throw error;
+    }
   };
 
   const publish = async () => {
@@ -280,12 +319,12 @@ function DraftEditor({
           <p className="admin-eyebrow">PRODUCT EDITOR</p>
           <h2 id="admin-editor-heading">{autosave.draft.mode === "create" ? "새 상품 등록" : `${autosave.draft.name} 수정`}</h2>
         </div>
-        <button type="button" className="admin-secondary-button" onClick={close}>편집 닫기</button>
+        <button type="button" className="admin-secondary-button" disabled={publishing} onClick={close}>편집 닫기</button>
       </div>
       {autosave.status === "error" ? (
         <p className="admin-error" role="alert">
           자동 저장하지 못했습니다. 편집 내용은 유지됩니다.{" "}
-          <button type="button" onClick={() => void autosave.retry()}>다시 시도</button>
+          <button type="button" onClick={() => void autosave.retry().catch(() => undefined)}>다시 시도</button>
         </p>
       ) : null}
       <ProductWizard
@@ -295,12 +334,13 @@ function DraftEditor({
         onSave={async () => { await autosave.flush(); }}
         onPreview={preview}
         onPublish={publish}
+        onPublishingChange={onPublishingChange}
         upload={dependencies.uploadProductImage}
         deleteImage={dependencies.deleteProductImage}
       />
     </section>
   );
-}
+});
 
 export function AdminDashboard({ dependencies = defaultDependencies }: { dependencies?: AdminDashboardDependencies }) {
   const [session, setSession] = useState<AdminSessionState | "loading">("loading");
@@ -314,34 +354,80 @@ export function AdminDashboard({ dependencies = defaultDependencies }: { depende
   const [deleting, setDeleting] = useState<Product | null>(null);
   const [toast, setToast] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [editorPublishing, setEditorPublishing] = useState(false);
+  const [authorizationGeneration, setAuthorizationGeneration] = useState(0);
+  const authorizationGenerationRef = useRef(0);
+  const editorRef = useRef<DraftEditorHandle>(null);
 
   useEffect(() => dependencies.observeAdminSession((state) => {
+    authorizationGenerationRef.current += 1;
+    setAuthorizationGeneration(authorizationGenerationRef.current);
     setSession(state);
-    setAuthMessage(state === "forbidden" ? "관리자 권한이 없는 계정입니다." : "");
+    setAuthMessage((current) => (
+      state === "forbidden"
+        ? "관리자 권한이 없는 계정입니다."
+        : state === "signed-out" ? current : ""
+    ));
+    if (state !== "admin") {
+      setProducts([]);
+      setDrafts([]);
+      setProductError("");
+      setDraftError("");
+      setEditingDraft(null);
+      setEditorPublishing(false);
+      setDeleting(null);
+      setDeleteBusy(false);
+    }
   }, (error) => {
+    authorizationGenerationRef.current += 1;
+    setAuthorizationGeneration(authorizationGenerationRef.current);
+    setProducts([]);
+    setDrafts([]);
+    setProductError("");
+    setDraftError("");
+    setEditingDraft(null);
+    setEditorPublishing(false);
+    setDeleting(null);
+    setDeleteBusy(false);
     setSession("signed-out");
     setAuthMessage(getAdminAuthErrorMessage(error));
   }), [dependencies]);
 
   useEffect(() => {
     if (session !== "admin") return;
-    return dependencies.subscribeProducts((nextProducts) => {
+    const subscriptionGeneration = authorizationGeneration;
+    let active = true;
+    const unsubscribe = dependencies.subscribeProducts((nextProducts) => {
+      if (!active || authorizationGenerationRef.current !== subscriptionGeneration) return;
       setProducts(nextProducts);
       setProductError("");
     }, () => {
+      if (!active || authorizationGenerationRef.current !== subscriptionGeneration) return;
       setProductError("상품 목록을 불러오지 못했습니다. 네트워크 연결을 확인해 주세요.");
     });
-  }, [dependencies, session]);
+    return () => {
+      active = false;
+      unsubscribe?.();
+    };
+  }, [authorizationGeneration, dependencies, session]);
 
   useEffect(() => {
     if (session !== "admin") return;
-    return dependencies.subscribeDrafts((nextDrafts) => {
+    const subscriptionGeneration = authorizationGeneration;
+    let active = true;
+    const unsubscribe = dependencies.subscribeDrafts((nextDrafts) => {
+      if (!active || authorizationGenerationRef.current !== subscriptionGeneration) return;
       setDrafts(nextDrafts);
       setDraftError("");
     }, () => {
+      if (!active || authorizationGenerationRef.current !== subscriptionGeneration) return;
       setDraftError("임시 저장 초안을 불러오지 못했습니다. 네트워크 연결을 확인해 주세요.");
     });
-  }, [dependencies, session]);
+    return () => {
+      active = false;
+      unsubscribe?.();
+    };
+  }, [authorizationGeneration, dependencies, session]);
 
   const visibleProducts = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase("ko-KR");
@@ -356,9 +442,17 @@ export function AdminDashboard({ dependencies = defaultDependencies }: { depende
   const login = async (email: string, password: string) => {
     const result = await dependencies.signInAdmin(email, password);
     if (result === "admin") {
+      authorizationGenerationRef.current += 1;
+      setAuthorizationGeneration(authorizationGenerationRef.current);
       setAuthMessage("");
       setSession("admin");
     } else if (result === "forbidden") {
+      authorizationGenerationRef.current += 1;
+      setAuthorizationGeneration(authorizationGenerationRef.current);
+      setProducts([]);
+      setDrafts([]);
+      setEditingDraft(null);
+      setEditorPublishing(false);
       setAuthMessage("관리자 권한이 없는 계정입니다.");
       setSession("forbidden");
     }
@@ -395,14 +489,16 @@ export function AdminDashboard({ dependencies = defaultDependencies }: { depende
   };
 
   const startCreate = () => {
+    setEditorPublishing(false);
     setEditingDraft(dependencies.startDraftSession(blankDraft(dependencies.createDraftId())));
   };
 
   const startEdit = (product: Product) => {
+    setEditorPublishing(false);
     setEditingDraft(drafts.find((draft) => draft.id === product.id) ?? dependencies.createProductEditDraft(product));
   };
 
-  if (session === "loading") {
+  if (session === "loading" || session === "checking") {
     return <main className="admin-state" role="status">관리자 권한을 확인하는 중입니다.</main>;
   }
 
@@ -414,7 +510,10 @@ export function AdminDashboard({ dependencies = defaultDependencies }: { depende
     <main className="admin-page">
       <header className="admin-page-header">
         <div><p className="admin-eyebrow">VITALEAF ADMIN</p><h1>상품 관리</h1><span>상품 정보와 판매 상태를 한곳에서 관리하세요.</span></div>
-        <button type="button" className="admin-secondary-button" onClick={() => void dependencies.signOutAdmin()}>로그아웃</button>
+        <button type="button" className="admin-secondary-button" disabled={editorPublishing} onClick={() => {
+          if (editorPublishing || editorRef.current && !editorRef.current.confirmExit()) return;
+          void dependencies.signOutAdmin();
+        }}>로그아웃</button>
       </header>
 
       {toast && <div className="admin-toast" role="status"><span>{toast}</span><button type="button" aria-label="알림 닫기" onClick={() => setToast("")}>×</button></div>}
@@ -423,11 +522,18 @@ export function AdminDashboard({ dependencies = defaultDependencies }: { depende
 
       {editingDraft ? (
         <DraftEditor
+          ref={editorRef}
           key={`${editingDraft.id}:${editingDraft.sessionId ?? "new"}`}
           initialDraft={editingDraft}
           dependencies={dependencies}
-          onClose={() => setEditingDraft(null)}
+          publishing={editorPublishing}
+          onPublishingChange={setEditorPublishing}
+          onClose={() => {
+            if (editorPublishing) return;
+            setEditingDraft(null);
+          }}
           onPublished={() => {
+            setEditorPublishing(false);
             setEditingDraft(null);
             setToast("상품을 판매 공개했습니다.");
           }}

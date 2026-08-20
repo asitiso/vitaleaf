@@ -3,7 +3,7 @@ import { doc, getDoc } from "firebase/firestore";
 
 import { auth, db } from "./client";
 
-export type AdminSessionState = "admin" | "signed-out" | "forbidden";
+export type AdminSessionState = "checking" | "admin" | "signed-out" | "forbidden";
 export type AdminSignInResult = "admin" | "forbidden" | "stale";
 
 type AuthUser = { uid: string };
@@ -82,6 +82,8 @@ export const createAdminAuth = (adapter: AdminAuthAdapter) => {
           return;
         }
 
+        next("checking");
+
         void adapter.readAdmin(user.uid).then(async (record) => {
           if (generation !== verificationGeneration || currentUid !== user.uid) return;
           if (isAdmin(record)) {
@@ -89,8 +91,8 @@ export const createAdminAuth = (adapter: AdminAuthAdapter) => {
             return;
           }
 
+          next("forbidden");
           await adapter.signOut();
-          if (generation === verificationGeneration && currentUid === user.uid) next("forbidden");
         }).catch((error) => {
           if (generation === verificationGeneration && currentUid === user.uid) onError(error);
         });

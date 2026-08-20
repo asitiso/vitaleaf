@@ -36,11 +36,15 @@ export function DraftPreview({
   dependencies?: DraftPreviewDependencies;
 }) {
   const [session, setSession] = useState<AdminSessionState | "loading">("loading");
-  const [draft, setDraft] = useState<ProductDraft | null>(null);
-  const [loadState, setLoadState] = useState<"idle" | "loading" | "error">("idle");
+  const [draftLoad, setDraftLoad] = useState<{
+    key: string;
+    state: "loading" | "loaded" | "error";
+    draft: ProductDraft | null;
+  }>({ key: "", state: "loading", draft: null });
   const [authError, setAuthError] = useState(false);
   const [authRetryGeneration, setAuthRetryGeneration] = useState(0);
   const [loadRetryGeneration, setLoadRetryGeneration] = useState(0);
+  const [authorizationGeneration, setAuthorizationGeneration] = useState(0);
   const authorizationGenerationRef = useRef(0);
 
   useEffect(() => {
@@ -48,18 +52,17 @@ export function DraftPreview({
     const unsubscribe = dependencies.observeAdminSession((nextSession) => {
       if (!active) return;
       authorizationGenerationRef.current += 1;
+      setAuthorizationGeneration(authorizationGenerationRef.current);
       setAuthError(false);
       setSession(nextSession);
-      if (nextSession === "admin") {
-        setLoadState("loading");
-      } else {
-        setLoadState("idle");
-        setDraft(null);
+      if (nextSession !== "admin") {
+        setDraftLoad({ key: "", state: "loading", draft: null });
       }
     }, () => {
       if (!active) return;
       authorizationGenerationRef.current += 1;
-      setDraft(null);
+      setAuthorizationGeneration(authorizationGenerationRef.current);
+      setDraftLoad({ key: "", state: "loading", draft: null });
       setAuthError(true);
     });
     return () => {
@@ -71,53 +74,58 @@ export function DraftPreview({
 
   useEffect(() => {
     if (session !== "admin" || authError) return;
-    const authorizationGeneration = authorizationGenerationRef.current;
+    const loadAuthorizationGeneration = authorizationGeneration;
+    const loadKey = `${loadAuthorizationGeneration}:${draftId}:${loadRetryGeneration}`;
     let active = true;
     void dependencies.getDraft(draftId).then((nextDraft) => {
-      if (!active || authorizationGenerationRef.current !== authorizationGeneration) return;
+      if (!active || authorizationGenerationRef.current !== loadAuthorizationGeneration) return;
       if (!nextDraft) {
-        setLoadState("error");
+        setDraftLoad({ key: loadKey, state: "error", draft: null });
         return;
       }
-      setDraft(nextDraft);
-      setLoadState("idle");
+      setDraftLoad({ key: loadKey, state: "loaded", draft: nextDraft });
     }).catch(() => {
-      if (!active || authorizationGenerationRef.current !== authorizationGeneration) return;
-      setLoadState("error");
+      if (!active || authorizationGenerationRef.current !== loadAuthorizationGeneration) return;
+      setDraftLoad({ key: loadKey, state: "error", draft: null });
     });
     return () => {
       active = false;
     };
-  }, [authError, dependencies, draftId, loadRetryGeneration, session]);
+  }, [authError, authorizationGeneration, dependencies, draftId, loadRetryGeneration, session]);
 
-  const product = useMemo(() => draft ? toPreviewProduct(draft) : null, [draft]);
+  const expectedLoadKey = `${authorizationGeneration}:${draftId}:${loadRetryGeneration}`;
+  const currentLoad = draftLoad.key === expectedLoadKey
+    ? draftLoad
+    : { key: expectedLoadKey, state: "loading" as const, draft: null };
+  const product = useMemo(
+    () => currentLoad.draft ? toPreviewProduct(currentLoad.draft) : null,
+    [currentLoad.draft],
+  );
 
   if (authError) {
     return (
       <main className="admin-state" role="alert">
         <p>관리자 권한을 확인하지 못했습니다.</p>
         <button type="button" onClick={() => {
-          setLoadState("loading");
           setAuthRetryGeneration((current) => current + 1);
         }}>다시 시도</button>
       </main>
     );
   }
-  if (session === "loading") {
+  if (session === "loading" || session === "checking") {
     return <main className="admin-state" role="status">관리자 권한을 확인하는 중입니다.</main>;
   }
   if (session !== "admin") {
-    return <main className="admin-state"><h1>미리보기 권한이 없습니다</h1><p>관리자 계정으로 로그인해 주세요.</p></main>;
+    return <main className="admin-state" role="alert"><h1>미리보기 권한이 없습니다</h1><p>관리자 계정으로 로그인해 주세요.</p></main>;
   }
-  if (loadState === "loading") {
+  if (currentLoad.state === "loading") {
     return <main className="admin-state" role="status">초안을 불러오는 중입니다.</main>;
   }
-  if (loadState === "error" || !product) {
+  if (currentLoad.state === "error" || !product) {
     return (
       <main className="admin-state" role="alert">
         <p>초안을 불러오지 못했습니다.</p>
         <button type="button" onClick={() => {
-          setLoadState("loading");
           setLoadRetryGeneration((current) => current + 1);
         }}>다시 시도</button>
       </main>

@@ -89,6 +89,7 @@ export function useDraftAutosave({ draft, save, delayMs = 1_200 }: DraftAutosave
   const untouchedBlankRef = useRef(isBlankDraft(draft) && draft.revision === 0);
   const inFlightRef = useRef<Promise<ProductDraft> | null>(null);
   const inFlightVersionRef = useRef(0);
+  const identityGenerationRef = useRef(0);
 
   useEffect(() => {
     latestRef.current = latestDraft;
@@ -105,29 +106,36 @@ export function useDraftAutosave({ draft, save, delayMs = 1_200 }: DraftAutosave
   }, []);
 
   const startSave = useCallback(async (targetVersion: number): Promise<ProductDraft> => {
+    const identityGeneration = identityGenerationRef.current;
     const snapshot = latestRef.current;
     const baseSessionId = snapshot.sessionId;
-    if (mountedRef.current) setStatus("saving");
+    if (mountedRef.current && identityGenerationRef.current === identityGeneration) setStatus("saving");
 
     const operation = Promise.resolve().then(() => saveRef.current(snapshot));
     inFlightRef.current = operation;
     inFlightVersionRef.current = targetVersion;
     try {
       const saved = await operation;
-      if (latestRef.current.id === snapshot.id && sameEditingIdentity(latestRef.current, snapshot)) {
+      if (
+        identityGenerationRef.current === identityGeneration
+        && latestRef.current.id === snapshot.id
+        && sameEditingIdentity(latestRef.current, snapshot)
+      ) {
         const identity = { baseId: snapshot.id, baseSessionId, saved };
         const merged = mergeSavedIdentity(latestRef.current, identity);
         latestRef.current = merged;
         if (mountedRef.current) setSavedIdentity(identity);
       }
-      savedVersionRef.current = Math.max(savedVersionRef.current, targetVersion);
-      hasPersistedRef.current = true;
-      if (mountedRef.current) {
+      if (identityGenerationRef.current === identityGeneration) {
+        savedVersionRef.current = Math.max(savedVersionRef.current, targetVersion);
+        hasPersistedRef.current = true;
+      }
+      if (mountedRef.current && identityGenerationRef.current === identityGeneration) {
         setStatus(versionRef.current === targetVersion ? "saved" : "dirty");
       }
       return latestRef.current;
     } catch (error) {
-      if (mountedRef.current) {
+      if (mountedRef.current && identityGenerationRef.current === identityGeneration) {
         setStatus(versionRef.current === targetVersion ? "error" : "dirty");
       }
       throw error;
@@ -140,8 +148,12 @@ export function useDraftAutosave({ draft, save, delayMs = 1_200 }: DraftAutosave
   }, []);
 
   const flush = useCallback(async (): Promise<ProductDraft> => {
+    const identityGeneration = identityGenerationRef.current;
     clearTimer();
-    while (!hasPersistedRef.current || savedVersionRef.current < versionRef.current) {
+    while (
+      identityGenerationRef.current === identityGeneration
+      && (!hasPersistedRef.current || savedVersionRef.current < versionRef.current)
+    ) {
       const pending = inFlightRef.current;
       if (pending) {
         const pendingVersion = inFlightVersionRef.current;
@@ -178,6 +190,9 @@ export function useDraftAutosave({ draft, save, delayMs = 1_200 }: DraftAutosave
 
     if (!sameEditingIdentity(previous, draft)) {
       clearTimer();
+      identityGenerationRef.current += 1;
+      inFlightRef.current = null;
+      inFlightVersionRef.current = 0;
       versionRef.current = 0;
       savedVersionRef.current = 0;
       hasPersistedRef.current = draft.revision > 0 || isBlankDraft(draft);
@@ -219,6 +234,9 @@ export function useDraftAutosave({ draft, save, delayMs = 1_200 }: DraftAutosave
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      identityGenerationRef.current += 1;
+      inFlightRef.current = null;
+      inFlightVersionRef.current = 0;
       clearTimer();
     };
   }, [clearTimer]);
