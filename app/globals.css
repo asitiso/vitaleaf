@@ -726,7 +726,7 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
 .product-media-step__upload > div { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
 .product-media-step__upload strong, .product-media-step__upload p { margin: 0; }
 .product-media-step__upload progress { width: min(220px, 100%); accent-color: var(--color-sage); }
-.product-media-step__upload button, .product-media-step__item-actions button, .product-media-step__confirm button { min-height: 36px; border: 1px solid #bdcec1; border-radius: 4px; padding: 6px 10px; color: #315544; background: #fff; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
+.product-media-step__upload button, .product-media-step__item-actions button, .product-media-step__confirm button { min-height: 44px; border: 1px solid #bdcec1; border-radius: 4px; padding: 6px 10px; color: #315544; background: #fff; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
 .product-media-step__upload p[role="alert"], .product-media-step__item p[role="alert"] { color: #953d2e; font-size: 13px; font-weight: 700; }
 .product-media-step__list { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 13px; }
 .product-media-step__item { display: grid; gap: 10px; padding: 12px; border: 1px solid #d5dfd7; border-radius: 6px; background: #fff; cursor: grab; }
@@ -735,7 +735,7 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
 .product-media-step__item > div:first-of-type { display: flex; justify-content: space-between; gap: 8px; align-items: center; color: #315544; font-size: 13px; }
 .product-media-step__item > div:first-of-type span { color: var(--color-sage); font-size: 12px; font-weight: 800; }
 .product-media-step__item label { display: grid; gap: 5px; color: #30493e; font-size: 12px; font-weight: 800; }
-.product-media-step__item input { width: 100%; min-height: 38px; border: 1px solid #c8d6cb; border-radius: 4px; padding: 8px 9px; color: var(--color-ink); background: #fff; font: inherit; }
+.product-media-step__item input { width: 100%; min-height: 44px; border: 1px solid #c8d6cb; border-radius: 4px; padding: 8px 9px; color: var(--color-ink); background: #fff; font: inherit; }
 .product-media-step__item-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .product-media-step__item-actions button:disabled { color: #8b9890; border-color: #e1e6e2; background: #f2f4f2; cursor: not-allowed; }
 .product-media-step__confirm { padding: 16px; border: 1px solid #e3bbb2; border-radius: 6px; background: #fff7f4; }

@@ -368,7 +368,11 @@ it("prevents a second save while the first save is pending", async () => {
   await user.click(screen.getByRole("button", { name: "임시 저장" }));
   await user.click(screen.getByRole("button", { name: "저장 중" }));
   expect(onSave).toHaveBeenCalledTimes(1);
-  resolveSave();
+  await act(async () => {
+    resolveSave();
+    await Promise.resolve();
+  });
+  expect(screen.getByRole("button", { name: "임시 저장" })).toBeEnabled();
 });
 
 it("contains preview failures and prevents duplicate preview requests while pending", async () => {
