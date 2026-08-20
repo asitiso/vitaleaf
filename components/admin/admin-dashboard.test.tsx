@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Link from "next/link";
 import { afterEach, expect, it, vi } from "vitest";
@@ -14,10 +14,13 @@ vi.mock("../../lib/firebase/products", () => ({
 vi.mock("../../lib/firebase/product-drafts", () => ({
   createDraftId: vi.fn(),
   createProductEditDraft: vi.fn(),
+  discardDraft: vi.fn(),
+  duplicateProductToDraft: vi.fn(),
   publishDraft: vi.fn(),
   saveDraft: vi.fn(),
   startDraftSession: vi.fn(),
   subscribeDrafts: vi.fn(),
+  unpublishProduct: vi.fn(),
 }));
 
 vi.mock("../../lib/firebase/product-media", () => ({
@@ -80,6 +83,15 @@ const dependencies = (overrides: Partial<AdminDashboardDependencies> = {}): Admi
   createProductEditDraft: vi.fn((value: Product) => productDraft(value)),
   saveDraft: vi.fn(async (value: ProductDraft) => ({ ...value, revision: value.revision + 1 })),
   publishDraft: vi.fn().mockResolvedValue(undefined),
+  unpublishProduct: vi.fn(async (value: Product) => productDraft(value, { mode: "restore", status: "draft", revision: 1 })),
+  discardDraft: vi.fn().mockResolvedValue(undefined),
+  duplicateProductToDraft: vi.fn(async () => productDraft(product, {
+    id: "omega-copy",
+    name: "데일리 오메가3 (복사본)",
+    mode: "create",
+    status: "draft",
+    stock: 0,
+  })),
   uploadProductImage: vi.fn(),
   deleteProductImage: vi.fn().mockResolvedValue(undefined),
   ...overrides,
@@ -145,6 +157,7 @@ it("mounts CSV write controls only for an authorized admin and imports through t
   });
   render(<AdminDashboard dependencies={deps} />);
 
+  await user.click(await screen.findByRole("tab", { name: "CSV 관리" }));
   expect(await screen.findByRole("heading", { name: "CSV 일괄 관리" })).toBeVisible();
   await user.upload(screen.getByLabelText("상품 CSV 파일"), new File([[
     "name,category,price,stock",
@@ -219,7 +232,8 @@ it("clears the catalog and editor on checking and ignores callbacks from the old
     productCallbacks[0]([product]);
     draftCallbacks[0]([productDraft(product, { name: "Admin A draft" })]);
   });
-  await user.click(screen.getByRole("button", { name: "Admin A draft 초안 이어 쓰기" }));
+  await user.click(screen.getByRole("tab", { name: "임시 저장" }));
+  await user.click(screen.getByRole("button", { name: "Admin A draft 수정" }));
   expect(screen.getByRole("heading", { name: "Admin A draft 수정" })).toBeVisible();
 
   act(() => emitSession("checking"));
@@ -234,7 +248,7 @@ it("clears the catalog and editor on checking and ignores callbacks from the old
   expect(screen.queryByText("Stale admin A product")).not.toBeInTheDocument();
   expect(screen.queryByText("Stale admin A draft")).not.toBeInTheDocument();
   expect(screen.queryByRole("heading", { name: "Admin A draft 수정" })).not.toBeInTheDocument();
-  expect(screen.getByText("등록된 상품이 없습니다.")).toBeVisible();
+  expect(screen.getByText("조건에 맞는 상품이 없습니다.")).toBeVisible();
 });
 
 it("keeps observer-authorized user B mounted when stale sign-in A resolves", async () => {
@@ -1182,4 +1196,258 @@ it("installs one sentinel across rerenders and neutralizes it synchronously on c
     window.removeEventListener("popstate", observeLikeRouter);
     pendingSave.resolve(productDraft());
   }
+});
+
+it("keeps one search across published and draft views and duplicates by product ID into a draft", async () => {
+  const user = userEvent.setup();
+  const duplicateProductToDraft = vi.fn().mockResolvedValue(productDraft(product, {
+    id: "omega-copy",
+    name: "데일리 오메가3 (복사본)",
+    mode: "create",
+    status: "draft",
+    stock: 0,
+  }));
+  const deps = dependencies({
+    observeAdminSession: (next) => {
+      next("admin");
+      return vi.fn();
+    },
+    subscribeProducts: (onData) => {
+      onData([product, { ...product, id: "vitamin", name: "비타민 D" }]);
+      return vi.fn();
+    },
+    subscribeDrafts: (onData) => {
+      onData([productDraft(product, { id: "omega-draft", name: "오메가 작업 초안", mode: "create", status: "draft" })]);
+      return vi.fn();
+    },
+    duplicateProductToDraft,
+  });
+  render(<AdminDashboard dependencies={deps} />);
+
+  await user.type(await screen.findByRole("searchbox", { name: "상품 검색" }), "오메가");
+  expect(screen.getByText("데일리 오메가3")).toBeVisible();
+  expect(screen.queryByText("비타민 D")).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "데일리 오메가3 복제" }));
+  await waitFor(() => expect(duplicateProductToDraft).toHaveBeenCalledWith("omega"));
+  expect(await screen.findByText("복제 초안을 만들었습니다.")).toBeVisible();
+
+  await user.click(screen.getByRole("tab", { name: "임시 저장" }));
+  expect(screen.getByRole("searchbox", { name: "상품 검색" })).toHaveValue("오메가");
+  expect(screen.getByText("오메가 작업 초안")).toBeVisible();
+});
+
+it("guards unpublish and draft deletion, restores focus, and keeps each operation locked to its document", async () => {
+  const user = userEvent.setup();
+  const pendingUnpublish = deferred<ProductDraft>();
+  const unpublishProduct = vi.fn(() => pendingUnpublish.promise);
+  const discardDraft = vi.fn().mockResolvedValue(undefined);
+  const savedDraft = productDraft(product, { id: "draft-only", name: "삭제할 초안", mode: "create", status: "draft" });
+  const deps = dependencies({
+    observeAdminSession: (next) => {
+      next("admin");
+      return vi.fn();
+    },
+    subscribeProducts: (onData) => {
+      onData([product, { ...product, id: "vitamin", name: "비타민 D" }]);
+      return vi.fn();
+    },
+    subscribeDrafts: (onData) => {
+      onData([savedDraft]);
+      return vi.fn();
+    },
+    unpublishProduct,
+    discardDraft,
+  });
+  render(<AdminDashboard dependencies={deps} />);
+
+  const unpublishTrigger = await screen.findByRole("button", { name: "데일리 오메가3 판매 중지" });
+  await user.click(unpublishTrigger);
+  const unpublishDialog = screen.getByRole("dialog", { name: "판매 중지 확인" });
+  expect(within(unpublishDialog).getByText(/공개 상품에서 사라지고.*초안/)).toBeVisible();
+  await user.click(within(unpublishDialog).getByRole("button", { name: "판매 중지" }));
+
+  expect(unpublishProduct).toHaveBeenCalledTimes(1);
+  expect(unpublishProduct).toHaveBeenCalledWith(product);
+  expect(screen.getByRole("button", { name: "데일리 오메가3 판매 중지" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "비타민 D 수정" })).toBeEnabled();
+  pendingUnpublish.resolve(productDraft(product, { mode: "restore", status: "draft", revision: 1 }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "판매 중지 확인" })).not.toBeInTheDocument());
+  expect(unpublishTrigger).toHaveFocus();
+
+  await user.click(screen.getByRole("tab", { name: "임시 저장" }));
+  const deleteTrigger = screen.getByRole("button", { name: "삭제할 초안 삭제" });
+  await user.click(deleteTrigger);
+  const deleteDialog = screen.getByRole("dialog", { name: "초안 삭제 확인" });
+  expect(within(deleteDialog).getByText(/임시 저장 내용/)).toBeVisible();
+  await user.click(within(deleteDialog).getByRole("button", { name: "초안 삭제" }));
+
+  await waitFor(() => expect(discardDraft).toHaveBeenCalledWith(savedDraft));
+  expect(deleteTrigger).toHaveFocus();
+  expect(deps.deleteProduct).not.toHaveBeenCalled();
+});
+
+it("previews, publishes, and edits a saved draft from its table row", async () => {
+  const user = userEvent.setup();
+  const savedDraft = productDraft(product, { id: "saved-draft", name: "저장된 초안", mode: "create", status: "draft", revision: 2 });
+  const open = vi.spyOn(window, "open").mockReturnValue(null);
+  const publishDraft = vi.fn().mockResolvedValue(undefined);
+  const deps = dependencies({
+    observeAdminSession: (next) => {
+      next("admin");
+      return vi.fn();
+    },
+    subscribeProducts: (onData) => {
+      onData([]);
+      return vi.fn();
+    },
+    subscribeDrafts: (onData) => {
+      onData([savedDraft]);
+      return vi.fn();
+    },
+    publishDraft,
+  });
+  render(<AdminDashboard dependencies={deps} />);
+
+  await user.click(await screen.findByRole("tab", { name: "임시 저장" }));
+  await user.click(screen.getByRole("button", { name: "저장된 초안 미리 보기" }));
+  expect(open).toHaveBeenCalledWith("/admin/products/preview/saved-draft", "_blank", "noopener,noreferrer");
+
+  await user.click(screen.getByRole("button", { name: "저장된 초안 판매 공개" }));
+  await waitFor(() => expect(publishDraft).toHaveBeenCalledWith(savedDraft));
+  expect(await screen.findByText("상품을 판매 공개했습니다.")).toBeVisible();
+
+  await user.click(screen.getByRole("button", { name: "저장된 초안 수정" }));
+  expect(screen.getByRole("heading", { name: "저장된 초안 수정" })).toBeVisible();
+});
+
+it("keeps repeated editor sessions bounded and reaches the previous route with one Back after close", async () => {
+  const destinationState = Object.freeze({ __NA: true, tree: ["products"], key: "destination" });
+  const originalAdminState = Object.freeze({ __NA: true, tree: ["admin"], key: "original" });
+  window.history.replaceState(destinationState, "", "/products");
+  window.history.pushState(originalAdminState, "", "/admin/products");
+  const initialLength = window.history.length;
+  const user = userEvent.setup();
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  const deps = dependencies({
+    observeAdminSession: (next) => {
+      next("admin");
+      return vi.fn();
+    },
+    subscribeProducts: (onData) => {
+      onData([]);
+      return vi.fn();
+    },
+    subscribeDrafts: (onData) => {
+      onData([]);
+      return vi.fn();
+    },
+  });
+  const view = render(<AdminDashboard dependencies={deps} />);
+  try {
+    for (let cycle = 0; cycle < 3; cycle += 1) {
+      await user.click(await screen.findByRole("button", { name: "새 상품 등록" }));
+      await user.type(screen.getByLabelText("상품명"), String(cycle));
+      await waitFor(() => expect(window.history.length).toBe(initialLength + 1));
+      await user.click(screen.getByRole("button", { name: "편집 닫기" }));
+      expect(await screen.findByRole("button", { name: "새 상품 등록" })).toBeVisible();
+      expect(window.history.length).toBe(initialLength + 1);
+    }
+
+    act(() => window.history.back());
+    await waitFor(() => expect(window.location.pathname).toBe("/products"));
+    expect(confirm).toHaveBeenCalledTimes(3);
+    expect(window.history.state).toEqual(destinationState);
+  } finally {
+    view.unmount();
+  }
+});
+
+it("reaches the previous route with one Back after authorization clears a dirty editor", async () => {
+  const destinationState = Object.freeze({ __NA: true, tree: ["products"], key: "destination" });
+  const originalAdminState = Object.freeze({ __NA: true, tree: ["admin"], key: "original" });
+  window.history.replaceState(destinationState, "", "/products");
+  window.history.pushState(originalAdminState, "", "/admin/products");
+  let emitSession!: (state: AdminSessionState) => void;
+  const user = userEvent.setup();
+  const confirm = vi.spyOn(window, "confirm");
+  const deps = dependencies({
+    observeAdminSession: (next) => {
+      emitSession = next;
+      return vi.fn();
+    },
+    subscribeProducts: (onData) => {
+      onData([]);
+      return vi.fn();
+    },
+    subscribeDrafts: (onData) => {
+      onData([]);
+      return vi.fn();
+    },
+  });
+  const view = render(<AdminDashboard dependencies={deps} />);
+  try {
+    act(() => emitSession("admin"));
+    await user.click(await screen.findByRole("button", { name: "새 상품 등록" }));
+    await user.type(screen.getByLabelText("상품명"), "오메가");
+    act(() => emitSession("signed-out"));
+    expect(await screen.findByRole("heading", { name: "관리자 로그인" })).toBeVisible();
+
+    act(() => window.history.back());
+    await waitFor(() => expect(window.location.pathname).toBe("/products"));
+    expect(confirm).not.toHaveBeenCalled();
+    expect(window.history.state).toEqual(destinationState);
+  } finally {
+    view.unmount();
+  }
+});
+
+it("ignores a stale row mutation completion without unlocking the new admin operation", async () => {
+  const first = deferred<ProductDraft>();
+  const second = deferred<ProductDraft>();
+  const duplicateProductToDraft = vi.fn()
+    .mockImplementationOnce(() => first.promise)
+    .mockImplementationOnce(() => second.promise);
+  const productCallbacks: Array<(products: Product[]) => void> = [];
+  let emitSession!: (state: AdminSessionState) => void;
+  const user = userEvent.setup();
+  const deps = dependencies({
+    observeAdminSession: (next) => {
+      emitSession = next;
+      return vi.fn();
+    },
+    subscribeProducts: (onData) => {
+      productCallbacks.push(onData);
+      return vi.fn();
+    },
+    subscribeDrafts: (onData) => {
+      onData([]);
+      return vi.fn();
+    },
+    duplicateProductToDraft,
+  });
+  render(<AdminDashboard dependencies={deps} />);
+
+  act(() => emitSession("admin"));
+  await waitFor(() => expect(productCallbacks).toHaveLength(1));
+  act(() => productCallbacks[0]!([product]));
+  await user.click(await screen.findByRole("button", { name: "데일리 오메가3 복제" }));
+
+  act(() => {
+    emitSession("checking");
+    emitSession("admin");
+  });
+  await waitFor(() => expect(productCallbacks).toHaveLength(2));
+  act(() => productCallbacks[1]!([product]));
+  await user.click(await screen.findByRole("button", { name: "데일리 오메가3 복제" }));
+  expect(duplicateProductToDraft).toHaveBeenCalledTimes(2);
+
+  first.resolve(productDraft(product, { id: "old-copy", mode: "create", status: "draft" }));
+  await act(async () => { await first.promise; });
+  expect(screen.queryByText("복제 초안을 만들었습니다.")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "데일리 오메가3 복제" })).toBeDisabled();
+
+  second.resolve(productDraft(product, { id: "new-copy", mode: "create", status: "draft" }));
+  expect(await screen.findByText("복제 초안을 만들었습니다.")).toBeVisible();
+  expect(screen.getByRole("button", { name: "데일리 오메가3 복제" })).toBeEnabled();
 });

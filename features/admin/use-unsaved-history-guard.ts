@@ -36,22 +36,18 @@ const isGuardState = (state: unknown, guardId: string): boolean => (
 export function useUnsavedHistoryGuard({
   active,
   locked,
-  confirmExit,
 }: {
   active: boolean;
   locked: boolean;
-  confirmExit(): boolean;
 }) {
   const snapshotRef = useRef<GuardSnapshot | null>(null);
   const activeRef = useRef(active);
   const lockedRef = useRef(locked);
-  const confirmExitRef = useRef(confirmExit);
 
   useEffect(() => {
     activeRef.current = active;
     lockedRef.current = locked;
-    confirmExitRef.current = confirmExit;
-  }, [active, confirmExit, locked]);
+  }, [active, locked]);
 
   const neutralize = useCallback(() => {
     const snapshot = snapshotRef.current;
@@ -79,7 +75,10 @@ export function useUnsavedHistoryGuard({
       if (snapshot.phase !== "armed" || snapshot.position !== "sentinel") return;
 
       snapshot.position = "original";
-      if (!activeRef.current || (!lockedRef.current && confirmExitRef.current())) {
+      if (
+        !activeRef.current
+        || (!lockedRef.current && window.confirm("저장되지 않은 변경 사항이 있습니다. 편집을 닫으시겠습니까?"))
+      ) {
         snapshot.phase = "replaying";
         window.history.back();
         return;

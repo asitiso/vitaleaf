@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 
 import {
   getAdminAuthErrorMessage,
@@ -19,19 +19,22 @@ import {
 import {
   createDraftId,
   createProductEditDraft,
+  discardDraft,
+  duplicateProductToDraft as duplicatePublishedProductToDraft,
   ProductDraftValidationError,
   publishDraft,
   saveDraft,
   startDraftSession,
   subscribeDrafts,
+  unpublishProduct,
 } from "../../lib/firebase/product-drafts";
 import { deleteProductImage, uploadProductImage } from "../../lib/firebase/product-media";
 import { validatePublishableDraft } from "../../lib/products/draft";
 import type { Product, ProductDraft, ProductInput } from "../../lib/products/types";
 import { useDraftAutosave } from "../../features/admin/use-draft-autosave";
 import { useUnsavedHistoryGuard } from "../../features/admin/use-unsaved-history-guard";
-import { formatWon } from "../../lib/format";
 import { CsvTools } from "./csv-tools";
+import { ProductTable, type ProductSort, type ProductStatusFilter, type ProductTableRow } from "./product-table";
 import { ProductWizard } from "./product-wizard/product-wizard";
 import type { MediaDelete, MediaUpload } from "./product-wizard/media-step";
 
@@ -48,11 +51,14 @@ export type AdminDashboardDependencies = {
   createProductEditDraft(product: Product): ProductDraft;
   saveDraft(draft: ProductDraft): Promise<ProductDraft>;
   publishDraft(draft: ProductDraft): Promise<void>;
+  unpublishProduct(product: Product): Promise<ProductDraft>;
+  discardDraft(draft: ProductDraft): Promise<void>;
+  duplicateProductToDraft(productId: string): Promise<ProductDraft>;
   uploadProductImage: MediaUpload;
   deleteProductImage: MediaDelete;
 };
 
-const defaultDependencies: AdminDashboardDependencies = {
+const defaultDependencies: Omit<AdminDashboardDependencies, "duplicateProductToDraft"> = {
   observeAdminSession,
   signInAdmin,
   signOutAdmin,
@@ -65,6 +71,8 @@ const defaultDependencies: AdminDashboardDependencies = {
   createProductEditDraft,
   saveDraft,
   publishDraft,
+  unpublishProduct,
+  discardDraft,
   uploadProductImage,
   deleteProductImage,
 };
@@ -175,13 +183,17 @@ function AdminLogin({
   );
 }
 
-function DeleteProductDialog({
-  product,
+function OperationDialog({
+  title,
+  description,
+  confirmLabel,
   busy,
   onCancel,
   onConfirm,
 }: {
-  product: Product;
+  title: string;
+  description: ReactNode;
+  confirmLabel: string;
   busy: boolean;
   onCancel(): void;
   onConfirm(): void;
@@ -219,12 +231,12 @@ function DeleteProductDialog({
 
   return (
     <div className="admin-dialog-backdrop">
-      <section className="admin-dialog" role="dialog" aria-modal="true" aria-labelledby="admin-delete-title">
-        <h2 id="admin-delete-title">상품 삭제 확인</h2>
-        <p><strong>{product.name}</strong> 상품을 삭제하시겠습니까? 삭제한 상품은 복구할 수 없습니다.</p>
+      <section className="admin-dialog" role="dialog" aria-modal="true" aria-labelledby="admin-operation-title">
+        <h2 id="admin-operation-title">{title}</h2>
+        <p>{description}</p>
         <div>
           <button ref={cancelRef} type="button" disabled={busy} onClick={onCancel} onKeyDown={handleKeyDown}>취소</button>
-          <button ref={confirmRef} type="button" disabled={busy} onClick={onConfirm} onKeyDown={handleKeyDown}>{busy ? "삭제 중" : "삭제 확인"}</button>
+          <button ref={confirmRef} type="button" disabled={busy} onClick={onConfirm} onKeyDown={handleKeyDown}>{busy ? "처리 중" : confirmLabel}</button>
         </div>
       </section>
     </div>
@@ -243,6 +255,8 @@ const DraftEditor = forwardRef<DraftEditorHandle, {
   onPublished(): void;
   publishing: boolean;
   onPublishingChange(publishing: boolean): void;
+  onGuardingChange(active: boolean): void;
+  allowHistoryNavigation(): void;
 }>(function DraftEditor({
   initialDraft,
   dependencies,
@@ -251,6 +265,8 @@ const DraftEditor = forwardRef<DraftEditorHandle, {
   onPublished,
   publishing,
   onPublishingChange,
+  onGuardingChange,
+  allowHistoryNavigation,
 }, ref) {
   const [draft, setDraft] = useState(initialDraft);
   const publishLockRef = useRef(false);
@@ -258,13 +274,19 @@ const DraftEditor = forwardRef<DraftEditorHandle, {
   const autosaveStatus = autosave.status;
   const confirmClose = autosave.confirmClose;
   const hasUnsavedWork = autosaveStatus === "dirty" || autosaveStatus === "saving" || autosaveStatus === "error";
-  const allowHistoryNavigation = useUnsavedHistoryGuard({
-    active: hasUnsavedWork || publishing,
-    locked: publishing,
-    confirmExit: confirmClose,
-  });
+  const onGuardingChangeRef = useRef(onGuardingChange);
 
   useImperativeHandle(ref, () => ({ confirmExit: confirmClose }), [confirmClose]);
+
+  useEffect(() => {
+    onGuardingChangeRef.current = onGuardingChange;
+  }, [onGuardingChange]);
+
+  useEffect(() => {
+    onGuardingChangeRef.current(hasUnsavedWork || publishing);
+  }, [hasUnsavedWork, publishing]);
+
+  useEffect(() => () => onGuardingChangeRef.current(false), []);
 
   useEffect(() => {
     if (!hasUnsavedWork && !publishing) return;
@@ -333,7 +355,11 @@ const DraftEditor = forwardRef<DraftEditorHandle, {
       <div className="admin-section-heading">
         <div>
           <p className="admin-eyebrow">PRODUCT EDITOR</p>
-          <h2 id="admin-editor-heading">{autosave.draft.mode === "create" ? "새 상품 등록" : `${autosave.draft.name} 수정`}</h2>
+          <h2 id="admin-editor-heading">{
+            autosave.draft.mode === "create" && initialDraft.revision === 0
+              ? "새 상품 등록"
+              : `${autosave.draft.name.trim() || "이름 없는 상품"} 수정`
+          }</h2>
         </div>
         <button type="button" className="admin-secondary-button" disabled={publishing} onClick={close}>편집 닫기</button>
       </div>
@@ -358,7 +384,20 @@ const DraftEditor = forwardRef<DraftEditorHandle, {
   );
 });
 
-export function AdminDashboard({ dependencies = defaultDependencies }: { dependencies?: AdminDashboardDependencies }) {
+type DashboardView = "published" | "drafts" | "csv";
+type PendingOperation = { action: "unpublish" | "delete"; row: ProductTableRow };
+
+export function AdminDashboard({ dependencies: providedDependencies }: { dependencies?: AdminDashboardDependencies }) {
+  const productsRef = useRef<Product[]>([]);
+  const runtimeDefaultDependencies = useMemo<AdminDashboardDependencies>(() => ({
+    ...defaultDependencies,
+    duplicateProductToDraft: (productId) => {
+      const source = productsRef.current.find((product) => product.id === productId);
+      if (!source) return Promise.reject(new Error("복제할 상품을 찾을 수 없습니다."));
+      return duplicatePublishedProductToDraft(source);
+    },
+  }), []);
+  const dependencies = providedDependencies ?? runtimeDefaultDependencies;
   const [session, setSession] = useState<AdminSessionState | "loading">("loading");
   const [authMessage, setAuthMessage] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
@@ -366,16 +405,26 @@ export function AdminDashboard({ dependencies = defaultDependencies }: { depende
   const [productError, setProductError] = useState("");
   const [draftError, setDraftError] = useState("");
   const [query, setQuery] = useState("");
+  const [view, setView] = useState<DashboardView>("published");
+  const [publishedStatus, setPublishedStatus] = useState<ProductStatusFilter>("all");
+  const [draftStatus, setDraftStatus] = useState<ProductStatusFilter>("all");
+  const [sort, setSort] = useState<ProductSort>("modified-desc");
   const [editingDraft, setEditingDraft] = useState<ProductDraft | null>(null);
-  const [deleting, setDeleting] = useState<Product | null>(null);
+  const [pendingOperation, setPendingOperation] = useState<PendingOperation | null>(null);
   const [toast, setToast] = useState("");
-  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [lockedIds, setLockedIds] = useState<ReadonlySet<string>>(() => new Set());
   const [editorPublishing, setEditorPublishing] = useState(false);
+  const [editorGuardActive, setEditorGuardActive] = useState(false);
   const [editorGeneration, setEditorGeneration] = useState(0);
   const [authorizationGeneration, setAuthorizationGeneration] = useState(0);
   const authorizationGenerationRef = useRef(0);
   const editorGenerationRef = useRef(0);
   const editorRef = useRef<DraftEditorHandle>(null);
+  const mutationTokensRef = useRef(new Map<string, symbol>());
+  const allowHistoryNavigation = useUnsavedHistoryGuard({
+    active: editorGuardActive || editorPublishing,
+    locked: editorPublishing,
+  });
 
   useEffect(() => dependencies.observeAdminSession((state) => {
     authorizationGenerationRef.current += 1;
@@ -388,27 +437,39 @@ export function AdminDashboard({ dependencies = defaultDependencies }: { depende
     ));
     if (state !== "admin") {
       editorGenerationRef.current += 1;
+      productsRef.current = [];
+      mutationTokensRef.current.clear();
       setProducts([]);
       setDrafts([]);
       setProductError("");
       setDraftError("");
       setEditingDraft(null);
       setEditorPublishing(false);
-      setDeleting(null);
-      setDeleteBusy(false);
+      setEditorGuardActive(false);
+      setPendingOperation(null);
+      setLockedIds(new Set());
+      setToast("");
+      setQuery("");
+      setView("published");
     }
   }, (error) => {
     authorizationGenerationRef.current += 1;
     editorGenerationRef.current += 1;
     setAuthorizationGeneration(authorizationGenerationRef.current);
+    productsRef.current = [];
+    mutationTokensRef.current.clear();
     setProducts([]);
     setDrafts([]);
     setProductError("");
     setDraftError("");
     setEditingDraft(null);
     setEditorPublishing(false);
-    setDeleting(null);
-    setDeleteBusy(false);
+    setEditorGuardActive(false);
+    setPendingOperation(null);
+    setLockedIds(new Set());
+    setToast("");
+    setQuery("");
+    setView("published");
     setSession("signed-out");
     setAuthMessage(getAdminAuthErrorMessage(error));
   }), [dependencies]);
@@ -419,6 +480,7 @@ export function AdminDashboard({ dependencies = defaultDependencies }: { depende
     let active = true;
     const unsubscribe = dependencies.subscribeProducts((nextProducts) => {
       if (!active || authorizationGenerationRef.current !== subscriptionGeneration) return;
+      productsRef.current = nextProducts;
       setProducts(nextProducts);
       setProductError("");
     }, () => {
@@ -449,15 +511,14 @@ export function AdminDashboard({ dependencies = defaultDependencies }: { depende
     };
   }, [authorizationGeneration, dependencies, session]);
 
-  const visibleProducts = useMemo(() => {
-    const normalized = query.trim().toLocaleLowerCase("ko-KR");
-    if (!normalized) return products;
-    return products.filter((product) => (
-      product.name.toLocaleLowerCase("ko-KR").includes(normalized)
-      || product.category.toLocaleLowerCase("ko-KR").includes(normalized)
-      || product.id.toLocaleLowerCase("ko-KR").includes(normalized)
-    ));
-  }, [products, query]);
+  const publishedRows = useMemo<ProductTableRow[]>(
+    () => products.map((value) => ({ kind: "published", value })),
+    [products],
+  );
+  const draftRows = useMemo<ProductTableRow[]>(
+    () => drafts.map((value) => ({ kind: "draft", value })),
+    [drafts],
+  );
 
   const login = async (email: string, password: string) => {
     const result = await dependencies.signInAdmin(email, password);
@@ -469,11 +530,19 @@ export function AdminDashboard({ dependencies = defaultDependencies }: { depende
     } else if (result === "forbidden") {
       authorizationGenerationRef.current += 1;
       editorGenerationRef.current += 1;
+      productsRef.current = [];
+      mutationTokensRef.current.clear();
       setAuthorizationGeneration(authorizationGenerationRef.current);
       setProducts([]);
       setDrafts([]);
       setEditingDraft(null);
       setEditorPublishing(false);
+      setEditorGuardActive(false);
+      setPendingOperation(null);
+      setLockedIds(new Set());
+      setToast("");
+      setQuery("");
+      setView("published");
       setAuthMessage("관리자 권한이 없는 계정입니다.");
       setSession("forbidden");
     }
@@ -483,36 +552,116 @@ export function AdminDashboard({ dependencies = defaultDependencies }: { depende
     await Promise.all(inputs.map((input) => dependencies.saveProduct(input)));
   };
 
-  const toggleStock = async (product: Product) => {
+  const runDocumentMutation = async <T,>(
+    id: string,
+    operation: () => Promise<T>,
+    onSuccess: (result: T) => void,
+    failureMessage: string,
+  ) => {
+    if (mutationTokensRef.current.has(id)) return;
+    const token = Symbol(id);
+    const operationGeneration = authorizationGenerationRef.current;
+    mutationTokensRef.current.set(id, token);
+    setLockedIds(new Set(mutationTokensRef.current.keys()));
     try {
-      await dependencies.saveProduct(
-        { ...toInput(product), stock: product.stock > 0 ? 0 : 1 },
-        { id: product.id, expectedRevision: product.revision ?? 0 },
-      );
-      setToast("재고 상태를 변경했습니다.");
+      const result = await operation();
+      if (
+        authorizationGenerationRef.current === operationGeneration
+        && mutationTokensRef.current.get(id) === token
+      ) onSuccess(result);
     } catch {
-      setToast("재고 상태를 변경하지 못했습니다.");
+      if (
+        authorizationGenerationRef.current === operationGeneration
+        && mutationTokensRef.current.get(id) === token
+      ) setToast(failureMessage);
+    } finally {
+      if (mutationTokensRef.current.get(id) === token) {
+        mutationTokensRef.current.delete(id);
+        setLockedIds(new Set(mutationTokensRef.current.keys()));
+      }
     }
   };
 
-  const confirmDelete = async () => {
-    if (!deleting || deleteBusy) return;
-    setDeleteBusy(true);
-    try {
-      await dependencies.deleteProduct(deleting.id);
-      setDeleting(null);
-      setToast("상품을 삭제했습니다.");
-    } catch {
-      setToast("상품을 삭제하지 못했습니다. 네트워크 연결을 확인해 주세요.");
-    } finally {
-      setDeleteBusy(false);
+  const toggleStock = (product: Product) => void runDocumentMutation(
+    product.id,
+    () => dependencies.saveProduct(
+      { ...toInput(product), stock: product.stock > 0 ? 0 : 1 },
+      { id: product.id, expectedRevision: product.revision ?? 0 },
+    ),
+    () => setToast("재고 상태를 변경했습니다."),
+    "재고 상태를 변경하지 못했습니다.",
+  );
+
+  const duplicateProduct = (productId: string) => void runDocumentMutation(
+    productId,
+    () => dependencies.duplicateProductToDraft(productId),
+    () => setToast("복제 초안을 만들었습니다."),
+    "상품을 복제하지 못했습니다. 목록을 새로 확인해 주세요.",
+  );
+
+  const publishSavedDraft = (draft: ProductDraft) => void runDocumentMutation(
+    draft.id,
+    () => dependencies.publishDraft(draft),
+    () => setToast("상품을 판매 공개했습니다."),
+    "판매 공개를 완료하지 못했습니다. 초안을 다시 확인해 주세요.",
+  );
+
+  const previewRow = (row: ProductTableRow) => {
+    const route = row.kind === "published"
+      ? `/products/${encodeURIComponent(row.value.id)}`
+      : `/admin/products/preview/${encodeURIComponent(row.value.id)}`;
+    const previewWindow = window.open(route, "_blank", "noopener,noreferrer");
+    if (!previewWindow) setToast("미리 보기 창을 열지 못했습니다. 팝업 차단 설정을 확인해 주세요.");
+  };
+
+  const closePendingOperation = (operation: PendingOperation) => {
+    setPendingOperation((current) => (
+      current?.action === operation.action
+      && current.row.kind === operation.row.kind
+      && current.row.value.id === operation.row.value.id
+        ? null
+        : current
+    ));
+  };
+
+  const confirmPendingOperation = () => {
+    const operation = pendingOperation;
+    if (!operation) return;
+    const { row } = operation;
+    if (operation.action === "unpublish") {
+      if (row.kind !== "published") return;
+      void runDocumentMutation(
+        row.value.id,
+        () => dependencies.unpublishProduct(row.value),
+        () => {
+          closePendingOperation(operation);
+          setToast("판매를 중지하고 수정 가능한 초안으로 옮겼습니다.");
+        },
+        "판매를 중지하지 못했습니다. 최신 상품 상태를 확인해 주세요.",
+      );
+      return;
     }
+
+    void runDocumentMutation(
+      row.value.id,
+      () => row.kind === "published"
+        ? dependencies.deleteProduct(row.value.id)
+        : dependencies.discardDraft(row.value),
+      () => {
+        closePendingOperation(operation);
+        setToast(row.kind === "published" ? "상품을 삭제했습니다." : "초안을 삭제했습니다.");
+      },
+      row.kind === "published"
+        ? "상품을 삭제하지 못했습니다. 네트워크 연결을 확인해 주세요."
+        : "초안을 삭제하지 못했습니다. 최신 초안 상태를 확인해 주세요.",
+    );
   };
 
   const startCreate = () => {
     editorGenerationRef.current += 1;
     setEditorGeneration(editorGenerationRef.current);
     setEditorPublishing(false);
+    setEditorGuardActive(false);
     setEditingDraft(dependencies.startDraftSession(blankDraft(dependencies.createDraftId())));
   };
 
@@ -520,6 +669,7 @@ export function AdminDashboard({ dependencies = defaultDependencies }: { depende
     editorGenerationRef.current += 1;
     setEditorGeneration(editorGenerationRef.current);
     setEditorPublishing(false);
+    setEditorGuardActive(false);
     setEditingDraft(drafts.find((draft) => draft.id === product.id) ?? dependencies.createProductEditDraft(product));
   };
 
@@ -527,7 +677,13 @@ export function AdminDashboard({ dependencies = defaultDependencies }: { depende
     editorGenerationRef.current += 1;
     setEditorGeneration(editorGenerationRef.current);
     setEditorPublishing(false);
+    setEditorGuardActive(false);
     setEditingDraft(draft);
+  };
+
+  const editRow = (row: ProductTableRow) => {
+    if (row.kind === "published") startEdit(row.value);
+    else continueDraft(row.value);
   };
 
   if (session === "loading" || session === "checking") {
@@ -550,8 +706,6 @@ export function AdminDashboard({ dependencies = defaultDependencies }: { depende
 
       {toast && <div className="admin-toast" role="status"><span>{toast}</span><button type="button" aria-label="알림 닫기" onClick={() => setToast("")}>×</button></div>}
 
-      <CsvTools products={products} onImport={importProducts} />
-
       {editingDraft ? (
         <DraftEditor
           ref={editorRef}
@@ -559,75 +713,122 @@ export function AdminDashboard({ dependencies = defaultDependencies }: { depende
           initialDraft={editingDraft}
           dependencies={dependencies}
           isActive={() => editorGenerationRef.current === editorGeneration}
+          allowHistoryNavigation={allowHistoryNavigation}
           publishing={editorPublishing}
           onPublishingChange={(publishing) => {
             if (editorGenerationRef.current === editorGeneration) setEditorPublishing(publishing);
           }}
+          onGuardingChange={(active) => {
+            if (editorGenerationRef.current === editorGeneration) setEditorGuardActive(active);
+          }}
           onClose={() => {
             if (editorGenerationRef.current !== editorGeneration || editorPublishing) return;
             editorGenerationRef.current += 1;
+            setEditorGuardActive(false);
             setEditingDraft(null);
           }}
           onPublished={() => {
             if (editorGenerationRef.current !== editorGeneration) return;
             editorGenerationRef.current += 1;
             setEditorPublishing(false);
+            setEditorGuardActive(false);
             setEditingDraft(null);
             setToast("상품을 판매 공개했습니다.");
           }}
         />
       ) : (
-        <section className="admin-catalog" aria-labelledby="admin-catalog-heading">
-          <div className="admin-toolbar">
-            <div><h2 id="admin-catalog-heading">등록 상품</h2><p>총 {products.length}개</p></div>
-            <label><span className="sr-only">상품 검색</span><input aria-label="상품 검색" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="상품명, 카테고리, ID 검색" /></label>
-            <button type="button" className="admin-primary-button" onClick={startCreate}>새 상품 등록</button>
+        <>
+          <div className="admin-view-tabs" role="tablist" aria-label="상품 관리 보기">
+            <button id="admin-tab-published" type="button" role="tab" aria-label="판매 상품" aria-selected={view === "published"} aria-controls="admin-panel-published" onClick={() => setView("published")}>판매 상품 <span aria-hidden="true">{products.length}</span></button>
+            <button id="admin-tab-drafts" type="button" role="tab" aria-label="임시 저장" aria-selected={view === "drafts"} aria-controls="admin-panel-drafts" onClick={() => setView("drafts")}>임시 저장 <span aria-hidden="true">{drafts.length}</span></button>
+            <button id="admin-tab-csv" type="button" role="tab" aria-label="CSV 관리" aria-selected={view === "csv"} aria-controls="admin-panel-csv" onClick={() => setView("csv")}>CSV 관리</button>
           </div>
-          {draftError ? <p className="admin-error" role="alert">{draftError}</p> : null}
-          {drafts.length > 0 ? (
-            <section aria-labelledby="admin-drafts-heading">
-              <h3 id="admin-drafts-heading">임시 저장 초안</h3>
-              <ul>{drafts.map((draft) => {
-                const draftName = draft.name.trim() || "이름 없는 상품";
-                return (
-                  <li key={draft.id}>
-                    <span>{draftName}</span>{" "}
-                    <button type="button" onClick={() => continueDraft(draft)} aria-label={`${draftName} 초안 이어 쓰기`}>이어 쓰기</button>
-                  </li>
-                );
-              })}</ul>
+
+          {view === "published" ? (
+            <section id="admin-panel-published" className="admin-catalog" role="tabpanel" aria-labelledby="admin-tab-published">
+              <div className="admin-toolbar">
+                <div><h2>판매 상품</h2><p>현재 스토어에 공개된 상품 {products.length}개</p></div>
+                <button type="button" className="admin-primary-button" onClick={startCreate}>새 상품 등록</button>
+              </div>
+              {productError ? <p className="admin-error" role="alert">{productError}</p> : (
+                <ProductTable
+                  rows={publishedRows}
+                  query={query}
+                  statusFilter={publishedStatus}
+                  statusOptions={["all", "published", "sold-out"]}
+                  sort={sort}
+                  lockedIds={lockedIds}
+                  onQueryChange={setQuery}
+                  onStatusFilterChange={setPublishedStatus}
+                  onSortChange={setSort}
+                  onEdit={editRow}
+                  onDuplicate={duplicateProduct}
+                  onPreview={previewRow}
+                  onPublish={publishSavedDraft}
+                  onUnpublish={(value) => setPendingOperation({ action: "unpublish", row: { kind: "published", value } })}
+                  onDelete={(row) => setPendingOperation({ action: "delete", row })}
+                  onToggleStock={toggleStock}
+                />
+              )}
             </section>
           ) : null}
-          {productError ? <p className="admin-error" role="alert">{productError}</p> : visibleProducts.length === 0 ? (
-            <div className="admin-empty">{products.length === 0 ? "등록된 상품이 없습니다." : "검색 결과가 없습니다."}</div>
-          ) : (
-            <div className="admin-table-wrap">
-              <table className="admin-table">
-                <caption>등록 상품 목록</caption>
-                <thead><tr><th>상품</th><th>카테고리</th><th>판매가</th><th>재고</th><th>관리</th></tr></thead>
-                <tbody>{visibleProducts.map((product) => (
-                  <tr key={product.id}>
-                    <td><strong>{product.name}</strong><small>{product.id}</small></td>
-                    <td>{product.category}</td>
-                    <td>{formatWon(product.price)}</td>
-                    <td><button type="button" className={product.stock > 0 ? "admin-stock" : "admin-stock admin-stock--off"} aria-label={`${product.name} ${product.stock > 0 ? "품절 처리" : "판매 재개"}`} onClick={() => void toggleStock(product)}>{product.stock > 0 ? `${product.stock}개` : "품절"}</button></td>
-                    <td><div className="admin-row-actions"><button type="button" aria-label={`${product.name} 수정`} onClick={() => startEdit(product)}>수정</button><button type="button" aria-label={`${product.name} 삭제`} onClick={() => setDeleting(product)}>삭제</button></div></td>
-                  </tr>
-                ))}</tbody>
-              </table>
-            </div>
-          )}
-        </section>
+
+          {view === "drafts" ? (
+            <section id="admin-panel-drafts" className="admin-catalog" role="tabpanel" aria-labelledby="admin-tab-drafts">
+              <div className="admin-toolbar">
+                <div><h2>임시 저장 초안</h2><p>작성 중이거나 판매 중지된 초안 {drafts.length}개</p></div>
+              </div>
+              {draftError ? <p className="admin-error" role="alert">{draftError}</p> : (
+                <ProductTable
+                  rows={draftRows}
+                  query={query}
+                  statusFilter={draftStatus}
+                  statusOptions={["all", "draft"]}
+                  sort={sort}
+                  lockedIds={lockedIds}
+                  onQueryChange={setQuery}
+                  onStatusFilterChange={setDraftStatus}
+                  onSortChange={setSort}
+                  onEdit={editRow}
+                  onDuplicate={duplicateProduct}
+                  onPreview={previewRow}
+                  onPublish={publishSavedDraft}
+                  onUnpublish={(value) => setPendingOperation({ action: "unpublish", row: { kind: "published", value } })}
+                  onDelete={(row) => setPendingOperation({ action: "delete", row })}
+                  onToggleStock={toggleStock}
+                />
+              )}
+            </section>
+          ) : null}
+
+          {view === "csv" ? (
+            <section id="admin-panel-csv" className="admin-catalog" role="tabpanel" aria-labelledby="admin-tab-csv">
+              <CsvTools products={products} onImport={importProducts} />
+            </section>
+          ) : null}
+        </>
       )}
 
-      {deleting && (
-        <DeleteProductDialog
-          product={deleting}
-          busy={deleteBusy}
-          onCancel={() => setDeleting(null)}
-          onConfirm={() => void confirmDelete()}
+      {pendingOperation ? (
+        <OperationDialog
+          title={pendingOperation.action === "unpublish"
+            ? "판매 중지 확인"
+            : pendingOperation.row.kind === "draft" ? "초안 삭제 확인" : "상품 삭제 확인"}
+          description={pendingOperation.action === "unpublish" ? (
+            <><strong>{pendingOperation.row.value.name}</strong> 상품이 공개 상품에서 사라지고 수정 가능한 초안으로 이동합니다.</>
+          ) : pendingOperation.row.kind === "draft" ? (
+            <><strong>{pendingOperation.row.value.name}</strong> 초안의 임시 저장 내용을 삭제합니다. 삭제 후에는 복구할 수 없습니다.</>
+          ) : (
+            <><strong>{pendingOperation.row.value.name}</strong> 상품을 삭제하시겠습니까? 삭제한 상품은 복구할 수 없습니다.</>
+          )}
+          confirmLabel={pendingOperation.action === "unpublish"
+            ? "판매 중지"
+            : pendingOperation.row.kind === "draft" ? "초안 삭제" : "삭제 확인"}
+          busy={lockedIds.has(pendingOperation.row.value.id)}
+          onCancel={() => setPendingOperation(null)}
+          onConfirm={confirmPendingOperation}
         />
-      )}
+      ) : null}
     </main>
   );
 }
