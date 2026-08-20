@@ -888,30 +888,100 @@ it("keeps router state on the admin sentinel until Back is confirmed, then repla
 
     act(() => window.history.back());
     await waitFor(() => expect(confirm).toHaveBeenCalledOnce());
-    await waitFor(() => expect(routerObservations).toHaveLength(2));
+    await waitFor(() => expect(routerObservations).toHaveLength(1));
     expect(window.location.pathname).toBe("/admin/products");
     expect(screen.getByRole("heading", { name: "상품 등록" })).toBeVisible();
     expect(routerObservations[0]).toEqual({
       pathname: "/admin/products",
       state: { __NA: true, tree: ["admin"], key: "original" },
     });
-    expect(routerObservations[1]?.pathname).toBe("/admin/products");
-    expect(routerObservations[1]?.state).toMatchObject(originalAdminState);
-    expect(Object.keys(routerObservations[1]?.state as object)).toHaveLength(4);
+    expect(window.history.state).toMatchObject(originalAdminState);
+    expect(Object.keys(window.history.state as object)).toHaveLength(4);
 
     act(() => window.history.back());
     await waitFor(() => expect(confirm).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(window.location.pathname).toBe("/products"));
-    expect(routerObservations).toHaveLength(4);
-    expect(routerObservations[2]).toEqual({
+    expect(routerObservations).toHaveLength(3);
+    expect(routerObservations[1]).toEqual({
       pathname: "/admin/products",
       state: { __NA: true, tree: ["admin"], key: "original" },
     });
-    expect(routerObservations[3]).toEqual({
+    expect(routerObservations[2]).toEqual({
       pathname: "/products",
       state: { __NA: true, tree: ["products"], key: "destination" },
     });
     expect(Object.keys(originalAdminState)).toEqual(["__NA", "tree", "key"]);
+  } finally {
+    view.unmount();
+    window.removeEventListener("popstate", observeLikeRouter);
+  }
+});
+
+it("rearms a cancelled Back synchronously before immediate editor cleanup", async () => {
+  const destinationState = Object.freeze({ __NA: true, tree: ["products"], key: "destination" });
+  const originalAdminState = Object.freeze({ __NA: true, tree: ["admin"], key: "original" });
+  window.history.replaceState(destinationState, "", "/products");
+  window.history.pushState(originalAdminState, "", "/admin/products");
+  const initialLength = window.history.length;
+  const routerObservations: Array<{ pathname: string; state: unknown }> = [];
+  const observeLikeRouter = (event: PopStateEvent) => {
+    routerObservations.push({ pathname: window.location.pathname, state: event.state });
+  };
+  window.addEventListener("popstate", observeLikeRouter);
+  const go = vi.spyOn(window.history, "go");
+  const user = userEvent.setup();
+  const deps = dependencies({
+    observeAdminSession: (next) => {
+      next("admin");
+      return vi.fn();
+    },
+    subscribeProducts: (onData) => {
+      onData([]);
+      return vi.fn();
+    },
+    subscribeDrafts: (onData) => {
+      onData([]);
+      return vi.fn();
+    },
+  });
+  const view = render(<AdminDashboard dependencies={deps} />);
+  const confirm = vi.spyOn(window, "confirm").mockImplementationOnce(() => {
+    queueMicrotask(() => view.unmount());
+    return false;
+  });
+  try {
+    await user.click(await screen.findByRole("button", { name: "새 상품 등록" }));
+    await user.type(screen.getByLabelText("상품명"), "오메가");
+    await waitFor(() => expect(window.history.length).toBe(initialLength + 1));
+
+    act(() => window.history.back());
+    await waitFor(() => expect(confirm).toHaveBeenCalledOnce());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(go).not.toHaveBeenCalled();
+    expect(window.location.pathname).toBe("/admin/products");
+    expect(window.history.state).toEqual(originalAdminState);
+    expect(routerObservations).toEqual([
+      { pathname: "/admin/products", state: originalAdminState },
+    ]);
+    expect(window.history.length).toBe(initialLength + 1);
+
+    act(() => window.history.back());
+    await waitFor(() => expect(routerObservations).toHaveLength(2));
+    expect(routerObservations[1]).toEqual({
+      pathname: "/admin/products",
+      state: originalAdminState,
+    });
+    act(() => window.history.back());
+    await waitFor(() => expect(window.location.pathname).toBe("/products"));
+    expect(routerObservations[2]).toEqual({
+      pathname: "/products",
+      state: destinationState,
+    });
+    expect(routerObservations.filter(({ pathname }) => pathname === "/products")).toHaveLength(1);
+    expect(window.history.state).toEqual(destinationState);
+    expect(Object.keys(originalAdminState)).toEqual(["__NA", "tree", "key"]);
+    expect(Object.keys(destinationState)).toEqual(["__NA", "tree", "key"]);
   } finally {
     view.unmount();
     window.removeEventListener("popstate", observeLikeRouter);
@@ -962,8 +1032,9 @@ it("reuses one history sentinel across repeated dirty and saved cycles", async (
       const beforeCancel = routerObservations.length;
       act(() => window.history.back());
       await waitFor(() => expect(confirm).toHaveBeenCalledTimes(cycle));
-      await waitFor(() => expect(routerObservations).toHaveLength(beforeCancel + 2));
+      await waitFor(() => expect(routerObservations).toHaveLength(beforeCancel + 1));
       expect(routerObservations.slice(beforeCancel).every(({ pathname }) => pathname === "/admin/products")).toBe(true);
+      expect(routerObservations.at(-1)?.state).toEqual(originalAdminState);
       expect(window.location.pathname).toBe("/admin/products");
 
       await user.click(screen.getByRole("button", { name: "임시 저장" }));
@@ -977,8 +1048,9 @@ it("reuses one history sentinel across repeated dirty and saved cycles", async (
     const beforeFinalCancel = routerObservations.length;
     act(() => window.history.back());
     await waitFor(() => expect(confirm).toHaveBeenCalledTimes(4));
-    await waitFor(() => expect(routerObservations).toHaveLength(beforeFinalCancel + 2));
+    await waitFor(() => expect(routerObservations).toHaveLength(beforeFinalCancel + 1));
     expect(routerObservations.slice(beforeFinalCancel).every(({ pathname }) => pathname === "/admin/products")).toBe(true);
+    expect(routerObservations.at(-1)?.state).toEqual(originalAdminState);
     expect(window.location.pathname).toBe("/admin/products");
 
     const beforeAllow = routerObservations.length;

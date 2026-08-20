@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef } from "react";
 
 const EDITOR_GUARD_STATE_KEY = "__vitaleafAdminEditorHistoryGuard";
 
-type GuardPhase = "armed" | "restoring" | "replaying" | "inactive";
+type GuardPhase = "armed" | "replaying" | "inactive";
 
 type GuardSnapshot = {
   guardId: string;
@@ -67,17 +67,10 @@ export function useUnsavedHistoryGuard({
   }, []);
 
   useEffect(() => {
-    const guardPopState = (event: PopStateEvent) => {
+    const guardPopState = () => {
       const snapshot = snapshotRef.current;
       if (!snapshot) return;
       const { guardId } = snapshot;
-      if (snapshot.phase === "restoring") {
-        if (isGuardState(event.state, guardId)) {
-          snapshot.phase = "armed";
-          snapshot.position = "sentinel";
-        }
-        return;
-      }
       if (snapshot.phase === "replaying") {
         snapshot.phase = "inactive";
         snapshot.position = "destination";
@@ -91,8 +84,9 @@ export function useUnsavedHistoryGuard({
         window.history.back();
         return;
       }
-      snapshot.phase = "restoring";
-      window.history.go(1);
+      window.history.pushState(withGuardId(snapshot.originalState, guardId), "", snapshot.originalUrl);
+      snapshot.phase = "armed";
+      snapshot.position = "sentinel";
     };
 
     window.addEventListener("popstate", guardPopState);
