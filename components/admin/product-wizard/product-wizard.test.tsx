@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 
@@ -363,6 +363,55 @@ it("locks publishing synchronously before two clicks can start duplicate request
   });
 
   await waitFor(() => expect(onPublish).toHaveBeenCalledOnce());
+});
+
+it("blocks drop, drag, pointer, and media change paths for the full deferred publish", async () => {
+  const pending = deferred<void>();
+  const onPublish = vi.fn(() => pending.promise);
+  const onChange = vi.fn();
+  const blockedUpload = deferred<{ url: string; storagePath: string; alt: string; order: number }>();
+  const upload = vi.fn<MediaUpload>(() => ({ promise: blockedUpload.promise, cancel: vi.fn() }));
+  render(<ProductWizard {...propsFor({
+    currentStep: 2,
+    name: "오메가",
+    category: "nutrition",
+    price: 10_000,
+    stock: 1,
+    media: [
+      { url: "first.jpg", storagePath: null, alt: "first", order: 0 },
+      { url: "second.jpg", storagePath: null, alt: "second", order: 1 },
+    ],
+    dosage: "하루 한 번",
+    ingredients: [{ name: "EPA", amount: "600mg", dailyValue: "" }],
+    origin: "한국",
+    cautions: ["권장량을 지켜 주세요."],
+  })} onChange={onChange} onPublish={onPublish} upload={upload} deleteImage={vi.fn()} />);
+
+  await userEvent.click(screen.getByRole("button", { name: "판매 공개" }));
+  await waitFor(() => expect(onPublish).toHaveBeenCalledOnce());
+  onChange.mockClear();
+
+  const dropZone = screen.getByText(/JPEG, PNG, WebP/).parentElement!;
+  const firstCard = screen.getByRole("img", { name: "first" }).closest("article")!;
+  const secondCard = screen.getByRole("img", { name: "second" }).closest("article")!;
+  const dataTransfer = {
+    files: [new File(["image"], "blocked.jpg", { type: "image/jpeg" })],
+    effectAllowed: "none",
+    setData: vi.fn(),
+    getData: vi.fn(() => "second.jpg"),
+  };
+
+  fireEvent.drop(dropZone, { dataTransfer });
+  fireEvent.dragStart(secondCard, { dataTransfer });
+  fireEvent.drop(firstCard, { dataTransfer });
+  fireEvent.pointerDown(secondCard);
+  fireEvent.pointerUp(firstCard);
+  fireEvent.change(screen.getByLabelText("두 번째 이미지 대체 텍스트"), { target: { value: "changed" } });
+
+  expect(upload).not.toHaveBeenCalled();
+  expect(onChange).not.toHaveBeenCalled();
+  expect(firstCard).toHaveAttribute("aria-disabled", "true");
+  expect(firstCard).toHaveAttribute("draggable", "false");
 });
 
 it("keeps an upload alive when staff moves to another wizard step", async () => {

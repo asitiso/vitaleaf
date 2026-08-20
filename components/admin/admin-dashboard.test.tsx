@@ -1,5 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import Link from "next/link";
 import { afterEach, expect, it, vi } from "vitest";
 
 vi.mock("../../lib/firebase/client", () => ({ auth: {}, db: {} }));
@@ -31,6 +32,7 @@ import { AdminDashboard, type AdminDashboardDependencies } from "./admin-dashboa
 
 afterEach(() => {
   vi.restoreAllMocks();
+  window.history.replaceState({}, "", "/");
 });
 
 const product: Product = {
@@ -517,6 +519,79 @@ it("freezes editing, media, closing, and logout for the full deferred publish li
   expect(screen.queryByRole("heading", { name: `${product.name} 수정` })).not.toBeInTheDocument();
 });
 
+it("ignores an old admin publish completion after a new admin starts publishing", async () => {
+  const user = userEvent.setup();
+  let emitSession!: (state: AdminSessionState) => void;
+  const productSubscriptions: Array<(products: Product[]) => void> = [];
+  const publishA = deferred<void>();
+  const publishB = deferred<void>();
+  const publishableA: Product = {
+    ...product,
+    media: [{ url: "a.jpg", storagePath: null, alt: "A", order: 0 }],
+    thumbnailUrl: "a.jpg",
+    images: ["a.jpg"],
+    dosage: "하루 한 번",
+    ingredients: [{ name: "EPA", amount: "600mg", dailyValue: "" }],
+    origin: "한국",
+    cautions: ["권장량을 지켜 주세요."],
+  };
+  const publishableB: Product = {
+    ...publishableA,
+    id: "vitamin-b",
+    name: "비타민 B",
+    slug: "vitamin-b",
+    media: [{ url: "b.jpg", storagePath: null, alt: "B", order: 0 }],
+    thumbnailUrl: "b.jpg",
+    images: ["b.jpg"],
+  };
+  const publishDraft = vi.fn()
+    .mockImplementationOnce(() => publishA.promise)
+    .mockImplementationOnce(() => publishB.promise);
+  const deps = dependencies({
+    observeAdminSession: (next) => {
+      emitSession = next;
+      return vi.fn();
+    },
+    subscribeProducts: (onData) => {
+      productSubscriptions.push(onData);
+      return vi.fn();
+    },
+    subscribeDrafts: (onData) => {
+      onData([]);
+      return vi.fn();
+    },
+    createProductEditDraft: vi.fn((value) => productDraft(value)),
+    publishDraft,
+  });
+  render(<AdminDashboard dependencies={deps} />);
+
+  act(() => emitSession("admin"));
+  await waitFor(() => expect(productSubscriptions).toHaveLength(1));
+  act(() => productSubscriptions[0]([publishableA]));
+  await user.click(await screen.findByRole("button", { name: `${publishableA.name} 수정` }));
+  await user.click(screen.getByRole("button", { name: "판매 공개" }));
+  await waitFor(() => expect(publishDraft).toHaveBeenCalledTimes(1));
+
+  act(() => emitSession("checking"));
+  expect(screen.getByRole("status")).toHaveTextContent("관리자 권한을 확인하는 중입니다.");
+  act(() => emitSession("admin"));
+  await waitFor(() => expect(productSubscriptions).toHaveLength(2));
+  act(() => productSubscriptions[1]([publishableB]));
+  await user.click(await screen.findByRole("button", { name: `${publishableB.name} 수정` }));
+  await user.click(screen.getByRole("button", { name: "판매 공개" }));
+  await waitFor(() => expect(publishDraft).toHaveBeenCalledTimes(2));
+
+  await act(async () => {
+    publishA.resolve();
+    await publishA.promise;
+  });
+
+  expect(screen.getByRole("heading", { name: `${publishableB.name} 수정` })).toBeVisible();
+  expect(screen.getByRole("region", { name: "상품 등록" })).toHaveAttribute("aria-busy", "true");
+  expect(screen.getByRole("button", { name: "공개 중" })).toBeDisabled();
+  expect(screen.queryByText("상품을 판매 공개했습니다.")).not.toBeInTheDocument();
+});
+
 it("opens a blank preview window synchronously and navigates it only after a slow flush", async () => {
   const user = userEvent.setup();
   const pendingSave = deferred<ProductDraft>();
@@ -740,7 +815,7 @@ it("uses the same unsaved confirmation before logout", async () => {
   expect(deps.signOutAdmin).toHaveBeenCalledOnce();
 });
 
-it("guards internal links only while the active editor has unsaved work", async () => {
+it("guards actual product links only while the active editor has unsaved work", async () => {
   const user = userEvent.setup();
   const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValue(true);
   const deps = dependencies({
@@ -757,7 +832,7 @@ it("guards internal links only while the active editor has unsaved work", async 
       return vi.fn();
     },
   });
-  render(<><a href="#store">스토어</a><AdminDashboard dependencies={deps} /></>);
+  render(<><Link href="/products">스토어</Link><AdminDashboard dependencies={deps} /></>);
 
   await user.click(await screen.findByRole("button", { name: "새 상품 등록" }));
   await user.type(screen.getByLabelText("상품명"), "오메가");
@@ -777,5 +852,46 @@ it("guards internal links only while the active editor has unsaved work", async 
   const afterClose = new MouseEvent("click", { bubbles: true, cancelable: true });
   storeLink.dispatchEvent(afterClose);
   expect(afterClose.defaultPrevented).toBe(false);
+  expect(confirm).not.toHaveBeenCalled();
+});
+
+it("restores a dirty editor after a cancelled Back and allows the next Back without leaving a listener", async () => {
+  window.history.replaceState({}, "", "/products");
+  window.history.pushState({}, "", "/admin/products");
+  const user = userEvent.setup();
+  const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
+  const deps = dependencies({
+    observeAdminSession: (next) => {
+      next("admin");
+      return vi.fn();
+    },
+    subscribeProducts: (onData) => {
+      onData([]);
+      return vi.fn();
+    },
+    subscribeDrafts: (onData) => {
+      onData([]);
+      return vi.fn();
+    },
+  });
+  const view = render(<AdminDashboard dependencies={deps} />);
+
+  await user.click(await screen.findByRole("button", { name: "새 상품 등록" }));
+  await user.type(screen.getByLabelText("상품명"), "오메가");
+
+  act(() => window.history.back());
+  await waitFor(() => expect(confirm).toHaveBeenCalledOnce());
+  expect(window.location.pathname).toBe("/admin/products");
+  expect(screen.getByRole("heading", { name: "상품 등록" })).toBeVisible();
+
+  act(() => window.history.back());
+  await waitFor(() => expect(confirm).toHaveBeenCalledTimes(2));
+  expect(window.location.pathname).toBe("/products");
+
+  view.unmount();
+  confirm.mockClear();
+  window.history.pushState({}, "", "/admin/products");
+  act(() => window.history.back());
+  await waitFor(() => expect(window.location.pathname).toBe("/products"));
   expect(confirm).not.toHaveBeenCalled();
 });

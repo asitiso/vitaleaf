@@ -65,6 +65,7 @@ export function MediaStep({
   upload = uploadProductImage,
   deleteImage = deleteProductImage,
   onUploadingChange,
+  disabled = false,
 }: {
   productId: string;
   sessionId?: string | null;
@@ -73,6 +74,7 @@ export function MediaStep({
   upload?: MediaUpload;
   deleteImage?: MediaDelete;
   onUploadingChange?(uploading: boolean): void;
+  disabled?: boolean;
 }) {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [renderMedia, setRenderMedia] = useState(media);
@@ -151,6 +153,7 @@ export function MediaStep({
   };
 
   const beginUpload = (id: number) => {
+    if (disabled) return;
     const generation = generationRef.current;
     const uploadProductId = productIdRef.current;
     const current = queueRef.current.find((item) => item.id === id);
@@ -306,6 +309,7 @@ export function MediaStep({
   const displayedMedia = useMemo(() => mergedMedia(queue, renderMedia), [queue, renderMedia]);
 
   const addFiles = (files: FileList | File[]) => {
+    if (disabled) return;
     const firstRank = Math.max(-1, ...Array.from(ranksRef.current.values())) + 1;
     const nextItems = Array.from(files).map((file, index) => ({
       id: nextId.current++,
@@ -326,6 +330,7 @@ export function MediaStep({
   };
 
   const updateAlt = (target: ProductMedia, alt: string) => {
+    if (disabled) return;
     const key = itemKey(target);
     const nextQueue = queueRef.current.map((item) => item.media && itemKey(item.media) === key ? {
       ...item,
@@ -337,6 +342,7 @@ export function MediaStep({
   };
 
   const move = (from: number, to: number) => {
+    if (disabled) return;
     if (from === to || to < 0 || to >= displayedMedia.length) return;
     const movingKey = itemKey(displayedMedia[from]!);
     const destinationKey = itemKey(displayedMedia[to]!);
@@ -361,13 +367,14 @@ export function MediaStep({
   };
 
   const requestDelete = (target: ProductMedia) => {
+    if (disabled) return;
     deleteTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setDeleteError(null);
     setDeleteTarget({ key: itemKey(target), media: target });
   };
 
   const confirmDelete = async () => {
-    if (!deleteTarget || deleting) return;
+    if (disabled || !deleteTarget || deleting) return;
     const generation = generationRef.current;
     const deleteProductId = productIdRef.current;
     setDeleting(true);
@@ -415,10 +422,12 @@ export function MediaStep({
 
   const handleDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
+    if (disabled) return;
     if (event.dataTransfer.files.length) addFiles(event.dataTransfer.files);
   };
 
   const moveDraggedTo = (destination: number, draggedKey = dragKey.current) => {
+    if (disabled) return;
     const source = draggedKey;
     if (source === null) return;
     const from = displayedMedia.findIndex((item) => itemKey(item) === source);
@@ -426,12 +435,15 @@ export function MediaStep({
   };
 
   return (
-    <section className="product-wizard__step-content product-media-step" aria-labelledby="wizard-media-title">
+    <section className="product-wizard__step-content product-media-step" role="group" aria-labelledby="wizard-media-title" aria-disabled={disabled}>
       <h2 id="wizard-media-title">상품 이미지를 준비하세요</h2>
       <p>파일별 진행 상태를 확인하고 대표 이미지와 설명을 관리하세요.</p>
-      <div className="product-media-step__drop-zone" onDragOver={(event) => event.preventDefault()} onDrop={handleDrop}>
-        <label className="admin-secondary-button" htmlFor="product-media-files">상품 이미지 추가</label>
-        <input id="product-media-files" className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => {
+      <div className="product-media-step__drop-zone" aria-disabled={disabled} onDragOver={(event) => {
+        if (!disabled) event.preventDefault();
+      }} onDrop={handleDrop}>
+        <label className="admin-secondary-button" aria-disabled={disabled} htmlFor="product-media-files">상품 이미지 추가</label>
+        <input id="product-media-files" className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={disabled} onChange={(event) => {
+          if (disabled) return;
           if (event.target.files) addFiles(event.target.files);
           event.target.value = "";
         }} />
@@ -441,7 +453,9 @@ export function MediaStep({
       {queue.filter((item) => item.status !== "complete").map((item) => (
         <article key={item.id} className="product-media-step__upload" aria-label={`${item.file.name} 업로드 상태`}>
           {item.previewUrl && <img src={item.previewUrl} alt="" />}
-          <div><strong>{item.file.name}</strong>{item.status === "uploading" ? <><progress aria-label={`${item.file.name} 업로드 진행률`} value={item.progress} max="100" /> <span role="status">{item.progress}% 업로드 중</span><button type="button" onClick={() => item.controller?.cancel()}>{item.file.name} 업로드 취소</button></> : <><p role="alert">{item.error}</p><button type="button" onClick={() => beginUpload(item.id)}>{item.file.name} 다시 시도</button></>}</div>
+          <div><strong>{item.file.name}</strong>{item.status === "uploading" ? <><progress aria-label={`${item.file.name} 업로드 진행률`} value={item.progress} max="100" /> <span role="status">{item.progress}% 업로드 중</span><button type="button" disabled={disabled} onClick={() => {
+            if (!disabled) item.controller?.cancel();
+          }}>{item.file.name} 업로드 취소</button></> : <><p role="alert">{item.error}</p><button type="button" disabled={disabled} onClick={() => beginUpload(item.id)}>{item.file.name} 다시 시도</button></>}</div>
         </article>
       ))}
 
@@ -453,24 +467,29 @@ export function MediaStep({
             <article
               key={key}
               className="product-media-step__item"
-              draggable
-              onDragStart={(event) => { dragKey.current = key; event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", key); }}
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => { event.preventDefault(); moveDraggedTo(index, event.dataTransfer.getData("text/plain") || dragKey.current); }}
+              role="group"
+              draggable={!disabled}
+              aria-disabled={disabled}
+              onDragStart={(event) => {
+                if (disabled) return;
+                dragKey.current = key; event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", key);
+              }}
+              onDragOver={(event) => { if (!disabled) event.preventDefault(); }}
+              onDrop={(event) => { event.preventDefault(); if (!disabled) moveDraggedTo(index, event.dataTransfer.getData("text/plain") || dragKey.current); }}
               onDragEnd={() => { dragKey.current = null; }}
-              onPointerDown={() => { dragKey.current = key; }}
-              onPointerUp={() => { moveDraggedTo(index); dragKey.current = null; }}
+              onPointerDown={() => { if (!disabled) dragKey.current = key; }}
+              onPointerUp={() => { if (!disabled) moveDraggedTo(index); dragKey.current = null; }}
             >
               <img src={item.url} alt={item.alt} />
               <div><strong>{index === 0 ? "대표 이미지" : `${ordinal(index)} 이미지`}</strong>{queueItem && <span>업로드 완료</span>}</div>
-              <label>대체 텍스트<input aria-label={`${ordinal(index)} 이미지 대체 텍스트`} value={item.alt} onChange={(event) => updateAlt(item, event.target.value)} /></label>
+              <label>대체 텍스트<input aria-label={`${ordinal(index)} 이미지 대체 텍스트`} value={item.alt} disabled={disabled} onChange={(event) => updateAlt(item, event.target.value)} /></label>
               <div className="product-media-step__item-actions">
-                <button data-media-key={key} type="button" disabled={index === 0} onClick={() => move(index, index - 1)} aria-label={`${ordinal(index)} 이미지를 왼쪽으로 이동`}>왼쪽으로 이동</button>
-                <button data-media-key={key} type="button" disabled={index === displayedMedia.length - 1} onClick={() => move(index, index + 1)} aria-label={`${ordinal(index)} 이미지를 오른쪽으로 이동`}>오른쪽으로 이동</button>
-                {index !== 0 && <button data-media-key={key} type="button" onClick={() => move(index, 0)} aria-label={`${ordinal(index)} 이미지를 대표로 설정`}>대표로 설정</button>}
-                <button data-media-key={key} type="button" onClick={() => requestDelete(item)} aria-label={`${ordinal(index)} 이미지 삭제`}>삭제</button>
+                <button data-media-key={key} type="button" disabled={disabled || index === 0} onClick={() => move(index, index - 1)} aria-label={`${ordinal(index)} 이미지를 왼쪽으로 이동`}>왼쪽으로 이동</button>
+                <button data-media-key={key} type="button" disabled={disabled || index === displayedMedia.length - 1} onClick={() => move(index, index + 1)} aria-label={`${ordinal(index)} 이미지를 오른쪽으로 이동`}>오른쪽으로 이동</button>
+                {index !== 0 && <button data-media-key={key} type="button" disabled={disabled} onClick={() => move(index, 0)} aria-label={`${ordinal(index)} 이미지를 대표로 설정`}>대표로 설정</button>}
+                <button data-media-key={key} type="button" disabled={disabled} onClick={() => requestDelete(item)} aria-label={`${ordinal(index)} 이미지 삭제`}>삭제</button>
               </div>
-              {deleteError?.key === key && <p role="alert">{deleteError.message} <button data-media-retry-key={key} type="button" onClick={() => requestDelete(item)} aria-label={`${ordinal(index)} 이미지 삭제 다시 시도`}>삭제 다시 시도</button></p>}
+              {deleteError?.key === key && <p role="alert">{deleteError.message} <button data-media-retry-key={key} type="button" disabled={disabled} onClick={() => requestDelete(item)} aria-label={`${ordinal(index)} 이미지 삭제 다시 시도`}>삭제 다시 시도</button></p>}
             </article>
           );
         })}
@@ -478,7 +497,7 @@ export function MediaStep({
 
       <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
 
-      {deleteTarget && <div className="product-media-step__confirm" role="dialog" aria-modal="true" aria-labelledby="product-media-delete-title"><h3 id="product-media-delete-title">이미지를 삭제할까요?</h3><p>삭제한 이미지는 복구할 수 없습니다.</p><button ref={deleteCancelRef} type="button" disabled={deleting} onClick={closeDeleteDialog} onKeyDown={handleDeleteDialogKeyDown}>취소</button><button ref={deleteConfirmRef} type="button" disabled={deleting} onClick={() => void confirmDelete()} onKeyDown={handleDeleteDialogKeyDown}>삭제 확인</button></div>}
+      {deleteTarget && <div className="product-media-step__confirm" role="dialog" aria-modal="true" aria-labelledby="product-media-delete-title"><h3 id="product-media-delete-title">이미지를 삭제할까요?</h3><p>삭제한 이미지는 복구할 수 없습니다.</p><button ref={deleteCancelRef} type="button" disabled={deleting} onClick={closeDeleteDialog} onKeyDown={handleDeleteDialogKeyDown}>취소</button><button ref={deleteConfirmRef} type="button" disabled={disabled || deleting} onClick={() => void confirmDelete()} onKeyDown={handleDeleteDialogKeyDown}>삭제 확인</button></div>}
     </section>
   );
 }

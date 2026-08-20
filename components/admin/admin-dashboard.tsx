@@ -237,6 +237,7 @@ type DraftEditorHandle = {
 const DraftEditor = forwardRef<DraftEditorHandle, {
   initialDraft: ProductDraft;
   dependencies: AdminDashboardDependencies;
+  isActive(): boolean;
   onClose(): void;
   onPublished(): void;
   publishing: boolean;
@@ -244,6 +245,7 @@ const DraftEditor = forwardRef<DraftEditorHandle, {
 }>(function DraftEditor({
   initialDraft,
   dependencies,
+  isActive,
   onClose,
   onPublished,
   publishing,
@@ -260,6 +262,7 @@ const DraftEditor = forwardRef<DraftEditorHandle, {
   useEffect(() => {
     const hasUnsavedWork = autosaveStatus === "dirty" || autosaveStatus === "saving" || autosaveStatus === "error";
     if (!hasUnsavedWork && !publishing) return;
+    const guardedUrl = window.location.href;
 
     const guardInternalNavigation = (event: MouseEvent) => {
       if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -274,15 +277,25 @@ const DraftEditor = forwardRef<DraftEditorHandle, {
       }
     };
 
+    const guardHistoryNavigation = () => {
+      if (!publishing && confirmClose()) return;
+      window.history.pushState(window.history.state, "", guardedUrl);
+    };
+
     document.addEventListener("click", guardInternalNavigation, true);
-    return () => document.removeEventListener("click", guardInternalNavigation, true);
+    window.addEventListener("popstate", guardHistoryNavigation);
+    return () => {
+      document.removeEventListener("click", guardInternalNavigation, true);
+      window.removeEventListener("popstate", guardHistoryNavigation);
+    };
   }, [autosaveStatus, confirmClose, publishing]);
 
   const close = () => {
-    if (autosave.confirmClose()) onClose();
+    if (isActive() && autosave.confirmClose()) onClose();
   };
 
   const preview = async () => {
+    if (!isActive()) return;
     const previewWindow = window.open(
       "",
       "_blank",
@@ -291,6 +304,10 @@ const DraftEditor = forwardRef<DraftEditorHandle, {
     previewWindow.opener = null;
     try {
       const saved = await autosave.flush();
+      if (!isActive()) {
+        previewWindow.close();
+        return;
+      }
       previewWindow.location.href = `/admin/products/preview/${encodeURIComponent(saved.id)}`;
     } catch (error) {
       previewWindow.close();
@@ -299,14 +316,15 @@ const DraftEditor = forwardRef<DraftEditorHandle, {
   };
 
   const publish = async () => {
-    if (publishLockRef.current) return;
+    if (!isActive() || publishLockRef.current) return;
     publishLockRef.current = true;
     try {
       const saved = await autosave.flush();
+      if (!isActive()) return;
       const errors = validatePublishableDraft(saved);
       if (errors.length > 0) throw new ProductDraftValidationError(errors);
       await dependencies.publishDraft(saved);
-      onPublished();
+      if (isActive()) onPublished();
     } finally {
       publishLockRef.current = false;
     }
@@ -355,8 +373,10 @@ export function AdminDashboard({ dependencies = defaultDependencies }: { depende
   const [toast, setToast] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [editorPublishing, setEditorPublishing] = useState(false);
+  const [editorGeneration, setEditorGeneration] = useState(0);
   const [authorizationGeneration, setAuthorizationGeneration] = useState(0);
   const authorizationGenerationRef = useRef(0);
+  const editorGenerationRef = useRef(0);
   const editorRef = useRef<DraftEditorHandle>(null);
 
   useEffect(() => dependencies.observeAdminSession((state) => {
@@ -369,6 +389,7 @@ export function AdminDashboard({ dependencies = defaultDependencies }: { depende
         : state === "signed-out" ? current : ""
     ));
     if (state !== "admin") {
+      editorGenerationRef.current += 1;
       setProducts([]);
       setDrafts([]);
       setProductError("");
@@ -380,6 +401,7 @@ export function AdminDashboard({ dependencies = defaultDependencies }: { depende
     }
   }, (error) => {
     authorizationGenerationRef.current += 1;
+    editorGenerationRef.current += 1;
     setAuthorizationGeneration(authorizationGenerationRef.current);
     setProducts([]);
     setDrafts([]);
@@ -448,6 +470,7 @@ export function AdminDashboard({ dependencies = defaultDependencies }: { depende
       setSession("admin");
     } else if (result === "forbidden") {
       authorizationGenerationRef.current += 1;
+      editorGenerationRef.current += 1;
       setAuthorizationGeneration(authorizationGenerationRef.current);
       setProducts([]);
       setDrafts([]);
@@ -489,13 +512,24 @@ export function AdminDashboard({ dependencies = defaultDependencies }: { depende
   };
 
   const startCreate = () => {
+    editorGenerationRef.current += 1;
+    setEditorGeneration(editorGenerationRef.current);
     setEditorPublishing(false);
     setEditingDraft(dependencies.startDraftSession(blankDraft(dependencies.createDraftId())));
   };
 
   const startEdit = (product: Product) => {
+    editorGenerationRef.current += 1;
+    setEditorGeneration(editorGenerationRef.current);
     setEditorPublishing(false);
     setEditingDraft(drafts.find((draft) => draft.id === product.id) ?? dependencies.createProductEditDraft(product));
+  };
+
+  const continueDraft = (draft: ProductDraft) => {
+    editorGenerationRef.current += 1;
+    setEditorGeneration(editorGenerationRef.current);
+    setEditorPublishing(false);
+    setEditingDraft(draft);
   };
 
   if (session === "loading" || session === "checking") {
@@ -523,16 +557,22 @@ export function AdminDashboard({ dependencies = defaultDependencies }: { depende
       {editingDraft ? (
         <DraftEditor
           ref={editorRef}
-          key={`${editingDraft.id}:${editingDraft.sessionId ?? "new"}`}
+          key={`${editingDraft.id}:${editingDraft.sessionId ?? "new"}:${editorGeneration}`}
           initialDraft={editingDraft}
           dependencies={dependencies}
+          isActive={() => editorGenerationRef.current === editorGeneration}
           publishing={editorPublishing}
-          onPublishingChange={setEditorPublishing}
+          onPublishingChange={(publishing) => {
+            if (editorGenerationRef.current === editorGeneration) setEditorPublishing(publishing);
+          }}
           onClose={() => {
-            if (editorPublishing) return;
+            if (editorGenerationRef.current !== editorGeneration || editorPublishing) return;
+            editorGenerationRef.current += 1;
             setEditingDraft(null);
           }}
           onPublished={() => {
+            if (editorGenerationRef.current !== editorGeneration) return;
+            editorGenerationRef.current += 1;
             setEditorPublishing(false);
             setEditingDraft(null);
             setToast("상품을 판매 공개했습니다.");
@@ -554,7 +594,7 @@ export function AdminDashboard({ dependencies = defaultDependencies }: { depende
                 return (
                   <li key={draft.id}>
                     <span>{draftName}</span>{" "}
-                    <button type="button" onClick={() => setEditingDraft(draft)} aria-label={`${draftName} 초안 이어 쓰기`}>이어 쓰기</button>
+                    <button type="button" onClick={() => continueDraft(draft)} aria-label={`${draftName} 초안 이어 쓰기`}>이어 쓰기</button>
                   </li>
                 );
               })}</ul>
