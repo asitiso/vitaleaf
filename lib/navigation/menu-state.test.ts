@@ -1,6 +1,65 @@
 import { describe, expect, it } from "vitest";
 
-import { AGE_CONCERN_GROUPS, resolveMenuState } from "./menu-state";
+import { AGE_TARGETS, HEALTH_CONCERNS, PRODUCT_CATEGORIES } from "../catalog/taxonomy";
+import { AGE_CONCERN_GROUPS, parseProductQuery, resolveMenuState } from "./menu-state";
+
+describe("parseProductQuery", () => {
+  it.each([
+    ["q", { q: "오메가" }],
+    ["promotion today", { promotion: "today" }],
+    ["promotion trial", { promotion: "trial" }],
+    ["view concerns", { view: "concerns" }],
+    ["view ingredients", { view: "ingredients" }],
+    ["sort popular", { sort: "popular" }],
+    ["sort newest", { sort: "newest" }],
+    ["sort ascending price", { sort: "price-asc" }],
+    ["sort descending price", { sort: "price-desc" }],
+    ["minPrice", { minPrice: "0" }],
+    ["maxPrice", { maxPrice: "30000" }],
+    ["stock numeric", { stock: "1" }],
+    ["stock boolean", { stock: "true" }],
+  ])("accepts the supported scalar %s contract", (_name, params) => {
+    expect(parseProductQuery(params)).toEqual({ isSupported: true, query: params });
+  });
+
+  it.each(PRODUCT_CATEGORIES)("accepts the supported category $value", ({ value }) => {
+    expect(parseProductQuery({ category: value })).toEqual({ isSupported: true, query: { category: value } });
+  });
+
+  it.each(HEALTH_CONCERNS)("accepts the supported concern $value", ({ value }) => {
+    expect(parseProductQuery({ concern: value })).toEqual({ isSupported: true, query: { concern: value } });
+  });
+
+  it.each(AGE_TARGETS)("accepts the supported age $value", ({ value }) => {
+    expect(parseProductQuery({ age: value })).toEqual({ isSupported: true, query: { age: value } });
+  });
+
+  it.each([
+    ["array q", { q: ["오메가", "선물"] }],
+    ["unknown category", { category: "unknown" }],
+    ["unknown concern", { concern: "unknown" }],
+    ["unknown age", { age: "99" }],
+    ["unknown promotion", { promotion: "expired" }],
+    ["unknown view", { view: "other" }],
+    ["unknown sort", { sort: "random" }],
+    ["malformed minimum", { minPrice: "nope" }],
+    ["negative minimum", { minPrice: "-1" }],
+    ["hexadecimal minimum", { minPrice: "0x10" }],
+    ["fractional minimum", { minPrice: "10.5" }],
+    ["space-padded minimum", { minPrice: " 1000" }],
+    ["array minimum", { minPrice: ["1000", "2000"] }],
+    ["exponential maximum", { maxPrice: "1e3" }],
+    ["negative maximum", { maxPrice: "-1" }],
+    ["empty maximum", { maxPrice: "" }],
+    ["unsupported stock", { stock: "garbage" }],
+    ["zero stock", { stock: "0" }],
+    ["false stock", { stock: "false" }],
+    ["unknown key", { campaign: "summer" }],
+    ["prototype-named key", { constructor: "value" }],
+  ])("rejects the unsupported %s contract", (_name, params) => {
+    expect(parseProductQuery(params).isSupported).toBe(false);
+  });
+});
 
 describe("resolveMenuState", () => {
   it.each([
