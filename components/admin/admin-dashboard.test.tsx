@@ -918,6 +918,134 @@ it("keeps router state on the admin sentinel until Back is confirmed, then repla
   }
 });
 
+it("reuses one history sentinel across repeated dirty and saved cycles", async () => {
+  const destinationState = Object.freeze({ __NA: true, tree: ["products"], key: "destination" });
+  const originalAdminState = Object.freeze({ __NA: true, tree: ["admin"], key: "original" });
+  window.history.replaceState(destinationState, "", "/products");
+  window.history.pushState(originalAdminState, "", "/admin/products");
+  const initialLength = window.history.length;
+  const routerObservations: Array<{ pathname: string; state: unknown }> = [];
+  const observeLikeRouter = (event: PopStateEvent) => {
+    routerObservations.push({ pathname: window.location.pathname, state: event.state });
+  };
+  window.addEventListener("popstate", observeLikeRouter);
+  const user = userEvent.setup();
+  const confirm = vi.spyOn(window, "confirm")
+    .mockReturnValueOnce(false)
+    .mockReturnValueOnce(false)
+    .mockReturnValueOnce(false)
+    .mockReturnValueOnce(false)
+    .mockReturnValueOnce(true);
+  const deps = dependencies({
+    observeAdminSession: (next) => {
+      next("admin");
+      return vi.fn();
+    },
+    subscribeProducts: (onData) => {
+      onData([]);
+      return vi.fn();
+    },
+    subscribeDrafts: (onData) => {
+      onData([]);
+      return vi.fn();
+    },
+  });
+  const view = render(<AdminDashboard dependencies={deps} />);
+  try {
+    await user.click(await screen.findByRole("button", { name: "새 상품 등록" }));
+    const nameInput = screen.getByLabelText("상품명");
+
+    for (let cycle = 1; cycle <= 3; cycle += 1) {
+      await user.type(nameInput, String(cycle));
+      await waitFor(() => expect(window.history.length).toBe(initialLength + 1));
+
+      const beforeCancel = routerObservations.length;
+      act(() => window.history.back());
+      await waitFor(() => expect(confirm).toHaveBeenCalledTimes(cycle));
+      await waitFor(() => expect(routerObservations).toHaveLength(beforeCancel + 2));
+      expect(routerObservations.slice(beforeCancel).every(({ pathname }) => pathname === "/admin/products")).toBe(true);
+      expect(window.location.pathname).toBe("/admin/products");
+
+      await user.click(screen.getByRole("button", { name: "임시 저장" }));
+      await waitFor(() => expect(deps.saveDraft).toHaveBeenCalledTimes(cycle));
+      expect(await screen.findByText("자동 저장되었습니다.")).toBeVisible();
+      expect(window.history.length).toBe(initialLength + 1);
+    }
+
+    await user.type(nameInput, "4");
+    await waitFor(() => expect(window.history.length).toBe(initialLength + 1));
+    const beforeFinalCancel = routerObservations.length;
+    act(() => window.history.back());
+    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(routerObservations).toHaveLength(beforeFinalCancel + 2));
+    expect(routerObservations.slice(beforeFinalCancel).every(({ pathname }) => pathname === "/admin/products")).toBe(true);
+    expect(window.location.pathname).toBe("/admin/products");
+
+    const beforeAllow = routerObservations.length;
+    act(() => window.history.back());
+    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(5));
+    await waitFor(() => expect(window.location.pathname).toBe("/products"));
+    expect(routerObservations.slice(beforeAllow)).toEqual([
+      { pathname: "/admin/products", state: originalAdminState },
+      { pathname: "/products", state: destinationState },
+    ]);
+    expect(routerObservations.filter(({ pathname }) => pathname === "/products")).toHaveLength(1);
+    expect(window.history.state).toEqual(destinationState);
+    expect(Object.keys(originalAdminState)).toEqual(["__NA", "tree", "key"]);
+  } finally {
+    view.unmount();
+    window.removeEventListener("popstate", observeLikeRouter);
+  }
+});
+
+it("replays Back without prompting after the guarded draft is saved", async () => {
+  const destinationState = Object.freeze({ __NA: true, tree: ["products"], key: "destination" });
+  const originalAdminState = Object.freeze({ __NA: true, tree: ["admin"], key: "original" });
+  window.history.replaceState(destinationState, "", "/products");
+  window.history.pushState(originalAdminState, "", "/admin/products");
+  const routerObservations: Array<{ pathname: string; state: unknown }> = [];
+  const observeLikeRouter = (event: PopStateEvent) => {
+    routerObservations.push({ pathname: window.location.pathname, state: event.state });
+  };
+  window.addEventListener("popstate", observeLikeRouter);
+  const user = userEvent.setup();
+  const confirm = vi.spyOn(window, "confirm");
+  const deps = dependencies({
+    observeAdminSession: (next) => {
+      next("admin");
+      return vi.fn();
+    },
+    subscribeProducts: (onData) => {
+      onData([]);
+      return vi.fn();
+    },
+    subscribeDrafts: (onData) => {
+      onData([]);
+      return vi.fn();
+    },
+  });
+  const view = render(<AdminDashboard dependencies={deps} />);
+  try {
+    await user.click(await screen.findByRole("button", { name: "새 상품 등록" }));
+    await user.type(screen.getByLabelText("상품명"), "오메가");
+    await user.click(screen.getByRole("button", { name: "임시 저장" }));
+    expect(await screen.findByText("자동 저장되었습니다.")).toBeVisible();
+
+    act(() => window.history.back());
+    await waitFor(() => expect(window.location.pathname).toBe("/products"));
+    expect(confirm).not.toHaveBeenCalled();
+    expect(routerObservations).toEqual([
+      { pathname: "/admin/products", state: originalAdminState },
+      { pathname: "/products", state: destinationState },
+    ]);
+    expect(window.history.state).toEqual(destinationState);
+    expect(Object.keys(originalAdminState)).toEqual(["__NA", "tree", "key"]);
+  } finally {
+    view.unmount();
+    window.removeEventListener("popstate", observeLikeRouter);
+  }
+});
+
 it("installs one sentinel across rerenders and neutralizes it synchronously on cleanup", async () => {
   const destinationState = Object.freeze({ __NA: true, tree: ["products"], key: "destination" });
   const originalAdminState = Object.freeze({ __NA: true, tree: ["admin"], key: "original" });

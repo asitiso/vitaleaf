@@ -43,13 +43,15 @@ export function useUnsavedHistoryGuard({
   confirmExit(): boolean;
 }) {
   const snapshotRef = useRef<GuardSnapshot | null>(null);
+  const activeRef = useRef(active);
   const lockedRef = useRef(locked);
   const confirmExitRef = useRef(confirmExit);
 
   useEffect(() => {
+    activeRef.current = active;
     lockedRef.current = locked;
     confirmExitRef.current = confirmExit;
-  }, [confirmExit, locked]);
+  }, [active, confirmExit, locked]);
 
   const neutralize = useCallback(() => {
     const snapshot = snapshotRef.current;
@@ -65,22 +67,10 @@ export function useUnsavedHistoryGuard({
   }, []);
 
   useEffect(() => {
-    if (!active) return;
-
-    const guardId = createGuardId();
-    const originalState = window.history.state;
-    const originalUrl = window.location.href;
-    const snapshot: GuardSnapshot = {
-      guardId,
-      originalState,
-      originalUrl,
-      phase: "armed",
-      position: "sentinel",
-    };
-    snapshotRef.current = snapshot;
-    window.history.pushState(withGuardId(originalState, guardId), "", originalUrl);
-
     const guardPopState = (event: PopStateEvent) => {
+      const snapshot = snapshotRef.current;
+      if (!snapshot) return;
+      const { guardId } = snapshot;
       if (snapshot.phase === "restoring") {
         if (isGuardState(event.state, guardId)) {
           snapshot.phase = "armed";
@@ -96,7 +86,7 @@ export function useUnsavedHistoryGuard({
       if (snapshot.phase !== "armed" || snapshot.position !== "sentinel") return;
 
       snapshot.position = "original";
-      if (!lockedRef.current && confirmExitRef.current()) {
+      if (!activeRef.current || (!lockedRef.current && confirmExitRef.current())) {
         snapshot.phase = "replaying";
         window.history.back();
         return;
@@ -110,7 +100,23 @@ export function useUnsavedHistoryGuard({
       window.removeEventListener("popstate", guardPopState);
       neutralize();
     };
-  }, [active, neutralize]);
+  }, [neutralize]);
+
+  useEffect(() => {
+    if (!active || snapshotRef.current) return;
+
+    const guardId = createGuardId();
+    const originalState = window.history.state;
+    const originalUrl = window.location.href;
+    snapshotRef.current = {
+      guardId,
+      originalState,
+      originalUrl,
+      phase: "armed",
+      position: "sentinel",
+    };
+    window.history.pushState(withGuardId(originalState, guardId), "", originalUrl);
+  }, [active]);
 
   return neutralize;
 }
