@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("./client", () => ({ auth: {}, db: {} }));
 
-import { createAdminAuth, getAdminAuthErrorMessage } from "./auth";
+import { createAdminAuth, getAdminAuthErrorMessage, memberAuth } from "./auth";
 
 const stableSession = (uid: string | null) => () => ({ uid, generation: 1 });
 
@@ -226,5 +226,18 @@ describe("getAdminAuthErrorMessage", () => {
     ["auth/user-disabled", "사용이 중지된 계정입니다. 관리자에게 문의해 주세요."],
   ])("maps %s to a useful Korean message", (code, expected) => {
     expect(getAdminAuthErrorMessage({ code })).toBe(expected);
+  });
+});
+
+describe("member auth public access", () => {
+  it("keeps the member authentication API available alongside admin exports", () => {
+    expect(memberAuth).toMatchObject({
+      signUp: expect.any(Function),
+      signIn: expect.any(Function),
+      signOut: expect.any(Function),
+      sendPasswordReset: expect.any(Function),
+      sendVerification: expect.any(Function),
+      observe: expect.any(Function),
+    });
   });
 });

@@ -3,6 +3,8 @@ import { doc, getDoc } from "firebase/firestore";
 
 import { auth, db } from "./client";
 
+export { memberAuth } from "./member-auth";
+
 export type AdminSessionState = "checking" | "admin" | "signed-out" | "forbidden";
 export type AdminSignInResult = "admin" | "forbidden" | "stale";
 
