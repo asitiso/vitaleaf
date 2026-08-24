@@ -24,6 +24,8 @@ describe("member authentication helpers", () => {
     ["/products?category=vitamin", "/products?category=vitamin"],
     ["https://attacker.example", "/mypage"],
     ["//attacker.example", "/mypage"],
+    ["/\\attacker.example", "/mypage"],
+    ["/\\/attacker.example", "/mypage"],
   ])("accepts only a same-origin relative return path", (candidate, expected) => {
     expect(safeReturnPath(candidate)).toBe(expected);
   });

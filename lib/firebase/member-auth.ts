@@ -41,7 +41,11 @@ export const validateMemberPassword = (password: string): string | null => {
 };
 
 export const safeReturnPath = (candidate?: string | null): string =>
-  candidate?.startsWith("/") && !candidate.startsWith("//") ? candidate : "/mypage";
+  candidate?.startsWith("/")
+  && !candidate.startsWith("//")
+  && !candidate.includes("\\")
+    ? candidate
+    : "/mypage";
 
 export const getMemberAuthErrorMessage = (error: unknown): string => {
   const code = typeof error === "object" && error !== null && "code" in error
