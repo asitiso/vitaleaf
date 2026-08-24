@@ -27,10 +27,13 @@ export function MyPage({ notice }: MyPageProps) {
 
   if (status !== "signed-in" || !user) {
     return (
-      <main>
-        <h1>마이페이지</h1>
-        <p>회원 정보와 주문 내역을 확인하려면 로그인해 주세요.</p>
-        <Link href="/login?next=%2Fmypage">로그인</Link>
+      <main className="my-page my-page--signed-out">
+        <section className="my-page__login-card" aria-labelledby="mypage-login-heading">
+          <p>VITALEAF MEMBER</p>
+          <h1 id="mypage-login-heading">마이페이지</h1>
+          <p>회원 정보와 주문 내역을 확인하려면 로그인해 주세요.</p>
+          <Link className="my-page__login-cta" href="/login?next=%2Fmypage">로그인</Link>
+        </section>
       </main>
     );
   }

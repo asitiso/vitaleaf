@@ -102,7 +102,7 @@ main {
 .checkout-empty, .order-complete { display: grid; width: min(100% - 40px, 680px); min-height: 520px; place-items: center; align-content: center; margin: 0 auto; padding: 70px 20px; text-align: center; }
 .checkout-empty h1, .order-complete h1 { margin: 6px 0 0; color: var(--color-forest); font-size: clamp(29px, 5vw, 40px); }
 .checkout-empty > p:not(:first-child), .order-complete > p:not(.order-complete__eyebrow) { color: #62746a; line-height: 1.7; }
-.checkout-empty a, .order-complete__actions a { padding: 11px 17px; border-radius: 4px; color: #fff; background: var(--color-sage); font-weight: 800; text-decoration: none; }
+.checkout-empty a, .order-complete__actions a { display: inline-flex; min-height: 48px; align-items: center; justify-content: center; padding: 11px 17px; border-radius: 4px; color: #fff; background: var(--color-sage); font-weight: 800; text-decoration: none; }
 .order-complete dl { width: min(100%, 390px); padding: 20px 24px; margin: 22px 0 5px; border-radius: 6px; background: var(--color-sand); }
 .order-complete dl div { display: flex; justify-content: space-between; }
 .order-complete dd { margin: 0; color: var(--color-forest); font-weight: 800; }
@@ -124,7 +124,7 @@ main {
 }
 
 /* Member account: calm, high-legibility forms for 30–50 customers */
-.auth-page, .member-auth-page {
+.member-auth-page {
   display: grid;
   width: min(100% - 48px, 680px);
   min-height: 620px;
@@ -132,7 +132,7 @@ main {
   margin: 0 auto;
   padding: 56px 0 92px;
 }
-.auth-card, .member-auth-card {
+.member-auth-card {
   width: 100%;
   padding: clamp(28px, 5vw, 46px);
   border: 1px solid #d3ded5;
@@ -140,38 +140,37 @@ main {
   background: #fff;
   box-shadow: 0 18px 48px rgb(24 50 41 / 10%);
 }
-.auth-card__eyebrow, .member-auth-card__eyebrow, .my-page > header > p:first-child {
+.member-auth-card__eyebrow, .my-page > header > p:first-child, .my-page__login-card > p:first-child {
   margin: 0 0 8px;
   color: var(--color-sage);
   font-size: 11px;
   font-weight: 800;
   letter-spacing: .14em;
 }
-.auth-card h1, .member-auth-card h1, .mypage-page h1, .my-page h1 {
+.member-auth-card h1, .my-page h1 {
   margin: 0;
   color: var(--color-forest);
   font-size: clamp(30px, 4vw, 42px);
   letter-spacing: -.045em;
 }
-.auth-card > p:not(.auth-card__eyebrow, .auth-card__footer),
 .member-auth-card > p:not(.member-auth-card__eyebrow, .member-auth-card__footer),
-.my-page > header > p:last-child {
+.my-page > header > p:last-child, .my-page__login-card > p:not(:first-child) {
   color: #607168;
   line-height: 1.7;
 }
-.auth-form, .member-auth-card form, .my-page form {
+.member-auth-card form, .my-page form {
   display: grid;
   gap: 17px;
   margin-top: 28px;
 }
-.auth-form label, .member-auth-card label, .my-page form label {
+.member-auth-card label, .my-page form label {
   display: grid;
   gap: 7px;
   color: #30493e;
   font-size: 14px;
   font-weight: 800;
 }
-.auth-form input, .member-auth-card input, .my-page form input {
+.member-auth-card input, .my-page form input {
   width: 100%;
   min-width: 0;
   min-height: 48px;
@@ -183,12 +182,12 @@ main {
   font: inherit;
   font-weight: 500;
 }
-.auth-form input:focus, .member-auth-card input:focus, .my-page form input:focus {
+.member-auth-card input:focus, .my-page form input:focus {
   outline: 3px solid rgb(33 92 69 / 18%);
   border-color: var(--color-sage);
 }
-.auth-form input[aria-invalid="true"], .my-page form input[aria-invalid="true"] { border-color: #aa4333; }
-.auth-form button[type="submit"], .member-auth-card form button[type="submit"], .my-page form button[type="submit"],
+.my-page form input[aria-invalid="true"] { border-color: #aa4333; }
+.member-auth-card form button[type="submit"], .my-page form button[type="submit"],
 .my-page > section button, .checkout-save-address {
   min-height: 48px;
   border: 1px solid var(--color-sage);
@@ -200,7 +199,7 @@ main {
   font-weight: 800;
   cursor: pointer;
 }
-.auth-form button:disabled, .member-auth-card button:disabled, .my-page button:disabled {
+.member-auth-card button:disabled, .my-page button:disabled {
   color: #87948d;
   border-color: #dbe3dd;
   background: #e7ece8;
@@ -235,7 +234,7 @@ main {
 .member-auth-card__footer { margin: 24px 0 0; color: #596c61; font-size: 14px; text-align: center; }
 .member-auth-card__footer a, .my-page a { color: var(--color-sage); font-weight: 800; }
 
-.mypage-page, .my-page {
+.my-page {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(300px, .85fr);
   width: min(100% - 48px, 1120px);
@@ -243,18 +242,21 @@ main {
   margin: 0 auto;
   padding: 56px 0 100px;
 }
-.mypage-page > header, .my-page > header { grid-column: 1 / -1; padding-bottom: 27px; border-bottom: 2px solid var(--color-forest); }
-.mypage-page > header > p:last-child, .my-page > header > p:last-child { margin: 10px 0 0; font-size: 15px; }
-.mypage-page > section, .my-page > section {
+.my-page > header { grid-column: 1 / -1; padding-bottom: 27px; border-bottom: 2px solid var(--color-forest); }
+.my-page > header > p:last-child { margin: 10px 0 0; font-size: 15px; }
+.my-page > section {
   min-width: 0;
   padding: 26px;
   border: 1px solid #d6e0d8;
   border-radius: 8px;
   background: #fff;
 }
-.mypage-page > section:first-of-type, .my-page > section:first-of-type { grid-column: 1 / -1; }
-.mypage-page > section h2, .my-page > section h2 { margin: 0 0 13px; color: var(--color-forest); font-size: 20px; }
-.mypage-page > section > p, .my-page > section > p { color: #5d7066; line-height: 1.7; }
+.my-page > section:first-of-type { grid-column: 1 / -1; }
+.my-page > section h2 { margin: 0 0 13px; color: var(--color-forest); font-size: 20px; }
+.my-page > section > p { color: #5d7066; line-height: 1.7; }
+.my-page--signed-out { min-height: 560px; align-content: center; }
+.my-page__login-card { width: min(100%, 680px); justify-self: center; text-align: center; }
+.my-page__login-cta { display: inline-flex; min-height: 48px; align-items: center; justify-content: center; margin-top: 12px; padding: 11px 22px; border-radius: 5px; color: #fff !important; background: var(--color-sage); text-decoration: none; }
 .my-page fieldset { display: grid; gap: 15px; padding: 19px; border: 1px solid #d8e2da; border-radius: 5px; }
 .my-page legend { padding: 0 6px; color: #254536; font-size: 14px; font-weight: 800; }
 .my-page fieldset > p { margin: -5px 0 0; color: #66786e; font-size: 13px; line-height: 1.6; }
@@ -279,13 +281,14 @@ main {
 .checkout-form__submit-error { position: static; }
 
 @media (max-width: 720px) {
-  .auth-page, .member-auth-page { width: min(100% - 32px, 680px); min-height: 0; padding: 32px 0 64px; }
-  .auth-card, .member-auth-card { padding: 25px 19px; border-radius: 7px; }
-  .auth-form, .member-auth-card form, .my-page form { gap: 15px; }
-  .auth-form input, .member-auth-card input, .my-page form input, .checkout-field input, .checkout-field textarea { font-size: 16px; }
-  .mypage-page, .my-page { grid-template-columns: 1fr; width: min(100% - 32px, 1120px); gap: 14px; padding: 34px 0 72px; }
-  .mypage-page > header, .my-page > header, .mypage-page > section:first-of-type, .my-page > section:first-of-type { grid-column: auto; }
-  .mypage-page > section, .my-page > section { padding: 21px 18px; }
+  .member-auth-page { width: min(100% - 32px, 680px); min-height: 0; padding: 32px 0 64px; }
+  .member-auth-card { padding: 25px 19px; border-radius: 7px; }
+  .member-auth-card form, .my-page form { gap: 15px; }
+  .member-auth-card input, .my-page form input, .checkout-field input, .checkout-field textarea { font-size: 16px; }
+  .my-page { grid-template-columns: 1fr; width: min(100% - 32px, 1120px); gap: 14px; padding: 34px 0 72px; }
+  .my-page > header, .my-page > section:first-of-type { grid-column: auto; }
+  .my-page > section { padding: 21px 18px; }
+  .my-page--signed-out { min-height: 430px; }
   .my-page fieldset { padding: 16px; }
   .checkout-page { padding-bottom: 68px; }
   .checkout-form__submit-error { position: static; }

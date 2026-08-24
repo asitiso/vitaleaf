@@ -99,6 +99,10 @@ beforeEach(() => {
 it("offers login with a return path when signed out", () => {
   render(<MyPage />);
 
+  expect(screen.getByRole("heading", { name: "마이페이지" }).closest("main"))
+    .toHaveClass("my-page", "my-page--signed-out");
+  expect(screen.getByRole("link", { name: "로그인" }))
+    .toHaveClass("my-page__login-cta");
   expect(screen.getByRole("link", { name: "로그인" }))
     .toHaveAttribute("href", "/login?next=%2Fmypage");
 });
