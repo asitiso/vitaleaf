@@ -21,12 +21,16 @@ styleElement.remove();
 const styleRules = (rules: CSSRuleList): CSSStyleRule[] => Array.from(rules)
   .filter((rule): rule is CSSStyleRule => rule.type === CSSRule.STYLE_RULE);
 
-const mediaRule = (selector: string): CSSStyleRule => {
+const mediaRulesFor = (conditionText: string): CSSStyleRule[] => {
   const mediaRules = Array.from(styleSheet?.cssRules ?? [])
     .filter((rule): rule is CSSMediaRule => rule.type === CSSRule.MEDIA_RULE
-      && (rule as CSSMediaRule).conditionText === "(max-width: 620px)");
-  expect(mediaRules.length, "Missing mobile header media query").toBeGreaterThan(0);
-  const rule = mediaRules.flatMap((media) => styleRules(media.cssRules))
+      && (rule as CSSMediaRule).conditionText === conditionText);
+  expect(mediaRules.length, `Missing ${conditionText} header media query`).toBeGreaterThan(0);
+  return mediaRules.flatMap((media) => styleRules(media.cssRules));
+};
+
+const mediaRule = (selector: string): CSSStyleRule => {
+  const rule = mediaRulesFor("(max-width: 620px)")
     .find((candidate) => candidate.selectorText === selector);
   expect(rule, `Missing mobile CSS rule: ${selector}`).toBeDefined();
   return rule!;
@@ -34,7 +38,7 @@ const mediaRule = (selector: string): CSSStyleRule => {
 
 const renderHeader = () => render(<CartProvider><SiteHeader /></CartProvider>);
 
-describe("mobile SiteHeader 44px target contract", () => {
+describe("responsive SiteHeader target contract", () => {
   it("ties the production header and drawer selectors to rendered controls", async () => {
     const user = userEvent.setup();
     renderHeader();
@@ -80,5 +84,20 @@ describe("mobile SiteHeader 44px target contract", () => {
     ).style;
     expect(textLinks.display).toBe("flex");
     expect(textLinks.alignItems).toBe("center");
+  });
+
+  it("keeps account actions reachable at the representative 768px tablet breakpoint", () => {
+    renderHeader();
+
+    expect(screen.getByRole("link", { name: "로그인" })).toHaveAttribute("href", "/login");
+    expect(screen.getByRole("link", { name: "회원가입" })).toHaveAttribute("href", "/signup");
+    const tabletRules = mediaRulesFor("(max-width: 900px)");
+    expect(tabletRules.some((rule) => (
+      rule.selectorText.includes(".site-header__utility-nav a:not(.site-header__cart)")
+      && rule.style.display === "none"
+    ))).toBe(false);
+    expect(mediaRule(
+      ".site-header__utility-nav a:not(.site-header__cart), .site-header__utility-nav button, .site-header__account-placeholder, .site-header__account-error",
+    ).style.display).toBe("none");
   });
 });
