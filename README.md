@@ -2,7 +2,7 @@
 
 바이탈리프는 Firebase Firestore의 공개 상품과 승인된 리뷰를 보여 주는 한국어 건강기능식품 스토어입니다. 관리자 화면은 Firebase 이메일/비밀번호 인증과 `admins/{uid}.role == "admin"`을 모두 확인한 뒤 상품 초안, 이미지, 공개 상품을 관리합니다.
 
-현재 결제는 화면 흐름을 확인하기 위한 모의 처리입니다. 실제 PG 승인, 주문 저장, 재고 차감, 영수증 발행은 구현되어 있지 않으므로 실제 판매에 사용하면 안 됩니다.
+현재 결제는 화면 흐름을 확인하기 위한 모의 처리입니다. 로그인 회원의 주문 스냅샷만 본인 계정의 Firestore 주문내역에 저장하며, 실제 PG 승인·출금·재고 차감·영수증 발행은 구현되어 있지 않으므로 실제 판매에 사용하면 안 됩니다.
 
 ## 운영자 필수 체크리스트 (8개)
 
@@ -12,7 +12,7 @@
 4. **초안 → 미리보기 → 공개 → 판매중지:** 새 상품과 수정 상품은 `productDrafts`에 자동 저장하고 관리자 미리보기로 확인합니다. 공개하면 `products`에 반영되고 초안은 정리됩니다. 판매중지는 공개본을 다시 초안으로 보존한 뒤 고객 목록에서 제거합니다.
 5. **업로드 제한과 고아 이미지 정리:** JPEG, PNG, WebP만 파일당 10 MiB 이하로 업로드합니다. 업로드 직후 URL 확인이 실패하거나 그 단계에서 취소되면 앱이 방금 올린 파일 삭제를 최선 노력으로 시도합니다. 마법사에서 이미지를 빼거나 초안·상품을 삭제할 때는 공유 중인 공개 이미지를 보호하기 위해 브라우저가 Storage 파일을 삭제하지 않습니다. 미참조 파일 정리는 아래의 보수적인 운영 절차를 따릅니다.
 6. **CSV는 초안으로 가져오기:** CSV 검증을 통과한 행도 즉시 판매 공개되지 않고 각각 `productDrafts`에 임시 저장됩니다. **임시 저장** 탭에서 검토·보완한 뒤 개별 공개합니다.
-7. **PG와 주문 영속화는 제외:** `processPayment(orderDraft)`는 모의 주문번호만 반환하며 `orders` 읽기·쓰기는 규칙에서 거부됩니다. 실제 판매 전에 서버 기반 PG 승인과 주문·재고 저장을 별도로 구현해야 합니다.
+7. **회원 주문과 비회원 주문 구분:** `processPayment(orderDraft)`는 모의 주문번호만 반환합니다. 로그인 회원의 주문은 `users/{uid}/orders`에 읽기 전용 스냅샷으로 저장되고, 비회원 주문은 의도적으로 Firestore에 저장하지 않습니다. 실제 판매 전에는 서버 기반 PG 승인과 주문·재고 저장을 별도로 구현해야 합니다.
 8. **에뮬레이터 버전 고정:** 규칙 포함 전체 테스트는 Firebase CLI `15.26.0`과 JDK 21 이상으로 Firestore·Storage Emulator를 함께 실행합니다.
 
 ## 1. 환경 변수와 로컬 실행
@@ -33,22 +33,31 @@ NEXT_PUBLIC_SITE_URL=http://localhost:3000
 `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID`는 Analytics를 쓰지 않으면 비워 둘 수 있습니다. 운영 배포에서는 `NEXT_PUBLIC_SITE_URL`을 실제 HTTPS 주소로 바꿉니다. `NEXT_PUBLIC_*`는 브라우저에 공개되는 웹 앱 설정이므로 서비스 계정 JSON, Admin SDK 비공개 키, PG 비밀 키, 사용자 비밀번호를 넣지 마세요.
 
 ```bash
-npm install
-npm run dev
-npm run lint
-npm run build
+pnpm install
+pnpm dev
+pnpm lint
+pnpm build:vercel
+pnpm build
 ```
 
 ## 2. Firebase 초기 설정과 규칙 게시
 
-### Authentication과 관리자 권한
+### Authentication, 회원 계정과 관리자 권한
 
-1. **Authentication → Sign-in method**에서 이메일/비밀번호 제공업체를 사용 설정합니다.
-2. **Authentication → Users → 사용자 추가**에서 운영자 계정을 만들고 UID를 복사합니다.
-3. **Firestore Database → Data**에서 컬렉션 `admins`, 문서 ID `{복사한 UID}`, 문자열 필드 `role = admin`을 만듭니다.
-4. 운영자는 첫 로그인 뒤 비밀번호를 바꾸고 계정을 공유하지 않습니다. 권한이 끝난 운영자는 Auth 사용자와 `admins/{uid}`를 함께 제거합니다.
+1. Firebase Console에서 대상 프로젝트를 열고 **Authentication → Sign-in method → Email/Password**를 사용 설정합니다. 이 단계가 없으면 회원가입, 로그인, 비밀번호 재설정이 동작하지 않습니다.
+2. **Authentication → Settings → Authorized domains**에서 운영 주소 `vitaleaf.vercel.app`가 없으면 추가합니다. 자체 도메인을 연결한 경우 그 도메인도 추가합니다.
+3. **Authentication → Users → 사용자 추가**에서 운영자 계정을 만들고 UID를 복사합니다.
+4. **Firestore Database → Data**에서 컬렉션 `admins`, 문서 ID `{복사한 UID}`, 문자열 필드 `role = admin`을 만듭니다.
+5. 운영자는 첫 로그인 뒤 비밀번호를 바꾸고 계정을 공유하지 않습니다. 권한이 끝난 운영자는 Auth 사용자와 `admins/{uid}`를 함께 제거합니다.
 
-클라이언트가 관리자 문서를 만들 수 있게 하면 권한 상승 취약점이 됩니다. `firestore.rules`는 `admins`의 클라이언트 쓰기를 거부하므로 Console 또는 신뢰할 수 있는 서버용 Admin SDK에서만 관리합니다.
+비밀번호는 Firebase Authentication에서만 처리되며 Firestore에 저장하거나 브라우저에서 별도 보관하지 않습니다. 클라이언트가 관리자 문서를 만들 수 있게 하면 권한 상승 취약점이 됩니다. `firestore.rules`는 `admins`의 클라이언트 쓰기를 거부하므로 Console 또는 신뢰할 수 있는 서버용 Admin SDK에서만 관리합니다.
+
+### 회원 주문과 개인정보 동작
+
+- 로그인 회원은 이름·연락처·기본 배송지와 주문 스냅샷을 자기 UID 아래에서만 읽고 쓸 수 있습니다. 주문 문서는 생성 뒤 수정·삭제할 수 없습니다.
+- 회원가입 뒤 이메일 인증 메일을 보낼 수 있지만, 현재 목업 구매를 막지는 않습니다.
+- 비회원 구매는 장바구니와 완료 화면만 제공하며 주문·배송 개인정보를 Firestore에 저장하지 않습니다. 따라서 비회원 주문 조회는 제공하지 않습니다.
+- 실제 결제 기능을 붙일 때는 이 정책을 그대로 확장하지 말고, 서버에서 PG 웹훅·결제금액·재고를 검증하는 주문 설계를 먼저 추가해야 합니다.
 
 ### Storage 사용 설정
 
@@ -59,14 +68,15 @@ Firebase Console의 **Storage → 시작하기**에서 환경 변수와 같은 �
 운영 프로젝트를 자동 선택하는 `.firebaserc`를 저장소에 두지 않습니다. 다음 순서로 프로젝트 혼동을 막습니다.
 
 1. `.env.local`의 `NEXT_PUBLIC_FIREBASE_PROJECT_ID`와 Firebase Console 상단 프로젝트 ID가 완전히 같은지 확인합니다.
-2. **Firestore Database → Rules**에 `firestore.rules` 전체를 붙여 넣고 게시합니다.
+2. **Firestore Database → Rules**에 `firestore.rules` 전체를 붙여 넣고 게시합니다. 회원 기능을 사용하기 전에 반드시 최신 규칙을 게시합니다.
 3. **Storage → Rules**에 `storage.rules` 전체를 붙여 넣고 게시합니다.
 4. 게시 이력과 시간을 기록하고, 로그아웃·일반 사용자·`role: "admin"` 사용자의 허용/거부 동작을 확인합니다.
 
 명시적으로 올바른 프로젝트에 연결한 환경에서만 다음과 같은 CLI 게시를 사용할 수 있습니다. `YOUR_PROJECT_ID`를 확인하지 못했다면 실행하지 마세요.
 
 ```bash
-npx firebase-tools@15.26.0 deploy --only firestore:rules,storage --project YOUR_PROJECT_ID
+npx firebase-tools@15.26.0 deploy --only firestore:rules --project YOUR_PROJECT_ID
+npx firebase-tools@15.26.0 deploy --only storage --project YOUR_PROJECT_ID
 ```
 
 규칙 경계는 다음과 같습니다.
@@ -75,7 +85,8 @@ npx firebase-tools@15.26.0 deploy --only firestore:rules,storage --project YOUR_
 - `productDrafts`: 명시적 관리자만 읽기·쓰기
 - `reviews`: `approved == true`인 문서만 읽기, 모든 클라이언트 쓰기 거부
 - `admins`: 로그인 사용자의 자기 문서 읽기만 허용, 모든 클라이언트 쓰기 거부
-- `orders`와 그 밖의 경로: 기본 거부
+- `users/{uid}`와 `users/{uid}/orders`: 본인만 읽고, 프로필은 허용된 필드만 수정, 주문은 생성 뒤 수정·삭제 거부
+- 최상위 `orders`와 그 밖의 경로: 기본 거부
 - Storage `products/{productId}/**`: 관리자만 쓰기, 10 MiB 이하 JPEG/PNG/WebP만 허용
 
 ## 3. 상품 운영 흐름
@@ -121,20 +132,22 @@ JDK 21 이상과 Firebase CLI `15.26.0`을 사용합니다. 테스트 프로젝�
 전체 애플리케이션·Firestore·Storage 규칙 테스트를 직렬 실행합니다.
 
 ```bash
-npx firebase-tools@15.26.0 emulators:exec --only firestore,storage --project demo-vitaleaf-rules-test "npm test -- --maxWorkers=1 --no-file-parallelism"
+npx firebase-tools@15.26.0 emulators:exec --only firestore,storage --project demo-vitaleaf-rules-test "node ./node_modules/vitest/vitest.mjs run --maxWorkers=1 --no-file-parallelism"
 ```
 
 규칙만 집중 확인할 때도 두 Emulator를 함께 사용합니다.
 
 ```bash
-npx firebase-tools@15.26.0 emulators:exec --only firestore,storage --project demo-vitaleaf-rules-test "npm test -- firestore.rules.test.ts storage.rules.test.ts --maxWorkers=1 --no-file-parallelism"
+npx firebase-tools@15.26.0 emulators:exec --only firestore,storage --project demo-vitaleaf-rules-test "node ./node_modules/vitest/vitest.mjs run firestore.rules.test.ts storage.rules.test.ts --maxWorkers=1 --no-file-parallelism"
 ```
 
 출시 후보 커밋에서는 이어서 실행합니다.
 
 ```bash
-npm run lint
-npm run build
+pnpm test
+pnpm lint
+pnpm build:vercel
+pnpm build
 git diff --check
 ```
 
@@ -154,7 +167,7 @@ git diff --check
 - [ ] 정상/거부 이미지 업로드, 진행·재시도·대표 변경·키보드 순서 조정을 확인
 - [ ] 공개·수정 초안·판매중지·복제·CSV 초안 흐름을 확인
 - [ ] 한글 깨짐, 가로 스크롤, 저장 상태, 오류 포커스를 확인
-- [ ] `npm test`, `npm run lint`, `npm run build`, 규칙 Emulator 테스트를 통과
+- [ ] `pnpm test`, `pnpm lint`, `pnpm build:vercel`, `pnpm build`, 규칙 Emulator 테스트를 통과
 - [ ] 기존 Sites 프로젝트와 owner-only 비공개 접근을 유지하고 공개 전환하지 않았는지 확인
 
 브라우저 전체 흐름과 실제 Firebase 게시·비공개 Sites 새 버전 저장은 올바른 계정과 프로젝트를 확인할 수 있는 운영자가 수행합니다.

@@ -115,7 +115,7 @@ const isValidOrderLine = (value: unknown): value is MemberOrderLine => {
     && line.unitPrice >= 0;
 };
 
-const assertValidOrderLines = (lines: unknown): asserts lines is MemberOrderLine[] => {
+const assertValidOrderLines: (lines: unknown) => asserts lines is MemberOrderLine[] = (lines) => {
   if (!Array.isArray(lines) || lines.length === 0 || !lines.every(isValidOrderLine)) {
     throw new Error("Member orders require valid product lines.");
   }
