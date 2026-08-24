@@ -1,6 +1,19 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { authState, signOutMember } = vi.hoisted(() => ({
+  authState: {
+    status: "signed-out" as "checking" | "signed-out" | "signed-in" | "error",
+    user: null as { uid: string; email: string; emailVerified: boolean } | null,
+    error: "",
+  },
+  signOutMember: vi.fn(),
+}));
+
+vi.mock("../../features/auth/auth-context", () => ({
+  useAuth: () => ({ ...authState, signOutMember }),
+}));
 
 import { CartProvider } from "../../features/cart/cart-context";
 import { STOREFRONT_MENU } from "../../lib/navigation/storefront-menu";
@@ -16,27 +29,89 @@ function renderHeader() {
   );
 }
 
+beforeEach(() => {
+  authState.status = "signed-out";
+  authState.user = null;
+  authState.error = "";
+  signOutMember.mockReset();
+  signOutMember.mockResolvedValue(true);
+});
+
 describe("SiteHeader", () => {
   it("renders the public shipping benefit from the shared policy", () => {
     const shipping = STORE_POLICIES.shipping as { freeThreshold: number; dispatch: string };
     const original = { ...shipping };
     Object.assign(shipping, { freeThreshold: 50_000, dispatch: "결제 확인 후 정책 기준 순차 출고" });
 
-    try {
-      renderHeader();
-      expect(screen.getByText("첫 구매 10% 쿠폰 · 5만원 이상 무료배송 · 결제 확인 후 정책 기준 순차 출고")).toBeVisible();
-    } finally {
+  try {
+    renderHeader();
+    expect(screen.getByText("첫 구매 추천 상품 · 5만원 이상 무료배송 · 결제 확인 후 정책 기준 순차 출고")).toBeVisible();
+  } finally {
       Object.assign(shipping, original);
     }
   });
 
-  it("keeps customer navigation limited to routes that exist", () => {
+  it("keeps customer navigation linked to real account, admin, and cart routes", () => {
     renderHeader();
 
-    expect(screen.queryByRole("link", { name: "로그인" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "로그인" })).toHaveAttribute("href", "/login");
+    expect(screen.getByRole("link", { name: "회원가입" })).toHaveAttribute("href", "/signup");
     expect(screen.queryByRole("link", { name: "브랜드 스토리" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "관리자" })).toHaveAttribute("href", "/admin");
     expect(screen.getByRole("link", { name: /장바구니/ })).toHaveAttribute("href", "/cart");
+  });
+
+  it("shows a stable checking placeholder instead of changing account actions", () => {
+    authState.status = "checking";
+    renderHeader();
+
+    expect(screen.getByLabelText("회원 상태 확인 중")).toBeVisible();
+    expect(screen.queryByRole("link", { name: "로그인" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "마이페이지" })).not.toBeInTheDocument();
+  });
+
+  it("shows my page and logs out from the mobile drawer before closing it", async () => {
+    const user = userEvent.setup();
+    authState.status = "signed-in";
+    authState.user = { uid: "member-1", email: "member@example.com", emailVerified: true };
+    renderHeader();
+
+    expect(screen.getByRole("link", { name: "마이페이지" })).toHaveAttribute("href", "/mypage");
+    expect(screen.getByRole("button", { name: "로그아웃" })).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "메뉴 열기" }));
+    const drawer = screen.getByRole("dialog", { name: "모바일 메뉴" });
+    expect(within(drawer).getByRole("link", { name: "마이페이지" })).toHaveAttribute("href", "/mypage");
+    expect(within(drawer).getByRole("link", { name: "관리자" })).toHaveAttribute("href", "/admin");
+
+    await user.click(within(drawer).getByRole("button", { name: "로그아웃" }));
+
+    expect(signOutMember).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("dialog", { name: "모바일 메뉴" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the mobile drawer open when logout does not complete", async () => {
+    const user = userEvent.setup();
+    authState.status = "signed-in";
+    authState.user = { uid: "member-1", email: "member@example.com", emailVerified: true };
+    signOutMember.mockResolvedValue(false);
+    renderHeader();
+
+    await user.click(screen.getByRole("button", { name: "메뉴 열기" }));
+    const drawer = screen.getByRole("dialog", { name: "모바일 메뉴" });
+    await user.click(within(drawer).getByRole("button", { name: "로그아웃" }));
+
+    expect(screen.getByRole("dialog", { name: "모바일 메뉴" })).toBeVisible();
+  });
+
+  it("announces a logout error while preserving the signed-in account actions", () => {
+    authState.status = "signed-in";
+    authState.user = { uid: "member-1", email: "member@example.com", emailVerified: true };
+    authState.error = "로그아웃하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+    renderHeader();
+
+    expect(screen.getByRole("alert")).toHaveTextContent("로그아웃하지 못했습니다");
+    expect(screen.getByRole("link", { name: "마이페이지" })).toBeVisible();
   });
 
   it("links best navigation to the supported popular sort", () => {

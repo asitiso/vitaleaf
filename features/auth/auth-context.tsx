@@ -21,7 +21,7 @@ type AuthContextValue = {
   status: AuthStatus;
   user: MemberIdentity | null;
   error: string;
-  signOutMember: () => Promise<void>;
+  signOutMember: () => Promise<boolean>;
 };
 
 type AuthProviderProps = {
@@ -95,12 +95,14 @@ export function AuthProvider({ children, adapter }: AuthProviderProps) {
       }
       setUser(null);
       setStatus("signed-out");
+      return true;
     } catch (reason) {
       const message = await import("../../lib/firebase/member-auth")
         .then(({ getMemberAuthErrorMessage }) => getMemberAuthErrorMessage(reason))
         .catch(() => "로그아웃하지 못했습니다. 잠시 후 다시 시도해 주세요.");
       setError(message);
       setStatus("signed-in");
+      return false;
     }
   }, [adapter]);
 

@@ -12,7 +12,7 @@ describe("MegaMenu", () => {
     expect(screen.getByRole("heading", { name: "상품 카테고리" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "건강 고민" })).toBeVisible();
     expect(screen.getByRole("link", { name: "50대+" })).toBeVisible();
-    expect(screen.getByRole("link", { name: /첫 구매 고객.*7일 체험/ })).toBeVisible();
+    expect(screen.getByRole("link", { name: /첫 구매 추천.*3만원 이하 상품/ })).toBeVisible();
   });
 
   it("renders every shared category, concern, and age destination", () => {
@@ -40,6 +40,6 @@ describe("MegaMenu", () => {
 
     expect(screen.getByRole("link", { name: "비타민" })).not.toHaveAttribute("data-client-navigation");
     expect(screen.getByRole("link", { name: "피로·활력" })).not.toHaveAttribute("data-client-navigation");
-    expect(screen.getByRole("link", { name: /첫 구매 고객.*7일 체험/ })).not.toHaveAttribute("data-client-navigation");
+    expect(screen.getByRole("link", { name: /첫 구매 추천.*3만원 이하 상품/ })).not.toHaveAttribute("data-client-navigation");
   });
 });

@@ -49,6 +49,7 @@ export const filterProducts = (products: Product[], filters: ProductFilters): Pr
         product.name,
         product.category,
         taxonomyLabel(PRODUCT_CATEGORIES, product.category),
+        product.description,
         ...product.concerns,
         ...product.concerns.map((concern) => taxonomyLabel(HEALTH_CONCERNS, concern)),
         ...product.benefits,

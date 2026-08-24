@@ -1,4 +1,5 @@
 import { cleanup, render, screen } from "@testing-library/react";
+import { createElement } from "react";
 
 import { parseProductQuery, resolveMenuState } from "../lib/navigation/menu-state";
 import { flattenMenuLinks, STOREFRONT_MENU } from "../lib/navigation/storefront-menu";
@@ -8,6 +9,11 @@ const { getProductsMock } = vi.hoisted(() => ({ getProductsMock: vi.fn() }));
 vi.mock("../lib/firebase/server-read", () => ({ getServerProducts: getProductsMock }));
 
 import ProductsPage from "./products/page";
+import IngredientsPage from "./ingredients/page";
+import StoryPage from "./story/page";
+import HelpPage from "./help/page";
+import ShippingPage from "./help/shipping/page";
+import ReturnsPage from "./help/returns/page";
 
 const appRouterPages = import.meta.glob("./**/page.tsx");
 
@@ -60,7 +66,9 @@ describe("public storefront menu route contract", () => {
     const hrefs = links.map(({ href }) => href);
     const productHrefs = links.filter(({ href }) => href === "/products" || href.startsWith("/products?")).map(({ href }) => href).sort();
 
-    expect(hrefs).toEqual(expect.arrayContaining(["/", "/admin", "/cart", "/checkout"]));
+    expect(hrefs).toEqual(expect.arrayContaining([
+      "/", "/login", "/signup", "/mypage", "/admin", "/cart", "/checkout",
+    ]));
     expect(productHrefs).toEqual(Object.keys(expectedProductStateByHref).sort());
     for (const link of links) {
       const url = new URL(link.href, "https://vitaleaf.test");
@@ -102,10 +110,10 @@ describe("public storefront menu route contract", () => {
     expect(parseProductQuery(searchParamsRecord(url.searchParams)).isSupported).toBe(false);
   });
 
-  it("keeps authentication out of public navigation and exposes every help page", () => {
+  it("exposes every account and help destination as a real App Router page", () => {
     const paths = flattenMenuLinks(STOREFRONT_MENU).map(({ href }) => new URL(href, "https://vitaleaf.test").pathname);
 
-    expect(paths).not.toContain("/login");
+    expect(paths).toEqual(expect.arrayContaining(["/login", "/signup", "/mypage"]));
     expect(paths.filter((path) => path.startsWith("/help"))).toEqual([
       "/help",
       "/help/shipping",
@@ -123,9 +131,26 @@ describe("public storefront menu route contract", () => {
       const url = new URL(link.href, "https://vitaleaf.test");
       render(await ProductsPage({ searchParams: Promise.resolve(searchParamsRecord(url.searchParams)) }));
 
+      expect(screen.getByRole("heading", {
+        level: 1,
+        name: expectedProductStateByHref[link.href as keyof typeof expectedProductStateByHref].title,
+      }), link.href).toBeVisible();
       expect(screen.getAllByRole("article").length, link.href).toBeGreaterThan(0);
       expect(screen.queryByText("총 0개 상품"), link.href).not.toBeInTheDocument();
       cleanup();
     }
+  });
+
+  it.each([
+    ["/ingredients", IngredientsPage, "성분 가이드"],
+    ["/story", StoryPage, "VITALEAF 이야기"],
+    ["/help", HelpPage, "고객센터"],
+    ["/help/shipping", ShippingPage, "배송 안내"],
+    ["/help/returns", ReturnsPage, "교환 및 반품 안내"],
+  ] as const)("renders the unique heading for footer destination %s", (_href, Page, heading) => {
+    render(createElement(Page));
+
+    expect(screen.getByRole("heading", { level: 1, name: heading })).toBeVisible();
+    cleanup();
   });
 });

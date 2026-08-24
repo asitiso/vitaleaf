@@ -11,4 +11,10 @@ describe("STOREFRONT_MENU", () => {
       .toEqual(PRODUCT_CATEGORIES.map((item) => item.value));
     expect(links.every((link) => link.href.startsWith("/"))).toBe(true);
   });
+
+  it("shares the member account destinations used by the shell", () => {
+    const hrefs = STOREFRONT_MENU.destinations.map((item) => item.href);
+
+    expect(hrefs).toEqual(expect.arrayContaining(["/login", "/signup", "/mypage"]));
+  });
 });

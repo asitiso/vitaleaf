@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
+import { useAuth } from "../../features/auth/auth-context";
 import { useCart } from "../../features/cart/cart-context";
 import { STOREFRONT_DESTINATIONS, STOREFRONT_MENU } from "../../lib/navigation/storefront-menu";
 import { formatShippingBenefitBar } from "../../lib/site/policies";
@@ -19,6 +20,57 @@ function SearchForm({ className }: { className?: string }) {
       <button type="submit">검색</button>
     </form>
   );
+}
+
+function AccountActions({
+  documentNavigation = false,
+  onLogout,
+}: {
+  documentNavigation?: boolean;
+  onLogout?: () => void;
+}) {
+  const { status, user, error, signOutMember } = useAuth();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const isMember = status === "signed-in" && user !== null;
+
+  const logout = async () => {
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    try {
+      if (await signOutMember()) onLogout?.();
+    } catch {
+      // AuthProvider exposes a member-facing error when the Firebase sign-out request fails.
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+
+  const accountLink = (href: string, label: string) => (
+    documentNavigation
+      ? <a href={href}>{label}</a>
+      : <Link href={href}>{label}</Link>
+  );
+  const errorNotice = error ? <span className="site-header__account-error" role="alert">{error}</span> : null;
+
+  if (status === "checking") {
+    return <span className="site-header__account-placeholder" role="status" aria-label="회원 상태 확인 중" />;
+  }
+
+  if (isMember) {
+    return <>
+      {accountLink(STOREFRONT_DESTINATIONS.mypage.href, STOREFRONT_DESTINATIONS.mypage.label)}
+      <button type="button" onClick={() => void logout()} disabled={isLoggingOut}>
+        {isLoggingOut ? "로그아웃 중" : "로그아웃"}
+      </button>
+      {errorNotice}
+    </>;
+  }
+
+  return <>
+    {accountLink(STOREFRONT_DESTINATIONS.login.href, STOREFRONT_DESTINATIONS.login.label)}
+    {accountLink(STOREFRONT_DESTINATIONS.signup.href, STOREFRONT_DESTINATIONS.signup.label)}
+    {errorNotice}
+  </>;
 }
 
 function getFocusableElements(container: HTMLElement) {
@@ -108,6 +160,7 @@ export function SiteHeader() {
           <Link className="site-header__wordmark" href={STOREFRONT_DESTINATIONS.home.href} aria-label="Vitaleaf 홈"><span>VITA</span>LEAF</Link>
           <SearchForm />
           <nav className="site-header__utility-nav" aria-label="사용자 메뉴">
+            <AccountActions />
             <Link href={STOREFRONT_DESTINATIONS.admin.href}>관리자</Link>
             <Link className="site-header__cart" href={STOREFRONT_DESTINATIONS.cart.href} aria-label={`장바구니 ${itemCount}개`}>장바구니 <span aria-hidden="true">{itemCount}</span></Link>
           </nav>
@@ -127,9 +180,11 @@ export function SiteHeader() {
             <div className="site-header__drawer-header"><span>메뉴</span><button ref={mobileCloseButtonRef} type="button" onClick={() => closeMobileMenu(true)}>닫기</button></div>
             <SearchForm className="site-header__mobile-search" />
             <nav aria-label="모바일 주요 메뉴">
+              <AccountActions documentNavigation onLogout={() => closeMobileMenu()} />
               {/* The drawer unmounts on click, so this destination must use browser document navigation. */}
               <a href={STOREFRONT_DESTINATIONS.products.href} onClick={() => closeMobileMenu()}>전체 상품</a>
               {STOREFRONT_MENU.header.map((item) => <a key={item.key} href={item.href} onClick={() => closeMobileMenu()}>{item.label}</a>)}
+              <a href={STOREFRONT_DESTINATIONS.admin.href} onClick={() => closeMobileMenu()}>관리자</a>
               <a href={STOREFRONT_DESTINATIONS.cart.href} onClick={() => closeMobileMenu()}>장바구니 ({itemCount})</a>
             </nav>
             <MegaMenu variant="drawer" onNavigate={() => closeMobileMenu()} />

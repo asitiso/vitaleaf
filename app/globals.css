@@ -254,6 +254,10 @@ a { color: inherit; }
 .site-header__utility-nav { gap: 16px; white-space: nowrap; font-size: 13px; }
 .site-header__utility-nav a, .site-header__primary-nav a, .mega-menu a, .site-footer a { text-decoration: none; }
 .site-header__utility-nav a:hover, .site-header__primary-nav a:hover, .mega-menu a:hover, .site-footer a:hover { text-decoration: underline; text-underline-offset: 4px; }
+.site-header__utility-nav button { border: 0; padding: 0; color: inherit; background: transparent; font: inherit; cursor: pointer; }
+.site-header__utility-nav button:hover { text-decoration: underline; text-underline-offset: 4px; }
+.site-header__account-placeholder { display: inline-block; width: 104px; height: 18px; border-radius: 3px; background: #e7ece8; }
+.site-header__account-error { color: #9e3d2c; font-size: 12px; font-weight: 700; white-space: normal; }
 .site-header__cart { display: inline-flex; gap: 5px; align-items: center; font-weight: 700; }
 .site-header__cart span { display: inline-grid; min-width: 20px; height: 20px; place-items: center; border-radius: 999px; color: #fff; background: var(--color-sale); font-size: 11px; }
 .site-header__navigation-row { position: relative; }
@@ -284,6 +288,7 @@ a { color: inherit; }
 .site-header__drawer-header button { border: 0; padding: 8px; color: var(--color-ink); background: transparent; cursor: pointer; }
 .site-header__mobile-drawer nav { display: grid; padding-top: 13px; }
 .site-header__mobile-drawer nav a { padding: 13px 2px; border-bottom: 1px solid #e3ebe4; color: var(--color-ink); font-weight: 700; text-decoration: none; }
+.site-header__mobile-drawer nav button { min-height: 44px; border: 0; border-bottom: 1px solid #e3ebe4; padding: 13px 2px; color: var(--color-ink); background: transparent; font-weight: 700; text-align: left; cursor: pointer; }
 
 .site-footer { border-top: 1px solid #d7e1d8; background: var(--color-sand); }
 .site-footer__inner { display: grid; grid-template-columns: 1.35fr 1fr 1fr; gap: 40px; padding: 42px 0; font-size: 13px; }
@@ -292,7 +297,7 @@ a { color: inherit; }
 
 @media (max-width: 900px) {
   .site-header__main-row { grid-template-columns: auto 1fr auto; gap: 20px; }
-  .site-header__utility-nav a:not(.site-header__cart) { display: none; }
+  .site-header__utility-nav a:not(.site-header__cart), .site-header__utility-nav button, .site-header__account-placeholder { display: none; }
   .site-header__primary-nav { gap: 20px; }
   .mega-menu__content { gap: 24px; }
 }

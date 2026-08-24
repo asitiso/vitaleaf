@@ -62,9 +62,9 @@ export function MegaMenu({
           </ul>
         </section>
         <MenuDestination className="mega-menu__promotion" href={STOREFRONT_DESTINATIONS.trial.href} onNavigate={onNavigate}>
-          <span>첫 구매 고객</span>
-          <strong>7일 체험</strong>
-          <span>부담 없이 건강 루틴을 시작하세요.</span>
+          <span>첫 구매 추천</span>
+          <strong>3만원 이하 상품</strong>
+          <span>부담 없이 시작할 수 있는 재고 보유 상품을 모았습니다.</span>
         </MenuDestination>
       </div>
     </section>

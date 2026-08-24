@@ -1,4 +1,6 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { expect, it, vi } from "vitest";
 
 import type { MemberAuthAdapter, MemberIdentity } from "@/lib/firebase/member-auth";
@@ -13,6 +15,18 @@ import { AuthProvider, useAuth } from "./auth-context";
 function SessionProbe() {
   const { status, user } = useAuth();
   return <p>{`${status}:${user?.uid ?? "none"}`}</p>;
+}
+
+function SignOutProbe() {
+  const { signOutMember } = useAuth();
+  const [result, setResult] = useState("not-called");
+
+  return <>
+    <button type="button" onClick={() => void signOutMember().then((didSignOut) => setResult(String(didSignOut)))}>
+      로그아웃 시도
+    </button>
+    <p>{result}</p>
+  </>;
 }
 
 it("clears the previous member immediately when Firebase signs out", async () => {
@@ -82,4 +96,17 @@ it("unsubscribes and ignores a late Firebase callback after cleanup", () => {
   expect(unsubscribe).toHaveBeenCalledOnce();
   expect(consoleError).not.toHaveBeenCalled();
   consoleError.mockRestore();
+});
+
+it("reports a failed sign-out so an account menu can stay open", async () => {
+  const user = userEvent.setup();
+  const adapter: MemberAuthAdapter = {
+    create: vi.fn(), signIn: vi.fn(), signOut: vi.fn().mockRejectedValue(new Error("offline")),
+    reset: vi.fn(), verify: vi.fn(), removeCurrent: vi.fn(), observe: vi.fn(() => vi.fn()),
+  };
+
+  render(<AuthProvider adapter={adapter}><SignOutProbe /></AuthProvider>);
+  await user.click(screen.getByRole("button", { name: "로그아웃 시도" }));
+
+  expect(await screen.findByText("false")).toBeVisible();
 });

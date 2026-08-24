@@ -2,7 +2,11 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("../../features/auth/auth-context", () => ({
+  useAuth: () => ({ status: "signed-out", user: null, error: "", signOutMember: vi.fn() }),
+}));
 
 import { CartProvider } from "../../features/cart/cart-context";
 import { SiteHeader } from "./site-header";

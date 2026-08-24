@@ -16,6 +16,9 @@ export type StorefrontMenuItem = {
 export const STOREFRONT_DESTINATIONS = {
   home: { key: "home", label: "홈", href: "/" },
   products: { key: "products", label: "전체 상품", href: "/products" },
+  login: { key: "login", label: "로그인", href: "/login" },
+  signup: { key: "signup", label: "회원가입", href: "/signup" },
+  mypage: { key: "mypage", label: "마이페이지", href: "/mypage" },
   admin: { key: "admin", label: "관리자", href: "/admin" },
   cart: { key: "cart", label: "장바구니", href: "/cart" },
   checkout: { key: "checkout", label: "주문하기", href: "/checkout" },

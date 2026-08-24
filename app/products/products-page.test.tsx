@@ -150,6 +150,19 @@ it("ignores invalid menu values instead of rendering a blank or broken catalog",
   expect(screen.getByLabelText("건강 고민")).toHaveValue("");
 });
 
+it("resets an empty applied filter back to usable product results", async () => {
+  const user = userEvent.setup();
+  getProductsMock.mockResolvedValue(products);
+
+  render(await ProductsPage({ searchParams: Promise.resolve({ q: "찾을 수 없는 검색어" }) }));
+
+  expect(screen.getByText("조건에 맞는 상품이 없습니다")).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "전체 초기화" }));
+
+  expect(screen.getAllByRole("article")).toHaveLength(3);
+  expect(screen.getByRole("searchbox", { name: "상품 검색" })).toHaveValue("");
+});
+
 it.each([
   [{ category: "vitamin" }, "[샘플] 데일리 멀티비타민"],
   [{ category: "gift" }, "[샘플] 패밀리 건강 선물세트"],

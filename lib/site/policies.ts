@@ -10,7 +10,7 @@ export const STORE_POLICIES = {
     dispatch: "결제 확인 후 영업일 기준 순차 출고",
   },
   storefront: {
-    firstPurchaseCoupon: "첫 구매 10% 쿠폰",
+    firstPurchaseRecommendation: "첫 구매 추천 상품",
   },
   returns: { requestWindow: "수령 후 7일 이내", contactRequired: true },
 } as const;
@@ -21,5 +21,5 @@ const formatCompactWon = (amount: number) => amount % 10_000 === 0 ? `${amount /
 export const formatFreeShippingCondition = () => `${formatCompactWon(STORE_POLICIES.shipping.freeThreshold)} 이상 무료배송`;
 export const formatShippingFeePolicy = () => `${formatPolicyWon(STORE_POLICIES.shipping.freeThreshold)} 이상 구매 시 무료이며, 미만일 경우 ${formatPolicyWon(STORE_POLICIES.shipping.baseFee)}입니다.`;
 export const formatSupportHours = () => `${STORE_POLICIES.support.hours} (점심 ${STORE_POLICIES.support.lunch})`;
-export const formatShippingBenefitBar = () => `${STORE_POLICIES.storefront.firstPurchaseCoupon} · ${formatFreeShippingCondition()} · ${STORE_POLICIES.shipping.dispatch}`;
+export const formatShippingBenefitBar = () => `${STORE_POLICIES.storefront.firstPurchaseRecommendation} · ${formatFreeShippingCondition()} · ${STORE_POLICIES.shipping.dispatch}`;
 export const supportPhoneHref = () => `tel:${STORE_POLICIES.support.phone.replaceAll("-", "")}`;
