@@ -74,6 +74,75 @@ service cloud.firestore {
         || (request.resource.data.mode == 'restore' && !exists(productPath));
     }
 
+    function hasValidAddress(address) {
+      return address == null
+        || (address is map
+          && address.keys().hasOnly(['recipient', 'phone', 'postcode', 'address', 'addressDetail'])
+          && address.keys().hasAll(['recipient', 'phone', 'postcode', 'address', 'addressDetail'])
+          && address.recipient is string
+          && address.phone is string
+          && address.postcode is string
+          && address.address is string
+          && address.addressDetail is string);
+    }
+
+    function hasValidProfile(data) {
+      return data.keys().hasOnly([
+          'uid', 'email', 'displayName', 'phone', 'defaultAddress',
+          'termsAcceptedAt', 'createdAt', 'updatedAt',
+        ])
+        && data.keys().hasAll([
+          'uid', 'email', 'displayName', 'phone', 'defaultAddress',
+          'termsAcceptedAt', 'createdAt', 'updatedAt',
+        ])
+        && data.uid is string
+        && data.email is string
+        && data.displayName is string
+        && data.phone is string
+        && hasValidAddress(data.defaultAddress)
+        && data.termsAcceptedAt is timestamp
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function hasValidShippingAddress(address) {
+      return address is map
+        && address.keys().hasOnly(['postcode', 'address', 'addressDetail'])
+        && address.keys().hasAll(['postcode', 'address', 'addressDetail'])
+        && address.postcode is string
+        && address.address is string
+        && address.addressDetail is string;
+    }
+
+    function hasValidMemberOrder(data, uid) {
+      return data.keys().hasOnly([
+          'userId', 'orderNumber', 'status', 'paymentMethod', 'customerName', 'phone',
+          'shippingAddress', 'deliveryNote', 'lines', 'subtotal', 'shippingFee', 'total', 'createdAt',
+        ])
+        && data.keys().hasAll([
+          'userId', 'orderNumber', 'status', 'paymentMethod', 'customerName', 'phone',
+          'shippingAddress', 'deliveryNote', 'lines', 'subtotal', 'shippingFee', 'total', 'createdAt',
+        ])
+        && data.userId == uid
+        && data.userId is string
+        && data.orderNumber is string
+        && data.status == 'mock-received'
+        && data.paymentMethod in ['card', 'bank', 'easy']
+        && data.customerName is string
+        && data.phone is string
+        && hasValidShippingAddress(data.shippingAddress)
+        && data.deliveryNote is string
+        && data.lines is list
+        && data.lines.size() > 0
+        && data.subtotal is number
+        && data.subtotal >= 0
+        && data.shippingFee is number
+        && data.shippingFee >= 0
+        && data.total is number
+        && data.total >= 0
+        && data.createdAt is timestamp;
+    }
+
     match /products/{productId} {
       allow read: if true;
       allow create: if isAdmin()
@@ -111,6 +180,32 @@ service cloud.firestore {
     match /admins/{uid} {
       allow read: if request.auth != null && request.auth.uid == uid;
       allow create, update, delete: if false;
+    }
+
+    match /users/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null
+        && request.auth.uid == uid
+        && hasValidProfile(request.resource.data)
+        && request.resource.data.uid == uid;
+      allow update: if request.auth != null
+        && request.auth.uid == uid
+        && hasValidProfile(request.resource.data)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.termsAcceptedAt == resource.data.termsAcceptedAt
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['displayName', 'phone', 'defaultAddress', 'updatedAt']);
+      allow delete: if false;
+
+      match /orders/{orderId} {
+        allow read: if request.auth != null && request.auth.uid == uid;
+        allow create: if request.auth != null
+          && request.auth.uid == uid
+          && hasValidMemberOrder(request.resource.data, uid);
+        allow update, delete: if false;
+      }
     }
 
     match /orders/{orderId} {

@@ -54,6 +54,43 @@ const ownedDraft = (owner: string, revision = 1) => ({
   sourceCreatedBy: null,
 });
 
+const validProfile = (uid: string) => ({
+  uid,
+  email: "member@example.com",
+  displayName: "홍길동",
+  phone: "010-1234-5678",
+  defaultAddress: {
+    recipient: "홍길동",
+    phone: "010-1234-5678",
+    postcode: "12345",
+    address: "서울시 중구 세종대로",
+    addressDetail: "101호",
+  },
+  termsAcceptedAt: new Date("2026-08-24T00:00:00.000Z"),
+  createdAt: new Date("2026-08-24T00:00:00.000Z"),
+  updatedAt: new Date("2026-08-24T00:00:00.000Z"),
+});
+
+const validOrder = (uid: string) => ({
+  userId: uid,
+  orderNumber: "VL-20260824-ABC123",
+  status: "mock-received",
+  paymentMethod: "card",
+  customerName: "홍길동",
+  phone: "010-1234-5678",
+  shippingAddress: {
+    postcode: "12345",
+    address: "서울시 중구 세종대로",
+    addressDetail: "101호",
+  },
+  deliveryNote: "문 앞에 놓아 주세요",
+  lines: [{ productId: "omega", name: "오메가3", quantity: 2, unitPrice: 16_000 }],
+  subtotal: 32_000,
+  shippingFee: 0,
+  total: 32_000,
+  createdAt: new Date("2026-08-24T02:00:00.000Z"),
+});
+
 const seed = async (documents: Record<string, Record<string, unknown>>) => {
   await testEnvironment.withSecurityRulesDisabled(async (context) => {
     const database = context.firestore();
@@ -421,5 +458,57 @@ describe("orders and default deny", () => {
     await assertFails(getDoc(doc(database, "private/secret")));
     await assertFails(setDoc(doc(database, "private/new-secret"), { value: true }));
     await assertFails(getDoc(doc(database, "products/p1/internal/secret")));
+  });
+});
+
+describe("member profiles and orders", () => {
+  it("allows an owner profile and order but denies another user", async () => {
+    const owner = testEnvironment.authenticatedContext("user-1").firestore();
+    const stranger = testEnvironment.authenticatedContext("user-2").firestore();
+
+    await assertSucceeds(setDoc(doc(owner, "users/user-1"), validProfile("user-1")));
+    await assertSucceeds(getDoc(doc(owner, "users/user-1")));
+    await assertFails(getDoc(doc(stranger, "users/user-1")));
+    await assertFails(setDoc(doc(stranger, "users/user-1"), validProfile("user-1")));
+    await assertSucceeds(setDoc(doc(owner, "users/user-1/orders/order-1"), validOrder("user-1")));
+    await assertSucceeds(getDoc(doc(owner, "users/user-1/orders/order-1")));
+    await assertFails(getDoc(doc(stranger, "users/user-1/orders/order-1")));
+    await assertFails(setDoc(doc(stranger, "users/user-1/orders/stranger-order"), validOrder("user-1")));
+    await assertFails(updateDoc(doc(owner, "users/user-1/orders/order-1"), { total: 1 }));
+    await assertFails(deleteDoc(doc(owner, "users/user-1/orders/order-1")));
+  });
+
+  it("rejects profile identity mutations and unexpected profile fields", async () => {
+    const owner = testEnvironment.authenticatedContext("user-1").firestore();
+    await assertSucceeds(setDoc(doc(owner, "users/user-1"), validProfile("user-1")));
+
+    await assertSucceeds(updateDoc(doc(owner, "users/user-1"), { displayName: "새 이름" }));
+    await assertFails(updateDoc(doc(owner, "users/user-1"), { email: "attacker@example.com" }));
+    await assertFails(updateDoc(doc(owner, "users/user-1"), { termsAcceptedAt: new Date() }));
+    await assertFails(updateDoc(doc(owner, "users/user-1"), { createdAt: new Date() }));
+    await assertFails(deleteDoc(doc(owner, "users/user-1")));
+    await assertFails(setDoc(doc(owner, "users/user-1"), { ...validProfile("user-1"), role: "admin" }));
+    await assertFails(setDoc(doc(owner, "users/user-1"), validProfile("other-user")));
+  });
+
+  it("rejects order spoofing, malformed values, and unexpected fields", async () => {
+    const owner = testEnvironment.authenticatedContext("user-1").firestore();
+
+    await assertFails(setDoc(doc(owner, "users/user-1/orders/spoofed"), validOrder("user-2")));
+    await assertFails(setDoc(doc(owner, "users/user-1/orders/wrong-status"), {
+      ...validOrder("user-1"), status: "paid",
+    }));
+    await assertFails(setDoc(doc(owner, "users/user-1/orders/negative-total"), {
+      ...validOrder("user-1"), total: -1,
+    }));
+    await assertFails(setDoc(doc(owner, "users/user-1/orders/wrong-subtotal-type"), {
+      ...validOrder("user-1"), subtotal: "32000",
+    }));
+    await assertFails(setDoc(doc(owner, "users/user-1/orders/hidden-field"), {
+      ...validOrder("user-1"), adminOnly: true,
+    }));
+    await assertFails(setDoc(doc(owner, "users/user-1/orders/missing-line"), {
+      ...validOrder("user-1"), lines: [],
+    }));
   });
 });
