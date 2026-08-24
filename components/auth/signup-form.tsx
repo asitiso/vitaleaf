@@ -63,13 +63,15 @@ export function SignupForm() {
           displayName: normalizedName,
           termsAcceptedAt: new Date(),
         });
-      } catch (reason) {
+      } catch {
         try {
           await memberAuth.removeCurrent();
         } catch {
-          // The primary profile error remains more useful to the member.
+          setError("회원 정보를 저장하지 못했고 로그인 계정 정리도 완료하지 못했습니다. 로그인 계정이 남아 있을 수 있습니다. 로그인한 뒤 마이페이지에서 회원 정보를 복구해 주세요.");
+          return;
         }
-        throw reason;
+        setError("회원 정보를 저장하지 못해 생성된 로그인 계정을 정리했습니다. 다시 회원가입해 주세요.");
+        return;
       }
 
       let verificationFailed = false;

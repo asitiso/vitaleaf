@@ -6,6 +6,7 @@ import type { DeliveryAddress, UserProfile, UserProfilePatch } from "../../lib/f
 
 type ProfileFormProps = {
   email: string;
+  mode?: "edit" | "repair";
   profile: UserProfile | null;
   onSave: (patch: UserProfilePatch) => Promise<void>;
 };
@@ -64,11 +65,12 @@ function createAddress(values: Values): DeliveryAddress | null {
   };
 }
 
-export function ProfileForm({ email, profile, onSave }: ProfileFormProps) {
+export function ProfileForm({ email, mode = "edit", profile, onSave }: ProfileFormProps) {
   const [values, setValues] = useState<Values>(() => toValues(profile));
   const [errors, setErrors] = useState<Errors>({});
   const [message, setMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [acceptedRepairTerms, setAcceptedRepairTerms] = useState(false);
   const savingRef = useRef(false);
 
   const updateValue = (field: Field, value: string) => {
@@ -86,6 +88,10 @@ export function ProfileForm({ email, profile, onSave }: ProfileFormProps) {
     setErrors(nextErrors);
     setMessage("");
     if (Object.keys(nextErrors).length > 0) return;
+    if (mode === "repair" && !acceptedRepairTerms) {
+      setMessage("회원 정보 복구를 위해 이용약관 및 개인정보 처리방침에 동의해 주세요.");
+      return;
+    }
 
     savingRef.current = true;
     setIsSaving(true);
@@ -96,9 +102,11 @@ export function ProfileForm({ email, profile, onSave }: ProfileFormProps) {
         defaultAddress: createAddress(normalized),
       });
       setValues(normalized);
-      setMessage("회원 정보를 저장했습니다.");
+      setMessage(mode === "repair" ? "회원 정보를 복구했습니다." : "회원 정보를 저장했습니다.");
     } catch {
-      setMessage("회원 정보를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      setMessage(mode === "repair"
+        ? "회원 정보를 복구하지 못했습니다. 잠시 후 다시 시도해 주세요."
+        : "회원 정보를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
       savingRef.current = false;
       setIsSaving(false);
@@ -153,8 +161,22 @@ export function ProfileForm({ email, profile, onSave }: ProfileFormProps) {
           {fieldError("addressDetail") ? <small id="addressDetail-error">{fieldError("addressDetail")}</small> : null}
         </label>
       </fieldset>
-      {message ? <p role={message.includes("못했습니다") ? "alert" : "status"}>{message}</p> : null}
-      <button disabled={isSaving} type="submit">{isSaving ? "회원 정보 저장 중" : "회원 정보 저장"}</button>
+      {mode === "repair" ? (
+        <label className="my-page__repair-consent">
+          <input
+            checked={acceptedRepairTerms}
+            onChange={(event) => setAcceptedRepairTerms(event.currentTarget.checked)}
+            type="checkbox"
+          />
+          <span>이용약관 및 개인정보 처리방침에 동의하고 회원 정보를 복구합니다.</span>
+        </label>
+      ) : null}
+      {message ? <p role={message.includes("못했습니다") || message.includes("동의해") ? "alert" : "status"}>{message}</p> : null}
+      <button disabled={isSaving} type="submit">
+        {isSaving
+          ? mode === "repair" ? "회원 정보 복구 중" : "회원 정보 저장 중"
+          : mode === "repair" ? "회원 정보 복구하기" : "회원 정보 저장"}
+      </button>
     </form>
   );
 }

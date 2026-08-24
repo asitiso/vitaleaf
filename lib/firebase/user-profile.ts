@@ -30,7 +30,7 @@ export type UserProfile = {
 export type NewUserProfile = Pick<
   UserProfile,
   "uid" | "email" | "displayName" | "termsAcceptedAt"
->;
+> & Partial<Pick<UserProfile, "phone" | "defaultAddress">>;
 
 export type UserProfilePatch = Pick<UserProfile, "displayName" | "phone" | "defaultAddress">;
 
@@ -110,8 +110,8 @@ export const createUserProfileRepository = (adapter: UserProfileAdapter) => ({
       uid: input.uid,
       email: input.email,
       displayName: input.displayName,
-      phone: "",
-      defaultAddress: null,
+      phone: input.phone ?? "",
+      defaultAddress: input.defaultAddress ?? null,
       termsAcceptedAt: input.termsAcceptedAt,
       createdAt: timestamp,
       updatedAt: timestamp,

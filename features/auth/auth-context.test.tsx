@@ -29,6 +29,14 @@ function SignOutProbe() {
   </>;
 }
 
+function RetryProbe() {
+  const { error, retryAuth, status, user } = useAuth();
+  return <>
+    <p>{`${status}:${user?.uid ?? "none"}:${error || "none"}`}</p>
+    <button type="button" onClick={retryAuth}>인증 다시 확인</button>
+  </>;
+}
+
 it("clears the previous member immediately when Firebase signs out", async () => {
   let emit!: (user: MemberIdentity | null) => void;
   const adapter: MemberAuthAdapter = {
@@ -109,4 +117,36 @@ it("reports a failed sign-out so an account menu can stay open", async () => {
   await user.click(screen.getByRole("button", { name: "로그아웃 시도" }));
 
   expect(await screen.findByText("false")).toBeVisible();
+});
+
+it("unsubscribes the failed observer and returns to checking before retrying", async () => {
+  const user = userEvent.setup();
+  const subscriptions: Array<{
+    next: (identity: MemberIdentity | null) => void;
+    fail: (reason: unknown) => void;
+    unsubscribe: ReturnType<typeof vi.fn>;
+  }> = [];
+  const adapter: MemberAuthAdapter = {
+    create: vi.fn(), signIn: vi.fn(), signOut: vi.fn(), reset: vi.fn(), verify: vi.fn(), removeCurrent: vi.fn(),
+    observe: vi.fn((next, fail) => {
+      const subscription = { next, fail, unsubscribe: vi.fn() };
+      subscriptions.push(subscription);
+      return subscription.unsubscribe;
+    }),
+  };
+
+  render(<AuthProvider adapter={adapter}><RetryProbe /></AuthProvider>);
+  subscriptions[0].fail(new Error("observer failed"));
+  expect(await screen.findByText("error:none:인증 오류")).toBeVisible();
+
+  await user.click(screen.getByRole("button", { name: "인증 다시 확인" }));
+
+  expect(subscriptions[0].unsubscribe).toHaveBeenCalledOnce();
+  expect(adapter.observe).toHaveBeenCalledTimes(2);
+  expect(screen.getByText("checking:none:none")).toBeVisible();
+
+  subscriptions[0].next({ uid: "stale", email: "stale@example.com", emailVerified: true });
+  expect(screen.queryByText(/stale/)).not.toBeInTheDocument();
+  subscriptions[1].next({ uid: "user-2", email: "new@example.com", emailVerified: true });
+  expect(await screen.findByText("signed-in:user-2:none")).toBeVisible();
 });

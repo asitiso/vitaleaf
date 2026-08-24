@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "../../features/auth/auth-context";
 import { memberAuth, type MemberIdentity } from "../../lib/firebase/member-auth";
 import { listMemberOrders, type MemberOrder } from "../../lib/firebase/member-orders";
-import { getUserProfile, type UserProfile, type UserProfilePatch, updateUserProfile } from "../../lib/firebase/user-profile";
+import { createUserProfile, getUserProfile, type UserProfile, type UserProfilePatch, updateUserProfile } from "../../lib/firebase/user-profile";
 import { OrderHistory } from "./order-history";
 import { ProfileForm } from "./profile-form";
 
@@ -19,10 +19,23 @@ type MyPageProps = {
 };
 
 export function MyPage({ notice }: MyPageProps) {
-  const { status, user } = useAuth();
+  const { error, retryAuth, status, user } = useAuth();
 
   if (status === "checking") {
     return <main aria-busy="true"><p role="status">마이페이지를 확인하는 중입니다.</p></main>;
+  }
+
+  if (status === "error") {
+    return (
+      <main className="my-page my-page--signed-out">
+        <section className="my-page__login-card" aria-labelledby="mypage-auth-error-heading">
+          <p>VITALEAF MEMBER</p>
+          <h1 id="mypage-auth-error-heading">인증 상태를 확인하지 못했습니다</h1>
+          <p role="alert">{error || "로그인 상태를 확인하는 중 오류가 발생했습니다."}</p>
+          <button onClick={retryAuth} type="button">인증 다시 확인</button>
+        </section>
+      </main>
+    );
   }
 
   if (status !== "signed-in" || !user) {
@@ -95,6 +108,32 @@ function AuthenticatedMyPage({ notice, user }: AuthenticatedMyPageProps) {
   const orderIsCurrent = orderState?.uid === uid && orderState.retry === orderRetry;
 
   const saveProfile = async (patch: UserProfilePatch) => {
+    if (profileState?.kind === "ready" && profileState.uid === uid && profileState.data === null) {
+      await createUserProfile({
+        uid,
+        email: user.email,
+        displayName: patch.displayName,
+        phone: patch.phone,
+        defaultAddress: patch.defaultAddress,
+        termsAcceptedAt: new Date(),
+      });
+      setProfileState({
+        kind: "ready",
+        uid,
+        retry: profileRetry,
+        data: {
+          uid,
+          email: user.email,
+          displayName: patch.displayName,
+          phone: patch.phone,
+          defaultAddress: patch.defaultAddress,
+          termsAcceptedAt: null,
+          createdAt: null,
+          updatedAt: null,
+        },
+      });
+      return;
+    }
     await updateUserProfile(uid, patch);
   };
 
@@ -140,7 +179,17 @@ function AuthenticatedMyPage({ notice, user }: AuthenticatedMyPageProps) {
             <button onClick={() => setProfileRetry((count) => count + 1)} type="button">회원 정보 다시 불러오기</button>
           </div>
         ) : null}
-        {profileIsCurrent && profileState.kind === "ready" ? <ProfileForm email={user.email} onSave={saveProfile} profile={profileState.data} /> : null}
+        {profileIsCurrent && profileState.kind === "ready" && profileState.data === null ? (
+          <p>회원 정보 문서가 없습니다. 아래 내용을 확인하고 동의하면 안전하게 회원 정보를 복구할 수 있습니다.</p>
+        ) : null}
+        {profileIsCurrent && profileState.kind === "ready" ? (
+          <ProfileForm
+            email={user.email}
+            mode={profileState.data === null ? "repair" : "edit"}
+            onSave={saveProfile}
+            profile={profileState.data}
+          />
+        ) : null}
       </section>
 
       <section aria-labelledby="orders-heading">

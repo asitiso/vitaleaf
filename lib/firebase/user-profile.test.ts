@@ -112,6 +112,32 @@ describe("user profile repository", () => {
     }));
   });
 
+  it("creates a repaired profile with the member-entered phone and default address", async () => {
+    const adapter = {
+      create: vi.fn().mockResolvedValue(undefined),
+      get: vi.fn(),
+      update: vi.fn(),
+      timestamp: vi.fn().mockReturnValue({ marker: "server-time" }),
+    };
+    const repository = createUserProfileRepository(adapter);
+
+    await repository.create({
+      uid: "user-1",
+      email: "member@example.com",
+      displayName: "복구 회원",
+      phone: "010-1234-5678",
+      defaultAddress: address,
+      termsAcceptedAt: createdAt,
+    });
+
+    expect(adapter.create).toHaveBeenCalledWith("user-1", expect.objectContaining({
+      email: "member@example.com",
+      displayName: "복구 회원",
+      phone: "010-1234-5678",
+      defaultAddress: address,
+    }));
+  });
+
   it("reads and converts Firestore timestamps without exposing SDK values", async () => {
     const adapter = {
       create: vi.fn(),

@@ -7,23 +7,28 @@ import type { UserProfile } from "../../lib/firebase/user-profile";
 
 const {
   authState,
+  createUserProfileMock,
   getUserProfileMock,
   listMemberOrdersMock,
+  retryAuthMock,
   sendVerificationMock,
   updateUserProfileMock,
 } = vi.hoisted(() => ({
   authState: {
     status: "signed-out" as "checking" | "signed-out" | "signed-in" | "error",
     user: null as { uid: string; email: string; emailVerified: boolean } | null,
+    error: "",
   },
+  createUserProfileMock: vi.fn(),
   getUserProfileMock: vi.fn(),
   listMemberOrdersMock: vi.fn(),
+  retryAuthMock: vi.fn(),
   sendVerificationMock: vi.fn(),
   updateUserProfileMock: vi.fn(),
 }));
 
 vi.mock("../../features/auth/auth-context", () => ({
-  useAuth: () => ({ ...authState, error: "", signOutMember: vi.fn() }),
+  useAuth: () => ({ ...authState, retryAuth: retryAuthMock, signOutMember: vi.fn() }),
 }));
 
 vi.mock("../../lib/firebase/member-auth", () => ({
@@ -31,6 +36,7 @@ vi.mock("../../lib/firebase/member-auth", () => ({
 }));
 
 vi.mock("../../lib/firebase/user-profile", () => ({
+  createUserProfile: createUserProfileMock,
   getUserProfile: getUserProfileMock,
   updateUserProfile: updateUserProfileMock,
 }));
@@ -90,10 +96,25 @@ function deferred<T>() {
 beforeEach(() => {
   authState.status = "signed-out";
   authState.user = null;
+  authState.error = "";
+  createUserProfileMock.mockReset().mockResolvedValue(undefined);
   getUserProfileMock.mockReset().mockResolvedValue(profile);
   listMemberOrdersMock.mockReset().mockResolvedValue([order]);
+  retryAuthMock.mockReset();
   sendVerificationMock.mockReset().mockResolvedValue(undefined);
   updateUserProfileMock.mockReset().mockResolvedValue(undefined);
+});
+
+it("shows the authentication error with a retry instead of the signed-out prompt", async () => {
+  authState.status = "error";
+  authState.error = "네트워크 연결을 확인해 주세요.";
+  const user = userEvent.setup();
+  render(<MyPage />);
+
+  expect(screen.getByRole("alert")).toHaveTextContent("네트워크 연결을 확인해 주세요.");
+  expect(screen.queryByRole("link", { name: "로그인" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "인증 다시 확인" }));
+  expect(retryAuthMock).toHaveBeenCalledOnce();
 });
 
 it("offers login with a return path when signed out", () => {
@@ -115,6 +136,62 @@ it("loads the profile and order history for the signed-in UID", async () => {
   expect(getUserProfileMock).toHaveBeenCalledWith("user-1");
   expect(listMemberOrdersMock).toHaveBeenCalledWith("user-1");
   expect(await screen.findByText("VL-20260824-NEW123")).toBeVisible();
+});
+
+it("repairs a missing profile only after explicit consent and becomes normally editable", async () => {
+  authState.status = "signed-in";
+  authState.user = { uid: "user-1", email: "member@example.com", emailVerified: true };
+  getUserProfileMock.mockResolvedValueOnce(null);
+  const user = userEvent.setup();
+  render(<MyPage />);
+
+  expect(await screen.findByText(/회원 정보 문서가 없습니다/)).toBeVisible();
+  expect(createUserProfileMock).not.toHaveBeenCalled();
+  await user.type(screen.getByLabelText("이름"), "복구 회원");
+  await user.type(screen.getByLabelText("연락처"), "010-1234-5678");
+  await user.click(screen.getByRole("button", { name: "회원 정보 복구하기" }));
+  expect(screen.getByRole("alert")).toHaveTextContent("동의해 주세요");
+  expect(createUserProfileMock).not.toHaveBeenCalled();
+  await user.type(screen.getByLabelText("받는 분"), "복구 수령인");
+  await user.type(screen.getByLabelText("배송지 연락처"), "010-9999-8888");
+  await user.type(screen.getByLabelText("우편번호"), "06000");
+  await user.type(screen.getByLabelText("주소"), "서울시 강남구 테헤란로 1");
+  await user.type(screen.getByLabelText("상세주소"), "101호");
+  await user.click(screen.getByRole("checkbox", { name: /이용약관.*동의/ }));
+  await user.click(screen.getByRole("button", { name: "회원 정보 복구하기" }));
+
+  await waitFor(() => expect(createUserProfileMock).toHaveBeenCalledWith(expect.objectContaining({
+    uid: "user-1",
+    email: "member@example.com",
+    displayName: "복구 회원",
+    phone: "010-1234-5678",
+    defaultAddress: {
+      recipient: "복구 수령인",
+      phone: "010-9999-8888",
+      postcode: "06000",
+      address: "서울시 강남구 테헤란로 1",
+      addressDetail: "101호",
+    },
+  })));
+  expect(await screen.findByRole("button", { name: "회원 정보 저장" })).toBeVisible();
+  expect(screen.queryByRole("checkbox", { name: /이용약관.*동의/ })).not.toBeInTheDocument();
+});
+
+it("keeps the missing-profile repair form available when creation fails", async () => {
+  authState.status = "signed-in";
+  authState.user = { uid: "user-1", email: "member@example.com", emailVerified: true };
+  getUserProfileMock.mockResolvedValueOnce(null);
+  createUserProfileMock.mockRejectedValueOnce(new Error("create failed"));
+  const user = userEvent.setup();
+  render(<MyPage />);
+
+  await screen.findByText(/회원 정보 문서가 없습니다/);
+  await user.type(screen.getByLabelText("이름"), "복구 회원");
+  await user.click(screen.getByRole("checkbox", { name: /이용약관.*동의/ }));
+  await user.click(screen.getByRole("button", { name: "회원 정보 복구하기" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("회원 정보를 복구하지 못했습니다");
+  expect(screen.getByRole("button", { name: "회원 정보 복구하기" })).toBeEnabled();
 });
 
 it("keeps profile and order loading independent when the profile request fails", async () => {

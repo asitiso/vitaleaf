@@ -60,25 +60,25 @@ describe("responsive SiteHeader target contract", () => {
       .toHaveClass("mega-menu__age-list");
   });
 
-  it("makes the mobile menu trigger exactly 44px square", () => {
+  it("makes the mobile menu trigger at least 48px square", () => {
     const trigger = mediaRule(".site-header__mobile-trigger").style;
-    expect(trigger.width).toBe("44px");
-    expect(trigger.height).toBe("44px");
+    expect(trigger.width).toBe("48px");
+    expect(trigger.height).toBe("48px");
   });
 
-  it("gives the mobile wordmark and cart links a 44px minimum target", () => {
+  it("gives the mobile wordmark and cart links a 48px minimum target", () => {
     const headerLinks = mediaRule(".site-header__wordmark, .site-header__cart").style;
-    expect(headerLinks.minWidth).toBe("44px");
-    expect(headerLinks.minHeight).toBe("44px");
+    expect(headerLinks.minWidth).toBe("48px");
+    expect(headerLinks.minHeight).toBe("48px");
     expect(headerLinks.alignItems).toBe("center");
   });
 
-  it("gives every drawer link and close control a 44px minimum target", () => {
+  it("gives every drawer link and button a 48px minimum target", () => {
     const close = mediaRule(".site-header__drawer-header button").style;
-    expect(close.minWidth).toBe("44px");
-    expect(close.minHeight).toBe("44px");
+    expect(close.minWidth).toBe("48px");
+    expect(close.minHeight).toBe("48px");
 
-    expect(mediaRule(".site-header__mobile-drawer a").style.minHeight).toBe("44px");
+    expect(mediaRule(".site-header__mobile-drawer a, .site-header__mobile-drawer nav button").style.minHeight).toBe("48px");
     const textLinks = mediaRule(
       ".site-header__mobile-drawer nav a, .site-header__mobile-drawer .mega-menu__link-list a, .site-header__mobile-drawer .mega-menu__age-list a",
     ).style;

@@ -76,7 +76,21 @@ it("removes the new account when profile creation fails", async () => {
 
   expect(removeCurrentMock).toHaveBeenCalledOnce();
   expect(pushMock).not.toHaveBeenCalled();
-  expect(screen.getByRole("alert")).toHaveTextContent("인증 오류");
+  expect(screen.getByRole("alert")).toHaveTextContent("생성된 로그인 계정을 정리했습니다");
+});
+
+it("truthfully warns when both profile creation and auth rollback fail", async () => {
+  createUserProfileMock.mockRejectedValueOnce(new Error("profile failed"));
+  removeCurrentMock.mockRejectedValueOnce(new Error("rollback failed"));
+  const user = userEvent.setup();
+  render(<SignupForm />);
+  await fillSignupForm(user);
+  await user.click(screen.getByRole("checkbox", { name: /이용약관/ }));
+  await user.click(screen.getByRole("button", { name: "회원가입" }));
+
+  expect(screen.getByRole("alert")).toHaveTextContent("로그인 계정이 남아 있을 수 있습니다");
+  expect(screen.getByRole("alert")).toHaveTextContent("마이페이지에서 회원 정보를 복구");
+  expect(pushMock).not.toHaveBeenCalled();
 });
 
 it("keeps the form usable and reports an error when validation setup fails", async () => {

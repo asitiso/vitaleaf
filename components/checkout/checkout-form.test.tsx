@@ -17,16 +17,19 @@ const {
   getUserProfileMock,
   processPaymentMock,
   pushMock,
+  retryAuthMock,
   updateUserProfileMock,
 } = vi.hoisted(() => ({
   authState: {
     status: "signed-out" as "checking" | "signed-out" | "signed-in" | "error",
     user: null as MemberIdentity | null,
+    error: "",
   },
   createMemberOrderMock: vi.fn(),
   getUserProfileMock: vi.fn(),
   processPaymentMock: vi.fn(),
   pushMock: vi.fn(),
+  retryAuthMock: vi.fn(),
   updateUserProfileMock: vi.fn(),
 }));
 
@@ -39,7 +42,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("../../features/auth/auth-context", () => ({
-  useAuth: () => ({ ...authState, error: "", signOutMember: vi.fn() }),
+  useAuth: () => ({ ...authState, retryAuth: retryAuthMock, signOutMember: vi.fn() }),
 }));
 
 vi.mock("../../lib/firebase/user-profile", () => ({
@@ -89,6 +92,7 @@ function renderMemberCheckout(lines: CartLine[] = [selectedLine, unselectedLine]
 function renderGuestCheckout(lines: CartLine[] = [selectedLine, unselectedLine]) {
   authState.status = "signed-out";
   authState.user = null;
+  authState.error = "";
   return renderCheckout(lines);
 }
 
@@ -157,6 +161,7 @@ beforeEach(() => {
   getUserProfileMock.mockReset().mockResolvedValue(null);
   processPaymentMock.mockReset();
   pushMock.mockReset();
+  retryAuthMock.mockReset();
   updateUserProfileMock.mockReset().mockResolvedValue(undefined);
 });
 
@@ -373,7 +378,7 @@ it("continues after optional default-address saving fails and marks the completi
   expect(createMemberOrderMock).toHaveBeenCalledOnce();
 });
 
-it("blocks checkout while authentication is checking, then persists a member order after sign-in", async () => {
+it("preserves delivery typing while authentication is checking, then persists a member order after sign-in", async () => {
   const user = userEvent.setup();
   const payment = deferredPayment();
   processPaymentMock.mockReturnValue(payment.promise);
@@ -392,10 +397,8 @@ it("blocks checkout while authentication is checking, then persists a member ord
   authState.user = { uid: "user-1", email: "member@example.com", emailVerified: true };
   view.rerender(checkoutTree());
   await screen.findByRole("form", { name: "주문 및 결제" });
-  for (const label of ["받는 분", "연락처", "우편번호", "주소", "상세주소"] as const) {
-    await user.clear(screen.getByLabelText(label));
-  }
-  await fillValidOrder(user);
+  expect(screen.getByLabelText("받는 분")).toHaveValue("홍길동");
+  expect(screen.getByLabelText("연락처")).toHaveValue("010-1234-5678");
   await user.click(screen.getByRole("button", { name: "결제하기" }));
   payment.resolve(paymentResult);
 
@@ -404,6 +407,73 @@ it("blocks checkout while authentication is checking, then persists a member ord
     expect.anything(),
     paymentResult,
   ));
+});
+
+it("fills only untouched empty delivery fields when a checking session resolves signed in", async () => {
+  const profile = deferred<UserProfile | null>();
+  getUserProfileMock.mockReturnValue(profile.promise);
+  authState.status = "checking";
+  const user = userEvent.setup();
+  const view = renderCheckout();
+  await screen.findByRole("form", { name: "주문 및 결제" });
+  await user.type(screen.getByLabelText("받는 분"), "직접 입력");
+
+  authState.status = "signed-in";
+  authState.user = { uid: "user-1", email: "member@example.com", emailVerified: true };
+  view.rerender(checkoutTree());
+  profile.resolve(savedProfile);
+
+  expect(await screen.findByLabelText("받는 분")).toHaveValue("직접 입력");
+  expect(screen.getByLabelText("연락처")).toHaveValue("010-9999-8888");
+  expect(screen.getByLabelText("주소")).toHaveValue("서울특별시 강남구 테헤란로 123");
+});
+
+it("blocks auth-error checkout until the shopper deliberately chooses guest checkout", async () => {
+  authState.status = "error";
+  authState.error = "인증 상태를 확인하지 못했습니다.";
+  const user = userEvent.setup();
+  processPaymentMock.mockResolvedValue(paymentResult);
+  renderCheckout();
+  await screen.findByRole("form", { name: "주문 및 결제" });
+  await fillValidOrder(user);
+
+  expect(screen.getByRole("button", { name: "결제하기" })).toBeDisabled();
+  expect(screen.getByRole("alert")).toHaveTextContent("인증 상태를 확인하지 못했습니다.");
+  fireEvent.submit(screen.getByRole("form", { name: "주문 및 결제" }));
+  expect(processPaymentMock).not.toHaveBeenCalled();
+
+  await user.click(screen.getByRole("button", { name: "비회원으로 계속하기" }));
+  expect(screen.getByRole("button", { name: "결제하기" })).toBeEnabled();
+  await user.click(screen.getByRole("button", { name: "결제하기" }));
+
+  await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/order-complete?orderNumber=VL-20260810-ABC123"));
+  expect(createMemberOrderMock).not.toHaveBeenCalled();
+});
+
+it("retries an auth error, resets guest override, and persists when retry signs in", async () => {
+  authState.status = "error";
+  authState.error = "인증 오류";
+  const user = userEvent.setup();
+  processPaymentMock.mockResolvedValue(paymentResult);
+  const view = renderCheckout();
+  await screen.findByRole("form", { name: "주문 및 결제" });
+
+  await user.click(screen.getByRole("button", { name: "비회원으로 계속하기" }));
+  await user.click(screen.getByRole("button", { name: "인증 다시 확인" }));
+  expect(retryAuthMock).toHaveBeenCalledOnce();
+
+  authState.status = "checking";
+  authState.error = "";
+  view.rerender(checkoutTree());
+  expect(screen.getByRole("button", { name: "결제하기" })).toBeDisabled();
+
+  authState.status = "signed-in";
+  authState.user = { uid: "user-1", email: "member@example.com", emailVerified: true };
+  view.rerender(checkoutTree());
+  await fillValidOrder(user);
+  await user.click(screen.getByRole("button", { name: "결제하기" }));
+
+  await waitFor(() => expect(createMemberOrderMock).toHaveBeenCalledWith("user-1", expect.anything(), paymentResult));
 });
 
 it("keeps delivery text typed during initial authentication checking when it resolves signed out", async () => {

@@ -98,6 +98,10 @@ main {
 .checkout-summary button { width: 100%; min-height: 52px; border: 0; border-radius: 4px; color: #fff; background: var(--color-sage); font-size: 15px; font-weight: 800; cursor: pointer; }
 .checkout-summary button:disabled { color: #87948d; background: #e0e6e1; cursor: wait; }
 .checkout-summary > small { display: block; margin-top: 10px; color: #718078; text-align: center; }
+.checkout-auth-error { display: grid; gap: 10px; margin: 0 0 13px; padding: 13px; border: 1px solid #d9a99e; border-radius: 5px; color: #7f3023; background: #fff7f4; }
+.checkout-auth-error p { margin: 0; font-size: 13px; line-height: 1.55; }
+.checkout-auth-error > div { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.checkout-auth-error button { min-height: 48px; border: 1px solid var(--color-sage); color: var(--color-sage); background: #fff; }
 .checkout-form__submit-error { margin: 0 0 13px; }
 .checkout-empty, .order-complete { display: grid; width: min(100% - 40px, 680px); min-height: 520px; place-items: center; align-content: center; margin: 0 auto; padding: 70px 20px; text-align: center; }
 .checkout-empty h1, .order-complete h1 { margin: 6px 0 0; color: var(--color-forest); font-size: clamp(29px, 5vw, 40px); }
@@ -262,6 +266,8 @@ main {
 .my-page fieldset > p { margin: -5px 0 0; color: #66786e; font-size: 13px; line-height: 1.6; }
 .my-page form small { color: #963d2d; font-size: 12px; font-weight: 700; }
 .my-page form > p { margin: 0; }
+.my-page form .my-page__repair-consent { display: flex; min-height: 48px; gap: 9px; align-items: center; color: #52675a; font-size: 13px; line-height: 1.55; }
+.my-page form .my-page__repair-consent input { width: 19px; min-width: 19px; height: 19px; min-height: 19px; padding: 0; accent-color: var(--color-sage); }
 .my-page ul[aria-label="주문 내역"] { display: grid; gap: 12px; padding: 0; margin: 0; list-style: none; }
 .my-page ul[aria-label="주문 내역"] article { padding: 18px; border: 1px solid #dce5de; border-radius: 6px; background: #fbfcfa; }
 .my-page ul[aria-label="주문 내역"] h3 { margin: 0; color: var(--color-forest); font-size: 16px; }
@@ -478,8 +484,8 @@ a { color: inherit; }
   .site-header__benefit-bar { min-height: 31px; padding-inline: 16px; font-size: 11px; }
   .site-header__main-shell, .mega-menu__content, .site-footer__inner { width: min(100% - 32px, var(--content-width)); }
   .site-header__main-row { grid-template-columns: auto 1fr auto; min-height: 66px; gap: 12px; }
-  .site-header__mobile-trigger { display: inline-grid; width: 44px; height: 44px; place-items: center; border: 0; padding: 0; color: var(--color-forest); background: transparent; font-size: 23px; cursor: pointer; }
-  .site-header__wordmark, .site-header__cart { display: inline-flex; min-width: 44px; min-height: 44px; align-items: center; }
+  .site-header__mobile-trigger { display: inline-grid; width: 48px; height: 48px; place-items: center; border: 0; padding: 0; color: var(--color-forest); background: transparent; font-size: 23px; cursor: pointer; }
+  .site-header__wordmark, .site-header__cart { display: inline-flex; min-width: 48px; min-height: 48px; align-items: center; }
   .site-header__wordmark { font-size: 20px; }
   .site-header__search, .site-header__navigation-row { display: none; }
   .site-header__utility-nav { gap: 0; font-size: 0; }
@@ -488,8 +494,8 @@ a { color: inherit; }
   .site-header__cart span { min-width: 22px; height: 22px; font-size: 12px; }
   .site-footer__inner { grid-template-columns: 1fr; gap: 24px; padding: 32px 0; }
   .site-header__mobile-drawer .site-header__search { display: flex; margin: 20px 0 8px; }
-  .site-header__drawer-header button { min-width: 44px; min-height: 44px; }
-  .site-header__mobile-drawer a { min-height: 44px; }
+  .site-header__drawer-header button { min-width: 48px; min-height: 48px; }
+  .site-header__mobile-drawer a, .site-header__mobile-drawer nav button { min-height: 48px; }
   .site-header__mobile-drawer nav a, .site-header__mobile-drawer .mega-menu__link-list a, .site-header__mobile-drawer .mega-menu__age-list a { display: flex; align-items: center; }
   .site-header__mobile-drawer .mega-menu { position: static; right: auto; left: auto; margin-top: 20px; border-inline: 0; box-shadow: none; }
   .site-header__mobile-drawer .mega-menu__content { width: 100%; grid-template-columns: 1fr; gap: 26px; padding: 24px 0; }

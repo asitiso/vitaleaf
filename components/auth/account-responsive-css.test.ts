@@ -28,6 +28,8 @@ describe("member account responsive CSS contract", () => {
     expect(css).toMatch(/\.member-auth-card input[\s\S]*min-height:\s*48px/);
     expect(css).toMatch(/\.my-page\s*\{[\s\S]*grid-template-columns:/);
     expect(css).toMatch(/\.checkout-empty a, \.order-complete__actions a\s*\{[^}]*display:\s*inline-flex[^}]*min-height:\s*48px/);
+    expect(css).toMatch(/\.my-page form \.my-page__repair-consent\s*\{[^}]*display:\s*flex[^}]*min-height:\s*48px/);
+    expect(css).toMatch(/\.my-page form \.my-page__repair-consent input\s*\{[^}]*width:\s*19px[^}]*min-height:\s*19px/);
 
     const mobile = mediaBlock(css, "@media (max-width: 720px)");
     expect(mobile).toMatch(/\.my-page\s*\{[^}]*grid-template-columns:\s*1fr/);

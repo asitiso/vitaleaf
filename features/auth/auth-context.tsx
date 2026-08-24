@@ -21,6 +21,7 @@ type AuthContextValue = {
   status: AuthStatus;
   user: MemberIdentity | null;
   error: string;
+  retryAuth: () => void;
   signOutMember: () => Promise<boolean>;
 };
 
@@ -35,6 +36,7 @@ export function AuthProvider({ children, adapter }: AuthProviderProps) {
   const [status, setStatus] = useState<AuthStatus>("checking");
   const [user, setUser] = useState<MemberIdentity | null>(null);
   const [error, setError] = useState("");
+  const [observationAttempt, setObservationAttempt] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -82,7 +84,14 @@ export function AuthProvider({ children, adapter }: AuthProviderProps) {
       active = false;
       unsubscribe();
     };
-  }, [adapter]);
+  }, [adapter, observationAttempt]);
+
+  const retryAuth = useCallback(() => {
+    setUser(null);
+    setError("");
+    setStatus("checking");
+    setObservationAttempt((attempt) => attempt + 1);
+  }, []);
 
   const signOutMember = useCallback(async () => {
     setError("");
@@ -107,8 +116,8 @@ export function AuthProvider({ children, adapter }: AuthProviderProps) {
   }, [adapter]);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ status, user, error, signOutMember }),
-    [error, signOutMember, status, user],
+    () => ({ status, user, error, retryAuth, signOutMember }),
+    [error, retryAuth, signOutMember, status, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

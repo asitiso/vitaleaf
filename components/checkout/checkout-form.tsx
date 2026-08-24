@@ -70,19 +70,81 @@ function validateOrder(values: Record<RequiredField, string>) {
 }
 
 export function CheckoutForm() {
-  const { status, user } = useAuth();
+  const { error: authError, retryAuth, status, user } = useAuth();
   const member = status === "signed-in" && user ? user : null;
-  const sessionKey = member ? `member:${member.uid}` : "guest";
+  const memberUid = member?.uid ?? null;
+  const [session, setSession] = useState<{ generation: number; principal: string | null | undefined }>({
+    generation: 0,
+    principal: undefined,
+  });
+  const nextSession = deriveCheckoutSession(session, status, memberUid);
+  if (nextSession !== session) setSession(nextSession);
 
-  return <CheckoutFormContents authStatus={status} key={sessionKey} member={member} />;
+  const authStateKey = `${status}:${memberUid ?? "none"}:${authError}`;
+  const [guestChoice, setGuestChoice] = useState({ allowed: false, authStateKey });
+  const nextGuestChoice = guestChoice.authStateKey === authStateKey
+    ? guestChoice
+    : { allowed: false, authStateKey };
+  if (nextGuestChoice !== guestChoice) setGuestChoice(nextGuestChoice);
+
+  const retryAuthentication = () => {
+    setGuestChoice({ allowed: false, authStateKey });
+    retryAuth();
+  };
+
+  return (
+    <CheckoutFormContents
+      allowGuestOnAuthError={nextGuestChoice.allowed}
+      authError={authError}
+      authStatus={status}
+      key={`checkout-session:${nextSession.generation}`}
+      member={member}
+      onContinueAsGuest={() => setGuestChoice({ allowed: true, authStateKey })}
+      onRetryAuth={retryAuthentication}
+    />
+  );
+}
+
+function deriveCheckoutSession(
+  session: { generation: number; principal: string | null | undefined },
+  status: AuthStatus,
+  memberUid: string | null,
+) {
+  if (session.principal === undefined) {
+    return status === "checking" ? session : { ...session, principal: memberUid };
+  }
+  if (memberUid) {
+    if (session.principal === memberUid) return session;
+    return {
+      generation: session.principal ? session.generation + 1 : session.generation,
+      principal: memberUid,
+    };
+  }
+  if (status !== "signed-out" && status !== "error") return session;
+  if (session.principal === null) return session;
+  return {
+    generation: session.principal ? session.generation + 1 : session.generation,
+    principal: null,
+  };
 }
 
 type CheckoutFormContentsProps = {
+  allowGuestOnAuthError: boolean;
+  authError: string;
   authStatus: AuthStatus;
   member: MemberIdentity | null;
+  onContinueAsGuest: () => void;
+  onRetryAuth: () => void;
 };
 
-function CheckoutFormContents({ authStatus, member }: CheckoutFormContentsProps) {
+function CheckoutFormContents({
+  allowGuestOnAuthError,
+  authError,
+  authStatus,
+  member,
+  onContinueAsGuest,
+  onRetryAuth,
+}: CheckoutFormContentsProps) {
   const router = useRouter();
   const { lines, hasHydrated, subtotal, shippingFee, total, clearSubmitted } = useCart();
   const memberUid = member?.uid ?? null;
@@ -92,7 +154,7 @@ function CheckoutFormContents({ authStatus, member }: CheckoutFormContentsProps)
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const submittingRef = useRef(false);
-  const deliveryWasEditedRef = useRef(false);
+  const editedDeliveryFieldsRef = useRef<Set<RequiredField>>(new Set());
   const profileRef = useRef<UserProfile | null>(null);
   const fieldRefs = useRef<Partial<Record<RequiredField, HTMLInputElement>>>({});
   const selectedLines = lines.filter((line) => line.selected);
@@ -108,13 +170,22 @@ function CheckoutFormContents({ authStatus, member }: CheckoutFormContentsProps)
     void getUserProfile(memberUid).then((profile) => {
       if (!active) return;
       profileRef.current = profile;
-      if (!profile?.defaultAddress || deliveryWasEditedRef.current) return;
-      setDelivery({
+      if (!profile?.defaultAddress) return;
+      const savedDelivery: DeliveryValues = {
         customerName: profile.defaultAddress.recipient,
         phone: profile.defaultAddress.phone,
         postcode: profile.defaultAddress.postcode,
         address: profile.defaultAddress.address,
         addressDetail: profile.defaultAddress.addressDetail,
+      };
+      setDelivery((current) => {
+        const next = { ...current };
+        for (const field of REQUIRED_FIELDS) {
+          if (!editedDeliveryFieldsRef.current.has(field) && !current[field]) {
+            next[field] = savedDelivery[field];
+          }
+        }
+        return next;
       });
     }, () => {
       // A saved delivery address is an optional convenience, so checkout remains available.
@@ -126,7 +197,7 @@ function CheckoutFormContents({ authStatus, member }: CheckoutFormContentsProps)
   }, [memberUid]);
 
   const changeDelivery = (field: RequiredField) => (event: ChangeEvent<HTMLInputElement>) => {
-    deliveryWasEditedRef.current = true;
+    editedDeliveryFieldsRef.current.add(field);
     const value = event.currentTarget.value;
     setDelivery((current) => ({ ...current, [field]: value }));
   };
@@ -136,7 +207,7 @@ function CheckoutFormContents({ authStatus, member }: CheckoutFormContentsProps)
     if (submittingRef.current) {
       return;
     }
-    if (authStatus === "checking") {
+    if (authStatus === "checking" || (authStatus === "error" && !allowGuestOnAuthError)) {
       return;
     }
     if (hasUnavailableItems) {
@@ -345,10 +416,28 @@ function CheckoutFormContents({ authStatus, member }: CheckoutFormContentsProps)
             </div>
           ) : null}
           {submitError ? <p className="checkout-form__submit-error" role="alert">{submitError}</p> : null}
-          <button type="submit" disabled={isSubmitting || hasUnavailableItems || authStatus === "checking"}>
+          {authStatus === "error" ? (
+            <div className="checkout-auth-error" role="alert">
+              <p>{authError || "로그인 상태를 확인하지 못했습니다. 다시 확인하거나 비회원 결제를 선택해 주세요."}</p>
+              <div>
+                <button onClick={onRetryAuth} type="button">인증 다시 확인</button>
+                <button disabled={allowGuestOnAuthError} onClick={onContinueAsGuest} type="button">
+                  {allowGuestOnAuthError ? "비회원 결제 선택됨" : "비회원으로 계속하기"}
+                </button>
+              </div>
+            </div>
+          ) : null}
+          <button
+            type="submit"
+            disabled={isSubmitting || hasUnavailableItems || authStatus === "checking" || (authStatus === "error" && !allowGuestOnAuthError)}
+          >
             {isSubmitting ? "결제 처리 중" : "결제하기"}
           </button>
-          <small>{member ? "회원 주문 정보는 주문내역에 저장됩니다." : "개인정보와 주문 정보는 저장되지 않습니다."}</small>
+          <small>{member
+            ? "회원 주문 정보는 주문내역에 저장됩니다."
+            : authStatus === "error" && !allowGuestOnAuthError
+              ? "인증 상태를 선택한 뒤 결제를 진행할 수 있습니다."
+              : "개인정보와 주문 정보는 저장되지 않습니다."}</small>
         </aside>
       </form>
     </main>
