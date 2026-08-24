@@ -5,13 +5,29 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { CartProvider } from "../../features/cart/cart-context";
 import type { CartLine } from "../../features/cart/cart-types";
+import type { MemberIdentity } from "../../lib/firebase/member-auth";
+import type { UserProfile } from "../../lib/firebase/user-profile";
 import type { PaymentResult } from "../../lib/payment/process-payment";
 
 import { CheckoutForm } from "./checkout-form";
 
-const { processPaymentMock, pushMock } = vi.hoisted(() => ({
+const {
+  authState,
+  createMemberOrderMock,
+  getUserProfileMock,
+  processPaymentMock,
+  pushMock,
+  updateUserProfileMock,
+} = vi.hoisted(() => ({
+  authState: {
+    status: "signed-out" as "checking" | "signed-out" | "signed-in" | "error",
+    user: null as MemberIdentity | null,
+  },
+  createMemberOrderMock: vi.fn(),
+  getUserProfileMock: vi.fn(),
   processPaymentMock: vi.fn(),
   pushMock: vi.fn(),
+  updateUserProfileMock: vi.fn(),
 }));
 
 vi.mock("../../lib/payment/process-payment", () => ({
@@ -20,6 +36,19 @@ vi.mock("../../lib/payment/process-payment", () => ({
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
+}));
+
+vi.mock("../../features/auth/auth-context", () => ({
+  useAuth: () => ({ ...authState, error: "", signOutMember: vi.fn() }),
+}));
+
+vi.mock("../../lib/firebase/user-profile", () => ({
+  getUserProfile: getUserProfileMock,
+  updateUserProfile: updateUserProfileMock,
+}));
+
+vi.mock("../../lib/firebase/member-orders", () => ({
+  createMemberOrder: createMemberOrderMock,
 }));
 
 const storageKey = "vitaleaf-cart-v1";
@@ -51,6 +80,18 @@ function renderCheckout(lines: CartLine[] = [selectedLine, unselectedLine]) {
   );
 }
 
+function renderMemberCheckout(lines: CartLine[] = [selectedLine, unselectedLine]) {
+  authState.status = "signed-in";
+  authState.user = { uid: "user-1", email: "member@example.com", emailVerified: true };
+  return renderCheckout(lines);
+}
+
+function renderGuestCheckout(lines: CartLine[] = [selectedLine, unselectedLine]) {
+  authState.status = "signed-out";
+  authState.user = null;
+  return renderCheckout(lines);
+}
+
 async function fillValidOrder(
   user: ReturnType<typeof userEvent.setup>,
   phone = "010-1234-5678",
@@ -71,9 +112,44 @@ function deferredPayment() {
   return { promise, resolve };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolver) => {
+    resolve = resolver;
+  });
+  return { promise, resolve };
+}
+
+const savedProfile: UserProfile = {
+  uid: "user-1",
+  email: "member@example.com",
+  displayName: "저장 회원",
+  phone: "010-1234-5678",
+  defaultAddress: {
+    recipient: "저장된 받는 분",
+    phone: "010-9999-8888",
+    postcode: "06236",
+    address: "서울특별시 강남구 테헤란로 123",
+    addressDetail: "4층",
+  },
+  termsAcceptedAt: null,
+  createdAt: null,
+  updatedAt: null,
+};
+
+const paymentResult: PaymentResult = {
+  orderNumber: "VL-20260810-ABC123",
+  receivedAt: "2026-08-10T09:00:00.000Z",
+};
+
 beforeEach(() => {
+  authState.status = "signed-out";
+  authState.user = null;
+  createMemberOrderMock.mockReset().mockResolvedValue("member-order-1");
+  getUserProfileMock.mockReset().mockResolvedValue(null);
   processPaymentMock.mockReset();
   pushMock.mockReset();
+  updateUserProfileMock.mockReset().mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -211,4 +287,80 @@ it("submits the selected order once, clears it, and routes with only the order n
   await waitFor(() => {
     expect(JSON.parse(localStorage.getItem(storageKey) ?? "[]")).toEqual([unselectedLine]);
   });
+});
+
+it("prefills a signed-in member address without overwriting typing", async () => {
+  const profile = deferred<UserProfile | null>();
+  getUserProfileMock.mockReturnValue(profile.promise);
+  const user = userEvent.setup();
+  renderMemberCheckout();
+
+  await screen.findByRole("form", { name: "주문 및 결제" });
+  await user.type(screen.getByLabelText("받는 분"), "직접 입력");
+  profile.resolve(savedProfile);
+
+  expect(await screen.findByLabelText("받는 분")).toHaveValue("직접 입력");
+  expect(screen.getByRole("checkbox", { name: "이 배송지를 기본 배송지로 저장" })).toBeVisible();
+});
+
+it("stores a member order before clearing selected cart lines", async () => {
+  const user = userEvent.setup();
+  processPaymentMock.mockResolvedValue(paymentResult);
+  renderMemberCheckout();
+  await screen.findByRole("form", { name: "주문 및 결제" });
+  await fillValidOrder(user);
+
+  await user.click(screen.getByRole("button", { name: "결제하기" }));
+
+  await waitFor(() => expect(createMemberOrderMock).toHaveBeenCalledWith(
+    "user-1",
+    expect.objectContaining({ lines: [selectedLine] }),
+    paymentResult,
+  ));
+  await waitFor(() => expect(JSON.parse(localStorage.getItem(storageKey) ?? "[]")).toEqual([unselectedLine]));
+});
+
+it("keeps the cart when member order storage fails", async () => {
+  const user = userEvent.setup();
+  processPaymentMock.mockResolvedValue(paymentResult);
+  createMemberOrderMock.mockRejectedValueOnce(new Error("write failed"));
+  renderMemberCheckout();
+  await screen.findByRole("form", { name: "주문 및 결제" });
+  await fillValidOrder(user);
+
+  await user.click(screen.getByRole("button", { name: "결제하기" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("주문 정보를 저장하지 못했습니다");
+  expect(JSON.parse(localStorage.getItem(storageKey) ?? "[]")).toEqual([selectedLine, unselectedLine]);
+  expect(pushMock).not.toHaveBeenCalled();
+});
+
+it("does not persist a guest mock order", async () => {
+  const user = userEvent.setup();
+  processPaymentMock.mockResolvedValue(paymentResult);
+  renderGuestCheckout();
+  await screen.findByRole("form", { name: "주문 및 결제" });
+  await fillValidOrder(user);
+
+  await user.click(screen.getByRole("button", { name: "결제하기" }));
+
+  await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/order-complete?orderNumber=VL-20260810-ABC123"));
+  expect(createMemberOrderMock).not.toHaveBeenCalled();
+});
+
+it("continues after optional default-address saving fails and marks the completion notice", async () => {
+  const user = userEvent.setup();
+  processPaymentMock.mockResolvedValue(paymentResult);
+  updateUserProfileMock.mockRejectedValueOnce(new Error("address failed"));
+  renderMemberCheckout();
+  await screen.findByRole("form", { name: "주문 및 결제" });
+  await fillValidOrder(user);
+  await user.click(screen.getByRole("checkbox", { name: "이 배송지를 기본 배송지로 저장" }));
+
+  await user.click(screen.getByRole("button", { name: "결제하기" }));
+
+  await waitFor(() => expect(pushMock).toHaveBeenCalledWith(
+    "/order-complete?orderNumber=VL-20260810-ABC123&addressSaved=0",
+  ));
+  expect(createMemberOrderMock).toHaveBeenCalledOnce();
 });

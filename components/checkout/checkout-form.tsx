@@ -2,13 +2,17 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useRef, useState } from "react";
+import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from "react";
 
+import { useAuth } from "../../features/auth/auth-context";
 import { useCart } from "../../features/cart/cart-context";
+import { createMemberOrder } from "../../lib/firebase/member-orders";
+import { getUserProfile, type UserProfile, updateUserProfile } from "../../lib/firebase/user-profile";
 import { processPayment, type OrderDraft } from "../../lib/payment/process-payment";
 
 type RequiredField = "customerName" | "phone" | "postcode" | "address" | "addressDetail";
 type FormErrors = Partial<Record<RequiredField, string>>;
+type DeliveryValues = Record<RequiredField, string>;
 
 const REQUIRED_FIELDS: RequiredField[] = [
   "customerName",
@@ -26,6 +30,14 @@ const FIELD_LABELS: Record<RequiredField, string> = {
   postcode: "우편번호",
   address: "주소",
   addressDetail: "상세주소",
+};
+
+const EMPTY_DELIVERY_VALUES: DeliveryValues = {
+  customerName: "",
+  phone: "",
+  postcode: "",
+  address: "",
+  addressDetail: "",
 };
 
 function formatWon(value: number) {
@@ -58,15 +70,54 @@ function validateOrder(values: Record<RequiredField, string>) {
 
 export function CheckoutForm() {
   const router = useRouter();
+  const { status, user } = useAuth();
   const { lines, hasHydrated, subtotal, shippingFee, total, clearSelected } = useCart();
+  const member = status === "signed-in" && user ? user : null;
+  const memberUid = member?.uid ?? null;
   const [errors, setErrors] = useState<FormErrors>({});
+  const [delivery, setDelivery] = useState<DeliveryValues>(EMPTY_DELIVERY_VALUES);
+  const [saveDefaultAddress, setSaveDefaultAddress] = useState({ uid: null as string | null, selected: false });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const submittingRef = useRef(false);
+  const deliveryWasEditedRef = useRef(false);
+  const profileRef = useRef<UserProfile | null>(null);
   const fieldRefs = useRef<Partial<Record<RequiredField, HTMLInputElement>>>({});
   const selectedLines = lines.filter((line) => line.selected);
   const unavailableSelectedLines = selectedLines.filter((line) => line.stock < 1);
   const hasUnavailableItems = unavailableSelectedLines.length > 0;
+  const shouldSaveDefaultAddress = saveDefaultAddress.uid === memberUid && saveDefaultAddress.selected;
+
+  useEffect(() => {
+    profileRef.current = null;
+    if (!memberUid) return;
+
+    let active = true;
+    void getUserProfile(memberUid).then((profile) => {
+      if (!active) return;
+      profileRef.current = profile;
+      if (!profile?.defaultAddress || deliveryWasEditedRef.current) return;
+      setDelivery({
+        customerName: profile.defaultAddress.recipient,
+        phone: profile.defaultAddress.phone,
+        postcode: profile.defaultAddress.postcode,
+        address: profile.defaultAddress.address,
+        addressDetail: profile.defaultAddress.addressDetail,
+      });
+    }, () => {
+      // A saved delivery address is an optional convenience, so checkout remains available.
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [memberUid]);
+
+  const changeDelivery = (field: RequiredField) => (event: ChangeEvent<HTMLInputElement>) => {
+    deliveryWasEditedRef.current = true;
+    const value = event.currentTarget.value;
+    setDelivery((current) => ({ ...current, [field]: value }));
+  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -79,7 +130,7 @@ export function CheckoutForm() {
     }
 
     const formData = new FormData(event.currentTarget);
-    const values: Record<RequiredField, string> = {
+    const values: DeliveryValues = {
       customerName: readText(formData, "customerName"),
       phone: readText(formData, "phone"),
       postcode: readText(formData, "postcode"),
@@ -116,8 +167,38 @@ export function CheckoutForm() {
 
     try {
       const result = await processPayment(orderDraft);
+      if (member) {
+        try {
+          await createMemberOrder(member.uid, orderDraft, result);
+        } catch {
+          setSubmitError("주문 정보를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+          return;
+        }
+      }
+
+      let addressSaved = true;
+      if (member && shouldSaveDefaultAddress) {
+        try {
+          const profile = profileRef.current ?? await getUserProfile(member.uid);
+          await updateUserProfile(member.uid, {
+            displayName: profile?.displayName || values.customerName,
+            phone: profile?.phone || values.phone,
+            defaultAddress: {
+              recipient: values.customerName,
+              phone: values.phone,
+              postcode: values.postcode,
+              address: values.address,
+              addressDetail: values.addressDetail,
+            },
+          });
+        } catch {
+          addressSaved = false;
+        }
+      }
       clearSelected();
-      router.push(`/order-complete?orderNumber=${encodeURIComponent(result.orderNumber)}`);
+      const query = new URLSearchParams({ orderNumber: result.orderNumber });
+      if (!addressSaved) query.set("addressSaved", "0");
+      router.push(`/order-complete?${query.toString()}`);
     } catch {
       setSubmitError("결제를 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
@@ -191,6 +272,8 @@ export function CheckoutForm() {
                     }
                     aria-invalid={errors[field] ? "true" : undefined}
                     aria-describedby={errors[field] ? `${field}-error` : undefined}
+                    value={delivery[field]}
+                    onChange={changeDelivery(field)}
                   />
                   {errors[field] ? <small id={`${field}-error`}>{errors[field]}</small> : null}
                 </label>
@@ -199,6 +282,16 @@ export function CheckoutForm() {
                 <span>배송 요청사항 (선택)</span>
                 <textarea name="deliveryNote" rows={3} />
               </label>
+              {member ? (
+                <label className="checkout-save-address">
+                  <input
+                    checked={shouldSaveDefaultAddress}
+                    onChange={(event) => setSaveDefaultAddress({ uid: memberUid, selected: event.currentTarget.checked })}
+                    type="checkbox"
+                  />
+                  이 배송지를 기본 배송지로 저장
+                </label>
+              ) : null}
             </div>
           </section>
 
@@ -239,7 +332,7 @@ export function CheckoutForm() {
           <button type="submit" disabled={isSubmitting || hasUnavailableItems}>
             {isSubmitting ? "결제 처리 중" : "결제하기"}
           </button>
-          <small>개인정보와 주문 정보는 저장되지 않습니다.</small>
+          <small>{member ? "회원 주문 정보는 주문내역에 저장됩니다." : "개인정보와 주문 정보는 저장되지 않습니다."}</small>
         </aside>
       </form>
     </main>

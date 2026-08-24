@@ -1,5 +1,9 @@
 import { render, screen } from "@testing-library/react";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
+
+vi.mock("../../features/auth/auth-context", () => ({
+  useAuth: () => ({ status: "signed-out", user: null, error: "", signOutMember: vi.fn() }),
+}));
 
 import OrderCompletePage from "./page";
 
@@ -20,4 +24,13 @@ it("does not present an arbitrary query value as an order number", async () => {
 
   expect(screen.queryByText("홍길동-010-1234-5678")).not.toBeInTheDocument();
   expect(screen.getByText("주문번호는 결제 완료 직후 화면에서 확인할 수 있습니다.")).toBeVisible();
+});
+
+it("keeps a successful order complete while warning when optional address saving failed", async () => {
+  render(await OrderCompletePage({
+    searchParams: Promise.resolve({ orderNumber: "VL-20260810-ABC123", addressSaved: "0" }),
+  }));
+
+  expect(screen.getByRole("heading", { name: "주문이 접수되었습니다" })).toBeVisible();
+  expect(screen.getByRole("alert")).toHaveTextContent("주문은 접수되었지만 기본 배송지는 저장하지 못했습니다.");
 });
