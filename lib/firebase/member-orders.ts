@@ -92,6 +92,35 @@ const asLines = (value: unknown): MemberOrderLine[] =>
     })
     : [];
 
+const isValidOrderLine = (value: unknown): value is MemberOrderLine => {
+  if (
+    typeof value !== "object"
+    || value === null
+    || Array.isArray(value)
+    || Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    return false;
+  }
+
+  const line = value as Record<string, unknown>;
+  return typeof line.productId === "string"
+    && line.productId.trim().length > 0
+    && typeof line.name === "string"
+    && line.name.trim().length > 0
+    && typeof line.quantity === "number"
+    && Number.isInteger(line.quantity)
+    && line.quantity >= 1
+    && typeof line.unitPrice === "number"
+    && Number.isFinite(line.unitPrice)
+    && line.unitPrice >= 0;
+};
+
+const assertValidOrderLines = (lines: unknown): asserts lines is MemberOrderLine[] => {
+  if (!Array.isArray(lines) || lines.length === 0 || !lines.every(isValidOrderLine)) {
+    throw new Error("Member orders require valid product lines.");
+  }
+};
+
 const normalizeMemberOrder = (uid: string, id: string, raw: unknown): MemberOrder => {
   const order = asRecord(raw);
   return {
@@ -116,30 +145,34 @@ const toMemberOrderWrite = (
   uid: string,
   draft: OrderDraft,
   payment: PaymentResult,
-): MemberOrderWrite => ({
-  userId: uid,
-  orderNumber: payment.orderNumber,
-  status: "mock-received",
-  paymentMethod: draft.paymentMethod,
-  customerName: draft.customerName,
-  phone: draft.phone,
-  shippingAddress: {
-    postcode: draft.postcode,
-    address: draft.address,
-    addressDetail: draft.addressDetail,
-  },
-  deliveryNote: draft.deliveryNote,
-  lines: draft.lines.map(({ productId, name, quantity, unitPrice }) => ({
-    productId,
-    name,
-    quantity,
-    unitPrice,
-  })),
-  subtotal: draft.subtotal,
-  shippingFee: draft.shippingFee,
-  total: draft.total,
-  createdAt: new Date(payment.receivedAt),
-});
+): MemberOrderWrite => {
+  assertValidOrderLines(draft.lines);
+
+  return {
+    userId: uid,
+    orderNumber: payment.orderNumber,
+    status: "mock-received",
+    paymentMethod: draft.paymentMethod,
+    customerName: draft.customerName,
+    phone: draft.phone,
+    shippingAddress: {
+      postcode: draft.postcode,
+      address: draft.address,
+      addressDetail: draft.addressDetail,
+    },
+    deliveryNote: draft.deliveryNote,
+    lines: draft.lines.map(({ productId, name, quantity, unitPrice }) => ({
+      productId,
+      name,
+      quantity,
+      unitPrice,
+    })),
+    subtotal: draft.subtotal,
+    shippingFee: draft.shippingFee,
+    total: draft.total,
+    createdAt: new Date(payment.receivedAt),
+  };
+};
 
 const newestFirst = (left: MemberOrder, right: MemberOrder): number =>
   (right.createdAt?.getTime() ?? 0) - (left.createdAt?.getTime() ?? 0);

@@ -462,6 +462,15 @@ describe("orders and default deny", () => {
 });
 
 describe("member profiles and orders", () => {
+  it("denies signed-out profile and member-order access", async () => {
+    const publicDatabase = testEnvironment.unauthenticatedContext().firestore();
+
+    await assertFails(getDoc(doc(publicDatabase, "users/user-1")));
+    await assertFails(setDoc(doc(publicDatabase, "users/user-1"), validProfile("user-1")));
+    await assertFails(getDoc(doc(publicDatabase, "users/user-1/orders/order-1")));
+    await assertFails(setDoc(doc(publicDatabase, "users/user-1/orders/order-1"), validOrder("user-1")));
+  });
+
   it("allows an owner profile and order but denies another user", async () => {
     const owner = testEnvironment.authenticatedContext("user-1").firestore();
     const stranger = testEnvironment.authenticatedContext("user-2").firestore();
@@ -472,6 +481,8 @@ describe("member profiles and orders", () => {
     await assertFails(setDoc(doc(stranger, "users/user-1"), validProfile("user-1")));
     await assertSucceeds(setDoc(doc(owner, "users/user-1/orders/order-1"), validOrder("user-1")));
     await assertSucceeds(getDoc(doc(owner, "users/user-1/orders/order-1")));
+    const ownOrders = await assertSucceeds(getDocs(collection(owner, "users/user-1/orders")));
+    expect(ownOrders.docs.map((entry) => entry.id)).toEqual(["order-1"]);
     await assertFails(getDoc(doc(stranger, "users/user-1/orders/order-1")));
     await assertFails(setDoc(doc(stranger, "users/user-1/orders/stranger-order"), validOrder("user-1")));
     await assertFails(updateDoc(doc(owner, "users/user-1/orders/order-1"), { total: 1 }));
@@ -491,7 +502,7 @@ describe("member profiles and orders", () => {
     await assertFails(setDoc(doc(owner, "users/user-1"), validProfile("other-user")));
   });
 
-  it("rejects order spoofing, malformed values, and unexpected fields", async () => {
+  it("rejects order spoofing, invalid top-level values, and unexpected fields", async () => {
     const owner = testEnvironment.authenticatedContext("user-1").firestore();
 
     await assertFails(setDoc(doc(owner, "users/user-1/orders/spoofed"), validOrder("user-2")));

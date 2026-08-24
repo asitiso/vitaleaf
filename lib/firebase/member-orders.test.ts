@@ -17,7 +17,12 @@ vi.mock("firebase/firestore", () => ({
   query: queryMock,
 }));
 
-import { createMemberOrderRepository, type MemberOrderAdapter } from "./member-orders";
+import {
+  createMemberOrder,
+  createMemberOrderRepository,
+  listMemberOrders,
+  type MemberOrderAdapter,
+} from "./member-orders";
 
 const draft = {
   customerName: "홍길동",
@@ -100,6 +105,30 @@ describe("member order repository", () => {
     }));
   });
 
+  it.each([
+    { label: "no lines", lines: [] },
+    { label: "an empty product ID", lines: [{ ...draft.lines[0], productId: "" }] },
+    { label: "an empty product name", lines: [{ ...draft.lines[0], name: "" }] },
+    { label: "a zero quantity", lines: [{ ...draft.lines[0], quantity: 0 }] },
+    { label: "a fractional quantity", lines: [{ ...draft.lines[0], quantity: 1.5 }] },
+    { label: "a negative unit price", lines: [{ ...draft.lines[0], unitPrice: -1 }] },
+    { label: "a non-finite unit price", lines: [{ ...draft.lines[0], unitPrice: Number.POSITIVE_INFINITY }] },
+    { label: "a non-record line", lines: [null] },
+  ])("rejects a draft with $label before writing", async ({ lines }) => {
+    const adapter: MemberOrderAdapter = { add: vi.fn(), list: vi.fn() };
+    const repository = createMemberOrderRepository(adapter);
+
+    await expect(repository.create("user-1", {
+      ...draft,
+      lines: lines as typeof draft.lines,
+    }, {
+      orderNumber: "VL-20260824-ABC123",
+      receivedAt: "2026-08-24T02:00:00.000Z",
+    })).rejects.toThrow("valid product lines");
+
+    expect(adapter.add).not.toHaveBeenCalled();
+  });
+
   it("returns newest orders first", async () => {
     const adapter: MemberOrderAdapter = {
       add: vi.fn(),
@@ -110,5 +139,37 @@ describe("member order repository", () => {
       expect.objectContaining({ id: "newer", orderNumber: "VL-20260824-NEWER1" }),
       expect.objectContaining({ id: "older", orderNumber: "VL-20260823-OLDER1" }),
     ]);
+  });
+
+  it("writes through the member order subcollection", async () => {
+    await expect(createMemberOrder("user-1", draft, {
+      orderNumber: "VL-20260824-ABC123",
+      receivedAt: "2026-08-24T02:00:00.000Z",
+    })).resolves.toBe("firestore-order");
+
+    expect(collectionMock).toHaveBeenCalledWith({}, "users", "user-1", "orders");
+    expect(addDocMock).toHaveBeenCalledWith(
+      ["users", "user-1", "orders"],
+      expect.objectContaining({ userId: "user-1", orderNumber: "VL-20260824-ABC123" }),
+    );
+  });
+
+  it("queries the member subcollection newest first and normalizes timestamps", async () => {
+    const createdAt = new Date("2026-08-24T02:00:00.000Z");
+    getDocsMock.mockResolvedValue({ docs: [{
+      ...newerOrder,
+      data: () => ({ ...newerOrder.data(), createdAt: { toDate: () => createdAt } }),
+    }] });
+
+    await expect(listMemberOrders("user-1")).resolves.toEqual([
+      expect.objectContaining({ id: "newer", createdAt }),
+    ]);
+
+    expect(collectionMock).toHaveBeenCalledWith({}, "users", "user-1", "orders");
+    expect(orderByMock).toHaveBeenCalledWith("createdAt", "desc");
+    expect(queryMock).toHaveBeenCalledWith(
+      ["users", "user-1", "orders"],
+      { order: "createdAt-desc" },
+    );
   });
 });
