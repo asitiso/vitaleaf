@@ -38,7 +38,7 @@ export const STOREFRONT_DESTINATIONS = {
 export const storefrontCategoryHref = (value: (typeof PRODUCT_CATEGORIES)[number]["value"]): string =>
   `/products?category=${value}`;
 
-const toCategoryMenuItem = (option: TaxonomyOption): StorefrontMenuItem => ({
+const toCategoryMenuItem = (option: (typeof PRODUCT_CATEGORIES)[number]): StorefrontMenuItem => ({
   key: `category-${option.value}`,
   label: option.label,
   href: storefrontCategoryHref(option.value),
