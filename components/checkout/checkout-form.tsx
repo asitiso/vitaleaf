@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from "react";
 
-import { useAuth } from "../../features/auth/auth-context";
+import { type AuthStatus, useAuth } from "../../features/auth/auth-context";
 import { useCart } from "../../features/cart/cart-context";
+import type { MemberIdentity } from "../../lib/firebase/member-auth";
 import { createMemberOrder } from "../../lib/firebase/member-orders";
 import { getUserProfile, type UserProfile, updateUserProfile } from "../../lib/firebase/user-profile";
 import { processPayment, type OrderDraft } from "../../lib/payment/process-payment";
@@ -69,10 +70,21 @@ function validateOrder(values: Record<RequiredField, string>) {
 }
 
 export function CheckoutForm() {
-  const router = useRouter();
   const { status, user } = useAuth();
-  const { lines, hasHydrated, subtotal, shippingFee, total, clearSelected } = useCart();
   const member = status === "signed-in" && user ? user : null;
+  const sessionKey = member ? `member:${member.uid}` : "guest";
+
+  return <CheckoutFormContents authStatus={status} key={sessionKey} member={member} />;
+}
+
+type CheckoutFormContentsProps = {
+  authStatus: AuthStatus;
+  member: MemberIdentity | null;
+};
+
+function CheckoutFormContents({ authStatus, member }: CheckoutFormContentsProps) {
+  const router = useRouter();
+  const { lines, hasHydrated, subtotal, shippingFee, total, clearSubmitted } = useCart();
   const memberUid = member?.uid ?? null;
   const [errors, setErrors] = useState<FormErrors>({});
   const [delivery, setDelivery] = useState<DeliveryValues>(EMPTY_DELIVERY_VALUES);
@@ -124,6 +136,9 @@ export function CheckoutForm() {
     if (submittingRef.current) {
       return;
     }
+    if (authStatus === "checking") {
+      return;
+    }
     if (hasUnavailableItems) {
       setSubmitError("품절 상품을 장바구니에서 제외한 뒤 다시 시도해 주세요.");
       return;
@@ -155,11 +170,12 @@ export function CheckoutForm() {
     setIsSubmitting(true);
 
     const paymentMethod = readText(formData, "paymentMethod") as OrderDraft["paymentMethod"];
+    const submittedLines = selectedLines.map((line) => ({ ...line }));
     const orderDraft: OrderDraft = {
       ...values,
       deliveryNote: readText(formData, "deliveryNote"),
       paymentMethod,
-      lines: selectedLines,
+      lines: submittedLines,
       subtotal,
       shippingFee,
       total,
@@ -195,7 +211,7 @@ export function CheckoutForm() {
           addressSaved = false;
         }
       }
-      clearSelected();
+      clearSubmitted(submittedLines);
       const query = new URLSearchParams({ orderNumber: result.orderNumber });
       if (!addressSaved) query.set("addressSaved", "0");
       router.push(`/order-complete?${query.toString()}`);
@@ -329,7 +345,7 @@ export function CheckoutForm() {
             </div>
           ) : null}
           {submitError ? <p className="checkout-form__submit-error" role="alert">{submitError}</p> : null}
-          <button type="submit" disabled={isSubmitting || hasUnavailableItems}>
+          <button type="submit" disabled={isSubmitting || hasUnavailableItems || authStatus === "checking"}>
             {isSubmitting ? "결제 처리 중" : "결제하기"}
           </button>
           <small>{member ? "회원 주문 정보는 주문내역에 저장됩니다." : "개인정보와 주문 정보는 저장되지 않습니다."}</small>

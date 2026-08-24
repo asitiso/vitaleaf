@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -90,6 +90,14 @@ function renderGuestCheckout(lines: CartLine[] = [selectedLine, unselectedLine])
   authState.status = "signed-out";
   authState.user = null;
   return renderCheckout(lines);
+}
+
+function checkoutTree() {
+  return (
+    <CartProvider>
+      <CheckoutForm />
+    </CartProvider>
+  );
 }
 
 async function fillValidOrder(
@@ -363,4 +371,109 @@ it("continues after optional default-address saving fails and marks the completi
     "/order-complete?orderNumber=VL-20260810-ABC123&addressSaved=0",
   ));
   expect(createMemberOrderMock).toHaveBeenCalledOnce();
+});
+
+it("blocks checkout while authentication is checking, then persists a member order after sign-in", async () => {
+  const user = userEvent.setup();
+  const payment = deferredPayment();
+  processPaymentMock.mockReturnValue(payment.promise);
+  authState.status = "checking";
+  authState.user = null;
+  const view = renderCheckout();
+  await screen.findByRole("form", { name: "주문 및 결제" });
+  await fillValidOrder(user);
+
+  const form = screen.getByRole("form", { name: "주문 및 결제" });
+  expect(screen.getByRole("button", { name: "결제하기" })).toBeDisabled();
+  fireEvent.submit(form);
+  expect(processPaymentMock).not.toHaveBeenCalled();
+
+  authState.status = "signed-in";
+  authState.user = { uid: "user-1", email: "member@example.com", emailVerified: true };
+  view.rerender(checkoutTree());
+  await screen.findByRole("form", { name: "주문 및 결제" });
+  for (const label of ["받는 분", "연락처", "우편번호", "주소", "상세주소"] as const) {
+    await user.clear(screen.getByLabelText(label));
+  }
+  await fillValidOrder(user);
+  await user.click(screen.getByRole("button", { name: "결제하기" }));
+  payment.resolve(paymentResult);
+
+  await waitFor(() => expect(createMemberOrderMock).toHaveBeenCalledWith(
+    "user-1",
+    expect.anything(),
+    paymentResult,
+  ));
+});
+
+it("clears member delivery fields immediately after the member signs out", async () => {
+  authState.status = "signed-in";
+  authState.user = { uid: "user-a", email: "a@example.com", emailVerified: true };
+  getUserProfileMock.mockResolvedValueOnce({ ...savedProfile, uid: "user-a" });
+  const view = renderCheckout();
+
+  expect(await screen.findByLabelText("받는 분")).toHaveValue("저장된 받는 분");
+  authState.status = "signed-out";
+  authState.user = null;
+  view.rerender(checkoutTree());
+
+  expect(screen.getByLabelText("받는 분")).toHaveValue("");
+  expect(screen.getByLabelText("주소")).toHaveValue("");
+});
+
+it("hydrates a new member address after a different member edited the prior address", async () => {
+  const user = userEvent.setup();
+  const memberBProfile: UserProfile = {
+    ...savedProfile,
+    uid: "user-b",
+    email: "b@example.com",
+    defaultAddress: { ...savedProfile.defaultAddress!, recipient: "B 회원 배송지" },
+  };
+  authState.status = "signed-in";
+  authState.user = { uid: "user-a", email: "a@example.com", emailVerified: true };
+  getUserProfileMock.mockImplementation((uid: string) => Promise.resolve(
+    uid === "user-a" ? { ...savedProfile, uid: "user-a" } : memberBProfile,
+  ));
+  const view = renderCheckout();
+
+  expect(await screen.findByLabelText("받는 분")).toHaveValue("저장된 받는 분");
+  await user.clear(screen.getByLabelText("받는 분"));
+  await user.type(screen.getByLabelText("받는 분"), "A 회원 직접 입력");
+
+  authState.user = { uid: "user-b", email: "b@example.com", emailVerified: true };
+  view.rerender(checkoutTree());
+
+  await waitFor(() => expect(screen.getByLabelText("받는 분")).toHaveValue("B 회원 배송지"));
+});
+
+it("removes only the submitted cart snapshot after a cross-tab cart update during payment", async () => {
+  const user = userEvent.setup();
+  const payment = deferredPayment();
+  const newlySelectedLine: CartLine = {
+    ...selectedLine,
+    productId: "new-probiotic",
+    name: "새로 선택한 유산균",
+    quantity: 1,
+  };
+  processPaymentMock.mockReturnValue(payment.promise);
+  renderGuestCheckout();
+  await screen.findByRole("form", { name: "주문 및 결제" });
+  await fillValidOrder(user);
+  fireEvent.submit(screen.getByRole("form", { name: "주문 및 결제" }));
+  expect(processPaymentMock).toHaveBeenCalledOnce();
+
+  await act(async () => {
+    window.dispatchEvent(new StorageEvent("storage", {
+      key: storageKey,
+      newValue: JSON.stringify([selectedLine, unselectedLine, newlySelectedLine]),
+      storageArea: localStorage,
+    }));
+  });
+  expect(await screen.findByText(/^새로 선택한 유산균/)).toBeVisible();
+  payment.resolve(paymentResult);
+
+  await waitFor(() => expect(JSON.parse(localStorage.getItem(storageKey) ?? "[]")).toEqual([
+    unselectedLine,
+    newlySelectedLine,
+  ]));
 });

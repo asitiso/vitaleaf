@@ -92,6 +92,16 @@ function toCartLine(product: Product, quantity: number, selected = true): CartLi
   return { ...line, quantity: clampQuantity(line, quantity) };
 }
 
+function isSameCartLineSnapshot(current: CartLine, snapshot: CartLine) {
+  return current.productId === snapshot.productId
+    && current.name === snapshot.name
+    && current.thumbnailUrl === snapshot.thumbnailUrl
+    && current.unitPrice === snapshot.unitPrice
+    && current.stock === snapshot.stock
+    && current.quantity === snapshot.quantity
+    && current.selected === snapshot.selected;
+}
+
 export function CartProvider({ children }: { children: ReactNode }) {
   const [lines, setLines] = useState<CartLine[]>([]);
   const [hasHydrated, setHasHydrated] = useState(false);
@@ -175,11 +185,19 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setLines((currentLines) => currentLines.filter((line) => !line.selected));
   }, []);
 
+  const clearSubmitted = useCallback((submittedLines: readonly CartLine[]) => {
+    const submittedByProductId = new Map(submittedLines.map((line) => [line.productId, line]));
+    setLines((currentLines) => currentLines.filter((line) => {
+      const submittedLine = submittedByProductId.get(line.productId);
+      return !submittedLine || !isSameCartLineSnapshot(line, submittedLine);
+    }));
+  }, []);
+
   const summary = useMemo(() => calculateCart(lines), [lines]);
   const itemCount = useMemo(() => lines.reduce((count, line) => count + line.quantity, 0), [lines]);
   const value = useMemo<CartContextState>(
-    () => ({ lines, itemCount, hasHydrated, add, remove, setQuantity, setSelected, selectAll, clearSelected, ...summary }),
-    [add, clearSelected, hasHydrated, itemCount, lines, remove, selectAll, setQuantity, setSelected, summary],
+    () => ({ lines, itemCount, hasHydrated, add, remove, setQuantity, setSelected, selectAll, clearSelected, clearSubmitted, ...summary }),
+    [add, clearSelected, clearSubmitted, hasHydrated, itemCount, lines, remove, selectAll, setQuantity, setSelected, summary],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

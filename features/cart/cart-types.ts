@@ -20,4 +20,5 @@ export type CartContextValue = {
   setSelected(productId: string, selected: boolean): void;
   selectAll(selected: boolean): void;
   clearSelected(): void;
+  clearSubmitted(lines: readonly CartLine[]): void;
 };

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -18,7 +18,7 @@ const line: CartLine = {
 };
 
 function CartProbe() {
-  const { itemCount, lines, setQuantity, subtotal } = useCart();
+  const { clearSubmitted, itemCount, lines, setQuantity, subtotal } = useCart();
 
   return (
     <>
@@ -27,6 +27,9 @@ function CartProbe() {
       <p>Quantity: {lines[0]?.quantity ?? 0}</p>
       <button type="button" onClick={() => setQuantity(line.productId, 2)}>
         Increase quantity
+      </button>
+      <button type="button" onClick={() => clearSubmitted([line])}>
+        Clear submitted
       </button>
     </>
   );
@@ -82,5 +85,36 @@ describe("CartProvider", () => {
     );
 
     expect(await screen.findByText("Items: 2")).toBeInTheDocument();
+  });
+
+  it("clears only the matching submitted snapshot after a newer cross-tab cart state arrives", async () => {
+    const newLine: CartLine = {
+      ...line,
+      productId: "new-vitamin",
+      name: "새 비타민",
+      quantity: 2,
+    };
+    const user = userEvent.setup();
+    localStorage.setItem(storageKey, JSON.stringify([line]));
+    render(
+      <CartProvider>
+        <CartProbe />
+      </CartProvider>,
+    );
+    await screen.findByText("Items: 1");
+
+    const changedLine = { ...line, quantity: 2 };
+    await act(async () => {
+      window.dispatchEvent(new StorageEvent("storage", {
+        key: storageKey,
+        newValue: JSON.stringify([changedLine, newLine]),
+        storageArea: localStorage,
+      }));
+    });
+    expect(await screen.findByText("Items: 4")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Clear submitted" }));
+
+    expect(await screen.findByText("Items: 4")).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem(storageKey) ?? "[]")).toEqual([changedLine, newLine]);
   });
 });
