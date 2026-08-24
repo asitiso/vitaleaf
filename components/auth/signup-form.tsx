@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useRef, useState } from "react";
 
 const isValidEmail = (email: string) => /^\S+@\S+\.\S+$/.test(email);
 
@@ -16,10 +16,11 @@ export function SignupForm() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (isSubmitting) return;
+    if (submittingRef.current) return;
 
     const normalizedName = displayName.trim();
     const normalizedEmail = email.trim();
@@ -34,12 +35,6 @@ export function SignupForm() {
       setError("올바른 이메일을 입력해 주세요.");
       return;
     }
-    const { memberAuth, validateMemberPassword } = await import("../../lib/firebase/member-auth");
-    const passwordError = validateMemberPassword(password);
-    if (passwordError) {
-      setError(passwordError);
-      return;
-    }
     if (password !== confirmation) {
       setError("비밀번호 확인이 일치하지 않습니다.");
       return;
@@ -49,8 +44,16 @@ export function SignupForm() {
       return;
     }
 
+    submittingRef.current = true;
     setIsSubmitting(true);
     try {
+      const { memberAuth, validateMemberPassword } = await import("../../lib/firebase/member-auth");
+      const passwordError = validateMemberPassword(password);
+      if (passwordError) {
+        setError(passwordError);
+        return;
+      }
+
       const identity = await memberAuth.signUp(normalizedEmail, password);
       try {
         const { createUserProfile } = await import("../../lib/firebase/user-profile");
@@ -69,18 +72,21 @@ export function SignupForm() {
         throw reason;
       }
 
+      let verificationFailed = false;
       try {
         await memberAuth.sendVerification();
       } catch {
+        verificationFailed = true;
         setNotice("인증 메일을 보내지 못했습니다. 마이페이지에서 다시 요청해 주세요.");
       }
-      router.push("/mypage");
+      router.push(verificationFailed ? "/mypage?notice=verification-email-failed" : "/mypage");
     } catch (reason) {
       const message = await import("../../lib/firebase/member-auth")
         .then(({ getMemberAuthErrorMessage }) => getMemberAuthErrorMessage(reason))
         .catch(() => "인증 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
       setError(message);
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   };

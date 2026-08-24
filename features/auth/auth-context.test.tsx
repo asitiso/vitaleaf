@@ -42,3 +42,44 @@ it("clears the previous member immediately when Firebase signs out", async () =>
   emit(null);
   expect(await screen.findByText("signed-out:none")).toBeVisible();
 });
+
+it("clears the prior member and exposes an error when observation fails", async () => {
+  let emit!: (user: MemberIdentity | null) => void;
+  let fail!: (reason: unknown) => void;
+  const adapter: MemberAuthAdapter = {
+    create: vi.fn(), signIn: vi.fn(), signOut: vi.fn(), reset: vi.fn(), verify: vi.fn(), removeCurrent: vi.fn(),
+    observe: vi.fn((next, onError) => {
+      emit = next;
+      fail = onError;
+      return vi.fn();
+    }),
+  };
+
+  render(<AuthProvider adapter={adapter}><SessionProbe /></AuthProvider>);
+  emit({ uid: "user-1", email: "member@example.com", emailVerified: false });
+  expect(await screen.findByText("signed-in:user-1")).toBeVisible();
+
+  fail(new Error("observer failed"));
+  expect(await screen.findByText("error:none")).toBeVisible();
+});
+
+it("unsubscribes and ignores a late Firebase callback after cleanup", () => {
+  let emit!: (user: MemberIdentity | null) => void;
+  const unsubscribe = vi.fn();
+  const adapter: MemberAuthAdapter = {
+    create: vi.fn(), signIn: vi.fn(), signOut: vi.fn(), reset: vi.fn(), verify: vi.fn(), removeCurrent: vi.fn(),
+    observe: vi.fn((next) => {
+      emit = next;
+      return unsubscribe;
+    }),
+  };
+  const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  const view = render(<AuthProvider adapter={adapter}><SessionProbe /></AuthProvider>);
+
+  view.unmount();
+  emit({ uid: "late-user", email: "member@example.com", emailVerified: false });
+
+  expect(unsubscribe).toHaveBeenCalledOnce();
+  expect(consoleError).not.toHaveBeenCalled();
+  consoleError.mockRestore();
+});

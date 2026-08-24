@@ -2,12 +2,13 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 
-const { createMock, createUserProfileMock, pushMock, removeCurrentMock, verifyMock } = vi.hoisted(() => ({
+const { createMock, createUserProfileMock, pushMock, removeCurrentMock, sendVerificationMock, validateMemberPasswordMock } = vi.hoisted(() => ({
   createMock: vi.fn(),
   createUserProfileMock: vi.fn(),
   pushMock: vi.fn(),
   removeCurrentMock: vi.fn(),
-  verifyMock: vi.fn(),
+  sendVerificationMock: vi.fn(),
+  validateMemberPasswordMock: vi.fn(),
 }));
 
 vi.mock("../../lib/firebase/member-auth", () => ({
@@ -15,9 +16,9 @@ vi.mock("../../lib/firebase/member-auth", () => ({
   memberAuth: {
     signUp: createMock,
     removeCurrent: removeCurrentMock,
-    verify: verifyMock,
+    sendVerification: sendVerificationMock,
   },
-  validateMemberPassword: () => null,
+  validateMemberPassword: validateMemberPasswordMock,
 }));
 
 vi.mock("../../lib/firebase/user-profile", () => ({
@@ -46,7 +47,8 @@ beforeEach(() => {
   createUserProfileMock.mockReset().mockResolvedValue(undefined);
   pushMock.mockReset();
   removeCurrentMock.mockReset().mockResolvedValue(undefined);
-  verifyMock.mockReset().mockResolvedValue(undefined);
+  sendVerificationMock.mockReset().mockResolvedValue(undefined);
+  validateMemberPasswordMock.mockReset().mockReturnValue(null);
 });
 
 it("creates the profile before reporting signup success", async () => {
@@ -59,6 +61,8 @@ it("creates the profile before reporting signup success", async () => {
   expect(createUserProfileMock).toHaveBeenCalledWith(expect.objectContaining({
     displayName: "홍길동",
   }));
+  expect(sendVerificationMock).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
   expect(pushMock).toHaveBeenCalledWith("/mypage");
 });
 
@@ -75,8 +79,23 @@ it("removes the new account when profile creation fails", async () => {
   expect(screen.getByRole("alert")).toHaveTextContent("인증 오류");
 });
 
-it("keeps the completed account when verification delivery fails", async () => {
-  verifyMock.mockRejectedValueOnce(new Error("verification failed"));
+it("keeps the form usable and reports an error when validation setup fails", async () => {
+  validateMemberPasswordMock.mockImplementationOnce(() => {
+    throw new Error("auth module failed");
+  });
+  const user = userEvent.setup();
+  render(<SignupForm />);
+  await fillSignupForm(user);
+  await user.click(screen.getByRole("checkbox", { name: /이용약관/ }));
+  await user.click(screen.getByRole("button", { name: "회원가입" }));
+
+  expect(screen.getByRole("alert")).toHaveTextContent("인증 오류");
+  expect(screen.getByRole("button", { name: "회원가입" })).toBeEnabled();
+  expect(createMock).not.toHaveBeenCalled();
+});
+
+it("keeps the completed account and carries a durable notice when verification delivery fails", async () => {
+  sendVerificationMock.mockRejectedValueOnce(new Error("verification failed"));
   const user = userEvent.setup();
   render(<SignupForm />);
   await fillSignupForm(user);
@@ -85,5 +104,5 @@ it("keeps the completed account when verification delivery fails", async () => {
 
   expect(removeCurrentMock).not.toHaveBeenCalled();
   expect(screen.getByRole("status")).toHaveTextContent("인증 메일");
-  expect(pushMock).toHaveBeenCalledWith("/mypage");
+  expect(pushMock).toHaveBeenCalledWith("/mypage?notice=verification-email-failed");
 });
