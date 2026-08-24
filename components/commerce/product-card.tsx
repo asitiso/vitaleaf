@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 
 import { formatWon } from "../../lib/format";
@@ -18,7 +17,7 @@ export function ProductCard({ product, rank }: { product: Product; rank?: number
 
   return (
     <article className="product-card" aria-label={product.name}>
-      <Link className="product-card__link" href={`/products/${product.id}`}>
+      <a className="product-card__link" href={`/products/${product.id}`}>
         <div className="product-card__image-wrap">
           {product.thumbnailUrl && !imageFailed ? (
             // Firestore accepts merchant-managed image URLs from arbitrary hosts.
@@ -55,7 +54,7 @@ export function ProductCard({ product, rank }: { product: Product; rank?: number
             <span aria-hidden="true">★</span> 평점 {product.ratingAverage.toFixed(1)} <span>리뷰 {product.reviewCount.toLocaleString("ko-KR")}</span>
           </p>
         </div>
-      </Link>
+      </a>
     </article>
   );
 }

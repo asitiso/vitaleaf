@@ -1,6 +1,14 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import type { AnchorHTMLAttributes, ReactNode } from "react";
+import { vi } from "vitest";
 
 import type { Product } from "@/lib/products/types";
+
+vi.mock("next/link", () => ({
+  default: ({ children, href, ...props }: AnchorHTMLAttributes<HTMLAnchorElement> & { children: ReactNode; href: string }) => (
+    <a {...props} href={href} onClick={(event) => event.preventDefault()}>{children}</a>
+  ),
+}));
 
 import { ProductCard } from "./product-card";
 
@@ -54,6 +62,22 @@ it("uses the stable Firestore document id when the optional slug is empty", () =
     "href",
     "/products/omega-3",
   );
+});
+
+it("keeps native browser navigation for product detail links", () => {
+  render(<ProductCard product={product} />);
+
+  const link = screen.getByRole("link", { name: /데일리 오메가3/ });
+  const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+  let preventedBeforeBrowserNavigation: boolean | null = null;
+  document.addEventListener("click", (event) => {
+    preventedBeforeBrowserNavigation = event.defaultPrevented;
+    event.preventDefault();
+  }, { once: true });
+
+  link.dispatchEvent(click);
+
+  expect(preventedBeforeBrowserNavigation).toBe(false);
 });
 
 it("replaces a broken non-empty thumbnail with the existing decorative brand fallback", () => {
