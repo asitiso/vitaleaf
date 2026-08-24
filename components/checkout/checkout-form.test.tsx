@@ -406,6 +406,20 @@ it("blocks checkout while authentication is checking, then persists a member ord
   ));
 });
 
+it("keeps delivery text typed during initial authentication checking when it resolves signed out", async () => {
+  const user = userEvent.setup();
+  authState.status = "checking";
+  authState.user = null;
+  const view = renderCheckout();
+  await screen.findByRole("form", { name: "주문 및 결제" });
+  await user.type(screen.getByLabelText("받는 분"), "비회원 직접 입력");
+
+  authState.status = "signed-out";
+  view.rerender(checkoutTree());
+
+  expect(screen.getByLabelText("받는 분")).toHaveValue("비회원 직접 입력");
+});
+
 it("clears member delivery fields immediately after the member signs out", async () => {
   authState.status = "signed-in";
   authState.user = { uid: "user-a", email: "a@example.com", emailVerified: true };
