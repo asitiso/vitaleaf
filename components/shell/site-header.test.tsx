@@ -58,7 +58,9 @@ describe("SiteHeader", () => {
     const mobileNavigation = within(drawer).getByRole("navigation", { name: "모바일 주요 메뉴" });
 
     for (const item of STOREFRONT_MENU.header) {
-      expect(within(mobileNavigation).getByRole("link", { name: item.label })).toHaveAttribute("href", item.href);
+      const mobileLink = within(mobileNavigation).getByRole("link", { name: item.label });
+      expect(mobileLink).toHaveAttribute("href", item.href);
+      expect(mobileLink).not.toHaveAttribute("data-client-navigation");
     }
   });
 

@@ -6,7 +6,7 @@ export default function NextLink({
   ...anchorProps
 }: AnchorHTMLAttributes<HTMLAnchorElement> & { children: ReactNode; href: string }) {
   return (
-    <a href={href} {...anchorProps}>
+    <a href={href} data-client-navigation="true" {...anchorProps}>
       {children}
     </a>
   );

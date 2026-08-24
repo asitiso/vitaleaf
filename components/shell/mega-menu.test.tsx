@@ -26,4 +26,12 @@ describe("MegaMenu", () => {
       expect(screen.getByRole("link", { name: item.label })).toHaveAttribute("href", item.href);
     }
   });
+
+  it("uses document navigation inside the mobile drawer so closing it cannot cancel the destination", () => {
+    render(<MegaMenu variant="drawer" onNavigate={() => undefined} />);
+
+    expect(screen.getByRole("link", { name: "비타민" })).not.toHaveAttribute("data-client-navigation");
+    expect(screen.getByRole("link", { name: "장 건강" })).not.toHaveAttribute("data-client-navigation");
+    expect(screen.getByRole("link", { name: "30대" })).not.toHaveAttribute("data-client-navigation");
+  });
 });

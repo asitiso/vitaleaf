@@ -80,3 +80,14 @@ it("renders the not-found boundary when the product does not exist", async () =>
   expect(notFoundMock).toHaveBeenCalledOnce();
   expect(getApprovedReviewsMock).not.toHaveBeenCalled();
 });
+
+it("opens a sample product detail without querying Firestore reviews", async () => {
+  getProductMock.mockRejectedValue(new Error("offline"));
+
+  const page = await ProductPage({ params: Promise.resolve({ id: "sample-daily-multivitamin" }) });
+  render(<CartProvider>{page}</CartProvider>);
+
+  expect(screen.getByRole("heading", { name: "[샘플] 데일리 멀티비타민" })).toBeVisible();
+  expect(getApprovedReviewsMock).not.toHaveBeenCalled();
+  expect(notFoundMock).not.toHaveBeenCalled();
+});

@@ -1,6 +1,27 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 import { STOREFRONT_MENU } from "../../lib/navigation/storefront-menu";
+
+function MenuDestination({
+  href,
+  onNavigate,
+  useDocumentNavigation,
+  className,
+  children,
+}: {
+  href: string;
+  onNavigate: () => void;
+  useDocumentNavigation: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
+  return useDocumentNavigation ? (
+    <a className={className} href={href} onClick={onNavigate}>{children}</a>
+  ) : (
+    <Link className={className} href={href} onClick={onNavigate}>{children}</Link>
+  );
+}
 
 export function MegaMenu({
   id,
@@ -19,7 +40,7 @@ export function MegaMenu({
           <ul className="mega-menu__link-list">
             {STOREFRONT_MENU.categories.map((category) => (
               <li key={category.key}>
-                <Link href={category.href} onClick={onNavigate}>{category.label}</Link>
+                <MenuDestination href={category.href} onNavigate={onNavigate} useDocumentNavigation={variant === "drawer"}>{category.label}</MenuDestination>
               </li>
             ))}
           </ul>
@@ -29,10 +50,10 @@ export function MegaMenu({
           <ul className="mega-menu__concerns">
             {STOREFRONT_MENU.concerns.map((concern) => (
               <li key={concern.key}>
-                <Link href={concern.href} onClick={onNavigate}>
+                <MenuDestination href={concern.href} onNavigate={onNavigate} useDocumentNavigation={variant === "drawer"}>
                   <span aria-hidden="true">{concern.label.slice(0, 1)}</span>
                   {concern.label}
-                </Link>
+                </MenuDestination>
               </li>
             ))}
           </ul>
@@ -42,16 +63,16 @@ export function MegaMenu({
           <ul className="mega-menu__age-list">
             {STOREFRONT_MENU.ages.map((target) => (
               <li key={target.key}>
-                <Link href={target.href} onClick={onNavigate}>{target.label}</Link>
+                <MenuDestination href={target.href} onNavigate={onNavigate} useDocumentNavigation={variant === "drawer"}>{target.label}</MenuDestination>
               </li>
             ))}
           </ul>
         </section>
-        <Link className="mega-menu__promotion" href="/products?promotion=trial" onClick={onNavigate}>
+        <MenuDestination className="mega-menu__promotion" href="/products?promotion=trial" onNavigate={onNavigate} useDocumentNavigation={variant === "drawer"}>
           <span>첫 구매 고객</span>
           <strong>7일 체험</strong>
           <span>부담 없이 건강 루틴을 시작하세요.</span>
-        </Link>
+        </MenuDestination>
       </div>
     </section>
   );

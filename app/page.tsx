@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { ProductGrid } from "../components/commerce/product-grid";
 import { getServerProducts } from "../lib/firebase/server-read";
+import { SAMPLE_PRODUCTS } from "../lib/products/sample-products";
 import type { Product } from "../lib/products/types";
 import { formatFreeShippingCondition, STORE_POLICIES } from "../lib/site/policies";
 
@@ -14,12 +15,17 @@ const byNewest = (left: Product, right: Product) =>
 
 export default async function Home() {
   let products: Product[] = [];
-  let loadError = false;
+  let isSampleCatalog = false;
 
   try {
     products = await getServerProducts();
+    if (products.length === 0) {
+      products = SAMPLE_PRODUCTS;
+      isSampleCatalog = true;
+    }
   } catch {
-    loadError = true;
+    products = SAMPLE_PRODUCTS;
+    isSampleCatalog = true;
   }
 
   const bestProducts = products
@@ -56,20 +62,9 @@ export default async function Home() {
         <div><strong>품질 검사</strong><span>출고 전 기준 검토</span></div>
       </section>
 
-      {loadError ? (
-        <section className="home-catalog-state" role="alert">
-          <span aria-hidden="true">!</span>
-          <div><h2>상품을 불러오지 못했습니다</h2><p>연결 상태를 확인하고 잠시 후 다시 시도해 주세요.</p></div>
-          <Link href="/">다시 시도</Link>
-        </section>
-      ) : products.length === 0 ? (
-        <section className="home-catalog-state home-catalog-state--empty">
-          <span aria-hidden="true">V</span>
-          <div><h2>좋은 상품을 꼼꼼히 준비하고 있습니다</h2><p>원료와 함량을 충분히 검토한 상품부터 차례로 소개할게요.</p></div>
-          <Link href="/products">전체 상품 페이지 보기</Link>
-        </section>
-      ) : (
-        <>
+      {isSampleCatalog ? <p className="sample-catalog-notice">샘플 상품으로 쇼핑몰 기능을 미리 확인하고 있습니다.</p> : null}
+
+      <>
           <section className="home-product-section" aria-labelledby="best-products-title">
             <div className="home-section-heading">
               <div><p>DAILY RANKING</p><h2 id="best-products-title">오늘의 베스트</h2></div>
@@ -91,8 +86,7 @@ export default async function Home() {
             </div>
             <ProductGrid status={newProducts.length ? "ready" : "empty"} products={newProducts} />
           </section>
-        </>
-      )}
+      </>
 
       <section className="home-transparency" aria-labelledby="transparency-title">
         <div>

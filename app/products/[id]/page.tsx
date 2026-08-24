@@ -5,11 +5,18 @@ import {
   getServerApprovedReviews,
   getServerProduct,
 } from "../../../lib/firebase/server-read";
-import type { Review } from "../../../lib/products/types";
+import { findSampleProduct } from "../../../lib/products/sample-products";
+import type { Product, Review } from "../../../lib/products/types";
 
 export default async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const product = await getServerProduct(id);
+  let storedProduct: Product | null = null;
+  try {
+    storedProduct = await getServerProduct(id);
+  } catch (error) {
+    if (findSampleProduct(id) === null) throw error;
+  }
+  const product = storedProduct ?? findSampleProduct(id);
 
   if (product === null) {
     return notFound();
@@ -18,10 +25,12 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
   let reviews: Review[] = [];
   let reviewLoadError = false;
 
-  try {
-    reviews = await getServerApprovedReviews(product.id);
-  } catch {
-    reviewLoadError = true;
+  if (storedProduct) {
+    try {
+      reviews = await getServerApprovedReviews(product.id);
+    } catch {
+      reviewLoadError = true;
+    }
   }
 
   return <ProductDetail product={product} reviews={reviews} reviewLoadError={reviewLoadError} />;

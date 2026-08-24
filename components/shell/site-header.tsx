@@ -127,9 +127,11 @@ export function SiteHeader() {
             <div className="site-header__drawer-header"><span>메뉴</span><button ref={mobileCloseButtonRef} type="button" onClick={() => closeMobileMenu(true)}>닫기</button></div>
             <SearchForm className="site-header__mobile-search" />
             <nav aria-label="모바일 주요 메뉴">
-              <Link href="/products" onClick={() => closeMobileMenu()}>전체 상품</Link>
-              {STOREFRONT_MENU.header.map((item) => <Link key={item.key} href={item.href} onClick={() => closeMobileMenu()}>{item.label}</Link>)}
-              <Link href="/cart" onClick={() => closeMobileMenu()}>장바구니 ({itemCount})</Link>
+              {/* The drawer unmounts on click, so this destination must use browser document navigation. */}
+              {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+              <a href="/products" onClick={() => closeMobileMenu()}>전체 상품</a>
+              {STOREFRONT_MENU.header.map((item) => <a key={item.key} href={item.href} onClick={() => closeMobileMenu()}>{item.label}</a>)}
+              <a href="/cart" onClick={() => closeMobileMenu()}>장바구니 ({itemCount})</a>
             </nav>
             <MegaMenu variant="drawer" onNavigate={() => closeMobileMenu()} />
           </aside>

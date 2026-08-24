@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 
-import { getApprovedReviews } from "../../lib/firebase/reviews";
 import type { Review } from "../../lib/products/types";
 
 type ReviewSectionProps = {
@@ -27,6 +26,7 @@ export function ReviewSection({ productId, initialReviews, initialLoadError = fa
   const retry = async () => {
     setIsRetrying(true);
     try {
+      const { getApprovedReviews } = await import("../../lib/firebase/reviews");
       setLoadedReviews(await getApprovedReviews(productId));
       setLoadError(false);
     } catch {

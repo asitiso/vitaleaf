@@ -3,6 +3,7 @@ import { getServerProducts } from "../../lib/firebase/server-read";
 import { AGE_CONCERN_GROUPS, resolveMenuState, TRIAL_MAX_PRICE_WON } from "../../lib/navigation/menu-state";
 import type { Product } from "../../lib/products/types";
 import { HEALTH_CONCERNS, taxonomyValuesMatch } from "../../lib/catalog/taxonomy";
+import { SAMPLE_PRODUCTS } from "../../lib/products/sample-products";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -10,12 +11,17 @@ export default async function ProductsPage({ searchParams }: { searchParams?: Pr
   const params: SearchParams = await (searchParams ?? Promise.resolve({} as SearchParams));
   const menuState = resolveMenuState(params);
   let products: Product[] = [];
-  let loadError = false;
+  let isSampleCatalog = false;
 
   try {
     products = await getServerProducts();
+    if (products.length === 0) {
+      products = SAMPLE_PRODUCTS;
+      isSampleCatalog = true;
+    }
   } catch {
-    loadError = true;
+    products = SAMPLE_PRODUCTS;
+    isSampleCatalog = true;
   }
 
   if (menuState.promotion === "today") {
@@ -31,6 +37,7 @@ export default async function ProductsPage({ searchParams }: { searchParams?: Pr
 
   return <main className="products-page">
     <header className="products-page__header"><p>VITALEAF SHOP</p><h1>{menuState.title}</h1><span>{menuState.description}</span></header>
-    <ProductBrowser initialProducts={products} initialFilters={menuState.filters} loadError={loadError} discoveryView={menuState.discoveryView} contextLabel={menuState.contextLabel} resultsTitle={menuState.title} />
+    {isSampleCatalog ? <p className="sample-catalog-notice sample-catalog-notice--products">샘플 상품으로 쇼핑몰 기능을 미리 확인하고 있습니다.</p> : null}
+    <ProductBrowser initialProducts={products} initialFilters={menuState.filters} discoveryView={menuState.discoveryView} contextLabel={menuState.contextLabel} resultsTitle={menuState.title} />
   </main>;
 }

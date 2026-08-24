@@ -74,24 +74,24 @@ it("renders the home delivery promotion from the shared shipping policy", async 
   }
 });
 
-it("shows a polished empty catalog state without hardcoded product fallbacks", async () => {
+it("shows clearly labelled sample products when the catalog is empty", async () => {
   getProductsMock.mockResolvedValue([]);
 
   render(await Home());
 
-  expect(screen.getByRole("heading", { name: "좋은 상품을 꼼꼼히 준비하고 있습니다" })).toBeInTheDocument();
-  expect(screen.queryByRole("article")).not.toBeInTheDocument();
-  expect(screen.queryByText("데일리 오메가3")).not.toBeInTheDocument();
+  expect(screen.getByText("샘플 상품으로 쇼핑몰 기능을 미리 확인하고 있습니다.")).toBeVisible();
+  expect(screen.getAllByRole("article", { name: "[샘플] 데일리 멀티비타민" })).toHaveLength(2);
+  expect(screen.getByRole("article", { name: "[샘플] 패밀리 건강 선물세트" })).toBeVisible();
 });
 
-it("keeps the home page usable when Firestore cannot load", async () => {
+it("keeps the demo catalog usable when Firestore cannot load", async () => {
   getProductsMock.mockImplementation(() => {
     throw new Error("offline");
   });
 
   render(await Home());
 
-  expect(screen.getByRole("alert")).toHaveTextContent("상품을 불러오지 못했습니다");
-  expect(screen.getByRole("link", { name: "다시 시도" })).toHaveAttribute("href", "/");
+  expect(screen.getByText("샘플 상품으로 쇼핑몰 기능을 미리 확인하고 있습니다.")).toBeVisible();
+  expect(screen.getAllByRole("article", { name: "[샘플] 데일리 멀티비타민" })).toHaveLength(2);
   expect(screen.getByRole("heading", { name: "무엇이 얼마나 들었는지 먼저 공개합니다" })).toBeInTheDocument();
 });

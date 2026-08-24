@@ -340,6 +340,8 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
 .home-trust-bar div:last-child { border: 0; }
 .home-trust-bar strong { color: var(--color-forest); font-size: 15px; }
 .home-trust-bar span { color: #63746c; font-size: 12px; }
+.sample-catalog-notice { margin: 18px 0 0; border: 1px solid #c7d9ca; padding: 12px 16px; border-radius: 5px; color: #315544; background: #f3f7f2; font-size: 13px; font-weight: 700; text-align: center; }
+.sample-catalog-notice--products { margin: -24px 0 30px; }
 .home-product-section { display: grid; gap: 28px; }
 .home-section-heading { display: flex; gap: 30px; align-items: end; min-height: 65px; }
 .home-section-heading p { margin-bottom: 3px; color: var(--color-sage); }

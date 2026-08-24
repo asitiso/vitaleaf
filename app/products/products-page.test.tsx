@@ -150,6 +150,30 @@ it("ignores invalid menu values instead of rendering a blank or broken catalog",
   expect(screen.getByLabelText("건강 고민")).toHaveValue("");
 });
 
+it.each([
+  [{ category: "vitamin" }, "[샘플] 데일리 멀티비타민"],
+  [{ category: "gift" }, "[샘플] 패밀리 건강 선물세트"],
+  [{ promotion: "today" }, "[샘플] 데일리 멀티비타민"],
+  [{ concern: "gut" }, "[샘플] 장편한 프로바이오틱스"],
+])("keeps menu destination %o useful with sample products when Firestore is empty", async (searchParams, expectedName) => {
+  getProductsMock.mockResolvedValue([]);
+
+  render(await ProductsPage({ searchParams: Promise.resolve(searchParams) }));
+
+  expect(screen.getByText("샘플 상품으로 쇼핑몰 기능을 미리 확인하고 있습니다.")).toBeVisible();
+  expect(screen.getByRole("article", { name: expectedName })).toBeVisible();
+});
+
+it("keeps menu destinations testable with labelled samples when Firestore is unavailable", async () => {
+  getProductsMock.mockRejectedValue(new Error("offline"));
+
+  render(await ProductsPage({ searchParams: Promise.resolve({ category: "vitamin" }) }));
+
+  expect(screen.getByText("샘플 상품으로 쇼핑몰 기능을 미리 확인하고 있습니다.")).toBeVisible();
+  expect(screen.getByRole("article", { name: "[샘플] 데일리 멀티비타민" })).toBeVisible();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
 it("normalizes existing menu slugs and age targets into catalog filters", async () => {
   getProductsMock.mockResolvedValue(products);
 
