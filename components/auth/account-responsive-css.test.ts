@@ -24,10 +24,10 @@ describe("member account responsive CSS contract", () => {
     const css = await readFile(resolve(process.cwd(), "app/globals.css"), "utf8");
 
     expect(css).toMatch(/\.member-auth-card form, \.my-page form\s*\{[^}]*display:\s*grid/);
-    expect(css).toMatch(/\.member-auth-card form button\[type="submit"\][\s\S]*min-height:\s*48px/);
+    expect(css).toMatch(/\.member-auth-card form button\[type="submit"\],\s*\.my-page form button\[type="submit"\],\s*\.my-page > section button,\s*\.checkout-save-address\s*\{[^}]*min-height:\s*48px/);
     expect(css).toMatch(/\.member-auth-card input[\s\S]*min-height:\s*48px/);
     expect(css).toMatch(/\.my-page\s*\{[\s\S]*grid-template-columns:/);
-    expect(css).toMatch(/\.checkout-empty a, \.order-complete__actions a\s*\{[\s\S]*display:\s*inline-flex[\s\S]*min-height:\s*48px/);
+    expect(css).toMatch(/\.checkout-empty a, \.order-complete__actions a\s*\{[^}]*display:\s*inline-flex[^}]*min-height:\s*48px/);
 
     const mobile = mediaBlock(css, "@media (max-width: 720px)");
     expect(mobile).toMatch(/\.my-page\s*\{[^}]*grid-template-columns:\s*1fr/);
