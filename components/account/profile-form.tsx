@@ -129,28 +129,28 @@ export function ProfileForm({ email, profile, onSave }: ProfileFormProps) {
         <p>배송지를 비워 두면 기본 배송지가 저장되지 않습니다.</p>
         <label>
           <span>받는 분</span>
-          <input aria-invalid={fieldError("recipient") ? "true" : undefined} autoComplete="shipping name" onChange={(event) => updateValue("recipient", event.target.value)} value={values.recipient} />
-          {fieldError("recipient") ? <small>{fieldError("recipient")}</small> : null}
+          <input aria-invalid={fieldError("recipient") ? "true" : undefined} aria-describedby={fieldError("recipient") ? "recipient-error" : undefined} autoComplete="shipping name" onChange={(event) => updateValue("recipient", event.target.value)} value={values.recipient} />
+          {fieldError("recipient") ? <small id="recipient-error">{fieldError("recipient")}</small> : null}
         </label>
         <label>
           <span>배송지 연락처</span>
-          <input aria-invalid={fieldError("addressPhone") ? "true" : undefined} autoComplete="shipping tel" inputMode="numeric" onChange={(event) => updateValue("addressPhone", event.target.value)} type="tel" value={values.addressPhone} />
-          {fieldError("addressPhone") ? <small>{fieldError("addressPhone")}</small> : null}
+          <input aria-invalid={fieldError("addressPhone") ? "true" : undefined} aria-describedby={fieldError("addressPhone") ? "addressPhone-error" : undefined} autoComplete="shipping tel" inputMode="numeric" onChange={(event) => updateValue("addressPhone", event.target.value)} type="tel" value={values.addressPhone} />
+          {fieldError("addressPhone") ? <small id="addressPhone-error">{fieldError("addressPhone")}</small> : null}
         </label>
         <label>
           <span>우편번호</span>
-          <input aria-invalid={fieldError("postcode") ? "true" : undefined} autoComplete="shipping postal-code" inputMode="numeric" onChange={(event) => updateValue("postcode", event.target.value)} value={values.postcode} />
-          {fieldError("postcode") ? <small>{fieldError("postcode")}</small> : null}
+          <input aria-invalid={fieldError("postcode") ? "true" : undefined} aria-describedby={fieldError("postcode") ? "postcode-error" : undefined} autoComplete="shipping postal-code" inputMode="numeric" onChange={(event) => updateValue("postcode", event.target.value)} value={values.postcode} />
+          {fieldError("postcode") ? <small id="postcode-error">{fieldError("postcode")}</small> : null}
         </label>
         <label>
           <span>주소</span>
-          <input aria-invalid={fieldError("address") ? "true" : undefined} autoComplete="shipping street-address" onChange={(event) => updateValue("address", event.target.value)} value={values.address} />
-          {fieldError("address") ? <small>{fieldError("address")}</small> : null}
+          <input aria-invalid={fieldError("address") ? "true" : undefined} aria-describedby={fieldError("address") ? "address-error" : undefined} autoComplete="shipping street-address" onChange={(event) => updateValue("address", event.target.value)} value={values.address} />
+          {fieldError("address") ? <small id="address-error">{fieldError("address")}</small> : null}
         </label>
         <label>
           <span>상세주소</span>
-          <input aria-invalid={fieldError("addressDetail") ? "true" : undefined} autoComplete="shipping address-line2" onChange={(event) => updateValue("addressDetail", event.target.value)} value={values.addressDetail} />
-          {fieldError("addressDetail") ? <small>{fieldError("addressDetail")}</small> : null}
+          <input aria-invalid={fieldError("addressDetail") ? "true" : undefined} aria-describedby={fieldError("addressDetail") ? "addressDetail-error" : undefined} autoComplete="shipping address-line2" onChange={(event) => updateValue("addressDetail", event.target.value)} value={values.addressDetail} />
+          {fieldError("addressDetail") ? <small id="addressDetail-error">{fieldError("addressDetail")}</small> : null}
         </label>
       </fieldset>
       {message ? <p role={message.includes("못했습니다") ? "alert" : "status"}>{message}</p> : null}

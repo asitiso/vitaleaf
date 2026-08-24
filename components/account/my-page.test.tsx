@@ -151,6 +151,28 @@ it("shows a checking state and an empty order guide", async () => {
   expect(await screen.findByText("아직 주문 내역이 없습니다.")).toBeVisible();
 });
 
+it("guides a member with no orders to the product listing", async () => {
+  authState.status = "signed-in";
+  authState.user = { uid: "user-1", email: "member@example.com", emailVerified: true };
+  listMemberOrdersMock.mockResolvedValueOnce([]);
+  render(<MyPage />);
+
+  expect(await screen.findByRole("link", { name: "상품 둘러보기" })).toHaveAttribute("href", "/products");
+});
+
+it("retries a failed profile request and renders its successful response", async () => {
+  authState.status = "signed-in";
+  authState.user = { uid: "user-1", email: "member@example.com", emailVerified: true };
+  getUserProfileMock.mockRejectedValueOnce(new Error("profile failed")).mockResolvedValueOnce({ ...profile, displayName: "재시도 회원" });
+  const user = userEvent.setup();
+  render(<MyPage />);
+
+  await user.click(await screen.findByRole("button", { name: "회원 정보 다시 불러오기" }));
+
+  await waitFor(() => expect(getUserProfileMock).toHaveBeenCalledTimes(2));
+  expect(await screen.findByLabelText("이름")).toHaveValue("재시도 회원");
+});
+
 it("surfaces the verification-delivery notice and lets an unverified member retry", async () => {
   authState.status = "signed-in";
   authState.user = { uid: "user-1", email: "member@example.com", emailVerified: false };
@@ -176,6 +198,37 @@ it("rejects an invalid Korean mobile number before saving the profile", async ()
   await user.click(screen.getByRole("button", { name: "회원 정보 저장" }));
 
   expect(screen.getByText("휴대전화 번호를 010-1234-5678 형식으로 입력해 주세요.")).toBeVisible();
+  expect(updateUserProfileMock).not.toHaveBeenCalled();
+});
+
+it("rejects a non-five-digit postcode and associates the error with its field", async () => {
+  authState.status = "signed-in";
+  authState.user = { uid: "user-1", email: "member@example.com", emailVerified: true };
+  const user = userEvent.setup();
+  render(<MyPage />);
+
+  await screen.findByLabelText("우편번호");
+  await user.clear(screen.getByLabelText("우편번호"));
+  await user.type(screen.getByLabelText("우편번호"), "1234");
+  await user.click(screen.getByRole("button", { name: "회원 정보 저장" }));
+
+  expect(screen.getByText("우편번호 5자리를 입력해 주세요.")).toHaveAttribute("id", "postcode-error");
+  expect(screen.getByRole("textbox", { name: /^우편번호/ })).toHaveAttribute("aria-describedby", "postcode-error");
+  expect(updateUserProfileMock).not.toHaveBeenCalled();
+});
+
+it("reports a partial address and associates the missing-address error with its field", async () => {
+  authState.status = "signed-in";
+  authState.user = { uid: "user-1", email: "member@example.com", emailVerified: true };
+  const user = userEvent.setup();
+  render(<MyPage />);
+
+  await screen.findByLabelText("주소");
+  await user.clear(screen.getByLabelText("주소"));
+  await user.click(screen.getByRole("button", { name: "회원 정보 저장" }));
+
+  expect(screen.getByText("주소를 입력해 주세요.")).toHaveAttribute("id", "address-error");
+  expect(screen.getByRole("textbox", { name: /^주소/ })).toHaveAttribute("aria-describedby", "address-error");
   expect(updateUserProfileMock).not.toHaveBeenCalled();
 });
 

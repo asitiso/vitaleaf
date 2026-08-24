@@ -21,3 +21,10 @@
 
 - Reviewed the changed route and all account components against Task 5 requirements; no unresolved Task 5 issues found.
 - The full non-emulator run emits the existing jsdom message `Not implemented: navigation to another Document`; it does not fail any test.
+
+## Review fixes
+
+- Empty order history now includes a clear `/products` link.
+- All five default-address inputs retain `aria-invalid` and now point to their unique conditional error message via `aria-describedby`.
+- Added coverage for a successful profile retry, empty-order guidance, invalid postcodes, and partial-address validation.
+- Verification after the fixes: focused 14 tests passed; non-emulator suite 58 files / 491 tests passed; account lint passed.

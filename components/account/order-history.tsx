@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import type { MemberOrder } from "../../lib/firebase/member-orders";
 
 type OrderHistoryProps = {
@@ -10,7 +12,11 @@ const formatWon = (value: number) => `${Math.round(value).toLocaleString("ko-KR"
 
 export function OrderHistory({ orders }: OrderHistoryProps) {
   if (orders.length === 0) {
-    return <p>아직 주문 내역이 없습니다.</p>;
+    return (
+      <p>
+        아직 주문 내역이 없습니다. <Link href="/products">상품 둘러보기</Link>
+      </p>
+    );
   }
 
   return (
