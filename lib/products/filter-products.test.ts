@@ -83,6 +83,7 @@ const products = [
 describe("filterProducts", () => {
   it.each([
     ["name query", { query: "  오메가  " }, ["omega"]],
+    ["hyphenated ingredient spelling", { query: "오메가-3" }, ["omega"]],
     ["benefit query", { query: "혈행" }, ["omega"]],
     ["ingredient query", { query: "락토바실러스" }, ["probiotic"]],
     ["category and stock", { category: "유산균", inStockOnly: true }, ["probiotic"]],

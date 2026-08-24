@@ -34,4 +34,12 @@ describe("MegaMenu", () => {
     expect(screen.getByRole("link", { name: "장 건강" })).not.toHaveAttribute("data-client-navigation");
     expect(screen.getByRole("link", { name: "30대" })).not.toHaveAttribute("data-client-navigation");
   });
+
+  it("uses document navigation inside the desktop dropdown because selecting a destination unmounts it", () => {
+    render(<MegaMenu onNavigate={() => undefined} />);
+
+    expect(screen.getByRole("link", { name: "비타민" })).not.toHaveAttribute("data-client-navigation");
+    expect(screen.getByRole("link", { name: "피로·활력" })).not.toHaveAttribute("data-client-navigation");
+    expect(screen.getByRole("link", { name: /첫 구매 고객.*7일 체험/ })).not.toHaveAttribute("data-client-navigation");
+  });
 });

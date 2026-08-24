@@ -9,6 +9,7 @@ import {
 export type { ProductFilters } from "./types";
 
 const normalize = (value: string): string => value.trim().toLocaleLowerCase("ko-KR");
+const normalizeSearchText = (value: string): string => normalize(value).replace(/[\s\-\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]+/g, "");
 
 const compareNumbers = (left: number, right: number): number => left - right;
 
@@ -38,7 +39,7 @@ const compareProducts = (left: Product, right: Product, sort: ProductFilters["so
 };
 
 export const filterProducts = (products: Product[], filters: ProductFilters): Product[] => {
-  const query = normalize(filters.query);
+  const query = normalizeSearchText(filters.query);
   const category = normalize(filters.category);
   const concern = normalize(filters.concern);
 
@@ -53,7 +54,7 @@ export const filterProducts = (products: Product[], filters: ProductFilters): Pr
         ...product.benefits,
         ...product.ingredients.map((ingredient) => ingredient.name),
       ];
-      const matchesQuery = !query || searchableFields.some((field) => normalize(field).includes(query));
+      const matchesQuery = !query || searchableFields.some((field) => normalizeSearchText(field).includes(query));
       const matchesCategory = !category || taxonomyValuesMatch(PRODUCT_CATEGORIES, product.category, filters.category);
       const matchesConcern = !concern || product.concerns.some((item) => taxonomyValuesMatch(HEALTH_CONCERNS, item, filters.concern));
       const meetsMinimumPrice = filters.minPrice === null || product.price >= filters.minPrice;

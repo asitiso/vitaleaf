@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { ProductGrid } from "../components/commerce/product-grid";
 import { getServerProducts } from "../lib/firebase/server-read";
+import { STOREFRONT_DESTINATIONS, STOREFRONT_MENU } from "../lib/navigation/storefront-menu";
 import { SAMPLE_PRODUCTS } from "../lib/products/sample-products";
 import type { Product } from "../lib/products/types";
 import { formatFreeShippingCondition, STORE_POLICIES } from "../lib/site/policies";
@@ -41,14 +42,14 @@ export default async function Home() {
           <p className="home-hero__eyebrow">매일의 기본을 제대로</p>
           <h1>하루 한 번, <br />기초 건강을 빈틈없이</h1>
           <p>필요한 기능성과 함량을 확인하고 내 생활에 맞는 건강 루틴을 시작하세요.</p>
-          <Link className="home-hero__action" href="/products">기초 건강 상품 보기 <span aria-hidden="true">→</span></Link>
+          <Link className="home-hero__action" href={STOREFRONT_DESTINATIONS.products.href}>기초 건강 상품 보기 <span aria-hidden="true">→</span></Link>
         </div>
-        <Link className="home-promo-card home-promo-card--coupon" href="/products">
+        <Link className="home-promo-card home-promo-card--coupon" href={STOREFRONT_DESTINATIONS.trial.href}>
           <span>WELCOME BENEFIT</span>
           <strong>첫 구매 10% 혜택</strong>
           <small>처음 만나는 건강 루틴을 가볍게</small>
         </Link>
-        <Link className="home-promo-card home-promo-card--delivery" href="/products?stock=1">
+        <Link className="home-promo-card home-promo-card--delivery" href={STOREFRONT_DESTINATIONS.inStock.href}>
           <span>DAILY DELIVERY</span>
           <strong>{STORE_POLICIES.shipping.dispatch}</strong>
           <small>{formatFreeShippingCondition()}</small>
@@ -69,12 +70,12 @@ export default async function Home() {
             <div className="home-section-heading">
               <div><p>DAILY RANKING</p><h2 id="best-products-title">오늘의 베스트</h2></div>
               <nav className="home-age-tabs" aria-label="연령대별 베스트 탐색">
-                <Link href="/products?sort=popular">전체</Link>
-                {["30대", "40대", "50대"].map((age) => (
-                  <Link key={age} href={`/products?age=${age.slice(0, 2)}`}>{age}</Link>
+                <Link href={STOREFRONT_DESTINATIONS.best.href}>전체</Link>
+                {STOREFRONT_MENU.ages.map((age) => (
+                  <Link key={age.key} href={age.href}>{age.label}</Link>
                 ))}
               </nav>
-              <Link className="home-section-heading__more" href="/products?sort=popular">전체 보기</Link>
+              <Link className="home-section-heading__more" href={STOREFRONT_DESTINATIONS.best.href}>전체 보기</Link>
             </div>
             <ProductGrid status={bestProducts.length ? "ready" : "empty"} products={bestProducts} showRanks />
           </section>
@@ -82,7 +83,7 @@ export default async function Home() {
           <section className="home-product-section" aria-labelledby="new-products-title">
             <div className="home-section-heading">
               <div><p>JUST ARRIVED</p><h2 id="new-products-title">새로 들어왔어요</h2></div>
-              <Link className="home-section-heading__more" href="/products?sort=newest">전체 보기</Link>
+              <Link className="home-section-heading__more" href={STOREFRONT_DESTINATIONS.newest.href}>전체 보기</Link>
             </div>
             <ProductGrid status={newProducts.length ? "ready" : "empty"} products={newProducts} />
           </section>
@@ -93,7 +94,7 @@ export default async function Home() {
           <p>INGREDIENT TRANSPARENCY</p>
           <h2 id="transparency-title">무엇이 얼마나 들었는지 <br />먼저 공개합니다</h2>
           <p>원료 이름만 크게 쓰지 않습니다. 1일 섭취량 기준 함량, 원산지, 인증과 주의사항까지 확인하고 고르세요.</p>
-          <Link href="/products?view=ingredients">성분 기준으로 살펴보기 <span aria-hidden="true">→</span></Link>
+          <Link href={STOREFRONT_DESTINATIONS.ingredientsView.href}>성분 기준으로 살펴보기 <span aria-hidden="true">→</span></Link>
         </div>
         <dl>
           <div><dt>01</dt><dd><strong>정확한 함량</strong><span>1일 섭취량 기준으로 표시</span></dd></div>

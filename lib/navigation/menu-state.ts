@@ -118,5 +118,6 @@ export function resolveMenuState(params: SearchParams): MenuPageState {
   if (discoveryView === "concerns") return { ...base, title: "건강 고민별 상품", description: "지금 필요한 건강 고민을 선택해 상품을 찾아보세요." };
   if (discoveryView === "ingredients") return { ...base, title: "성분별 상품", description: "관심 있는 성분을 기준으로 상품을 찾아보세요." };
   if (query.sort === "popular") return { ...base, title: "베스트 상품", description: "많이 찾는 건강기능식품을 인기순으로 살펴보세요." };
+  if (query.sort === "newest") return { ...base, title: "신상품", description: "최근 등록된 건강기능식품부터 살펴보세요." };
   return { ...base, title: "전체 상품", description: "필요한 기준으로 건강기능식품을 비교해 보세요." };
 }

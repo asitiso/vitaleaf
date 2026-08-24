@@ -4,6 +4,7 @@ import { flattenMenuLinks, STOREFRONT_MENU } from "../lib/navigation/storefront-
 const appRouterPages = import.meta.glob("./**/page.tsx");
 
 const routeForPageModule = (modulePath: string): string => {
+  if (modulePath === "./page.tsx") return "/";
   const route = modulePath.replace(/^\.\//, "").replace(/\/page\.tsx$/, "");
   return route ? `/${route}` : "/";
 };
@@ -16,9 +17,15 @@ const searchParamsRecord = (params: URLSearchParams): Record<string, string | st
 );
 
 const expectedProductStateByHref = {
+  "/products": { title: "전체 상품" },
   "/products?sort=popular": { title: "베스트 상품" },
+  "/products?sort=newest": { title: "신상품" },
   "/products?promotion=today": { title: "오늘의 혜택", promotion: "today" },
+  "/products?promotion=trial": { title: "첫 구매 추천", promotion: "trial" },
   "/products?view=concerns": { title: "건강 고민별 상품", discoveryView: "concerns" },
+  "/products?view=ingredients": { title: "성분별 상품", discoveryView: "ingredients" },
+  "/products?stock=1": { title: "전체 상품", filters: { inStockOnly: true } },
+  "/products?q=오메가-3": { title: "전체 상품", filters: { query: "오메가-3" } },
   "/products?category=gift": { title: "선물세트", filters: { category: "gift" } },
   "/products?category=nutrition": { title: "영양제", filters: { category: "nutrition" } },
   "/products?category=vitamin": { title: "비타민", filters: { category: "vitamin" } },
@@ -42,8 +49,10 @@ describe("public storefront menu route contract", () => {
   it("maps every internal menu link to an App Router page or a supported product query", () => {
     const pageRoutes = new Set(Object.keys(appRouterPages).map(routeForPageModule));
     const links = flattenMenuLinks(STOREFRONT_MENU);
-    const productHrefs = links.filter(({ href }) => href.startsWith("/products?")).map(({ href }) => href).sort();
+    const hrefs = links.map(({ href }) => href);
+    const productHrefs = links.filter(({ href }) => href === "/products" || href.startsWith("/products?")).map(({ href }) => href).sort();
 
+    expect(hrefs).toEqual(expect.arrayContaining(["/", "/admin", "/cart", "/checkout"]));
     expect(productHrefs).toEqual(Object.keys(expectedProductStateByHref).sort());
     for (const link of links) {
       const url = new URL(link.href, "https://vitaleaf.test");

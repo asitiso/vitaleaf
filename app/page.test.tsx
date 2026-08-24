@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, vi } from "vitest";
 
 import type { Product } from "../lib/products/types";
+import { STOREFRONT_DESTINATIONS } from "../lib/navigation/storefront-menu";
 import { STORE_POLICIES } from "../lib/site/policies";
 
 const { getProductsMock } = vi.hoisted(() => ({ getProductsMock: vi.fn() }));
@@ -49,12 +50,18 @@ it("renders the approved professional merchandising sections", async () => {
 
   expect(screen.getByRole("heading", { name: "하루 한 번, 기초 건강을 빈틈없이" })).toBeInTheDocument();
   expect(screen.getAllByText("첫 구매 10% 혜택")).toHaveLength(1);
+  expect(screen.getByRole("link", { name: /첫 구매 10% 혜택/ })).toHaveAttribute("href", STOREFRONT_DESTINATIONS.trial.href);
+  expect(screen.getByRole("link", { name: /결제 확인 후/ })).toHaveAttribute("href", STOREFRONT_DESTINATIONS.inStock.href);
   expect(screen.getByRole("region", { name: "바이타리프 품질 원칙" })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "오늘의 베스트" })).toBeInTheDocument();
   expect(screen.getByRole("navigation", { name: "연령대별 베스트 탐색" })).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "30대" })).toHaveAttribute("href", "/products?age=30");
   expect(screen.getByRole("heading", { name: "새로 들어왔어요" })).toBeInTheDocument();
+  const viewAllLinks = screen.getAllByRole("link", { name: "전체 보기" });
+  expect(viewAllLinks[0]).toHaveAttribute("href", STOREFRONT_DESTINATIONS.best.href);
+  expect(viewAllLinks[1]).toHaveAttribute("href", STOREFRONT_DESTINATIONS.newest.href);
   expect(screen.getByRole("heading", { name: "무엇이 얼마나 들었는지 먼저 공개합니다" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /성분 기준으로 살펴보기/ })).toHaveAttribute("href", STOREFRONT_DESTINATIONS.ingredientsView.href);
   expect(screen.getAllByRole("article", { name: "데일리 오메가3" })).toHaveLength(2);
   expect(screen.queryByRole("heading", { name: "건강 고민별" })).not.toBeInTheDocument();
 });

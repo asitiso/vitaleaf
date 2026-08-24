@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import { useCart } from "../../features/cart/cart-context";
-import { STOREFRONT_MENU } from "../../lib/navigation/storefront-menu";
+import { STOREFRONT_DESTINATIONS, STOREFRONT_MENU } from "../../lib/navigation/storefront-menu";
 import { formatShippingBenefitBar } from "../../lib/site/policies";
 
 import { MegaMenu } from "./mega-menu";
@@ -105,11 +105,11 @@ export function SiteHeader() {
       <div className="site-header__main-shell">
         <div className="site-header__main-row">
           <button ref={mobileMenuTriggerRef} className="site-header__mobile-trigger" type="button" aria-label="메뉴 열기" aria-expanded={isMobileMenuOpen} onClick={() => setIsMobileMenuOpen(true)}><span aria-hidden="true">☰</span></button>
-          <Link className="site-header__wordmark" href="/" aria-label="Vitaleaf 홈"><span>VITA</span>LEAF</Link>
+          <Link className="site-header__wordmark" href={STOREFRONT_DESTINATIONS.home.href} aria-label="Vitaleaf 홈"><span>VITA</span>LEAF</Link>
           <SearchForm />
           <nav className="site-header__utility-nav" aria-label="사용자 메뉴">
-            <Link href="/admin">관리자</Link>
-            <Link className="site-header__cart" href="/cart" aria-label={`장바구니 ${itemCount}개`}>장바구니 <span aria-hidden="true">{itemCount}</span></Link>
+            <Link href={STOREFRONT_DESTINATIONS.admin.href}>관리자</Link>
+            <Link className="site-header__cart" href={STOREFRONT_DESTINATIONS.cart.href} aria-label={`장바구니 ${itemCount}개`}>장바구니 <span aria-hidden="true">{itemCount}</span></Link>
           </nav>
         </div>
         <div ref={menuRootRef} className="site-header__navigation-row">
@@ -128,10 +128,9 @@ export function SiteHeader() {
             <SearchForm className="site-header__mobile-search" />
             <nav aria-label="모바일 주요 메뉴">
               {/* The drawer unmounts on click, so this destination must use browser document navigation. */}
-              {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
-              <a href="/products" onClick={() => closeMobileMenu()}>전체 상품</a>
+              <a href={STOREFRONT_DESTINATIONS.products.href} onClick={() => closeMobileMenu()}>전체 상품</a>
               {STOREFRONT_MENU.header.map((item) => <a key={item.key} href={item.href} onClick={() => closeMobileMenu()}>{item.label}</a>)}
-              <a href="/cart" onClick={() => closeMobileMenu()}>장바구니 ({itemCount})</a>
+              <a href={STOREFRONT_DESTINATIONS.cart.href} onClick={() => closeMobileMenu()}>장바구니 ({itemCount})</a>
             </nav>
             <MegaMenu variant="drawer" onNavigate={() => closeMobileMenu()} />
           </aside>
