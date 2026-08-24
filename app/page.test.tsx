@@ -48,8 +48,8 @@ it("renders the approved professional merchandising sections", async () => {
   render(await Home());
 
   expect(screen.getByRole("heading", { name: "하루 한 번, 기초 건강을 빈틈없이" })).toBeInTheDocument();
-  expect(screen.getAllByText("첫 구매 10% 혜택")).toHaveLength(1);
-  expect(screen.getByRole("link", { name: /첫 구매 10% 혜택/ })).toHaveAttribute("href", "/products?promotion=trial");
+  expect(screen.getByText("30,000원 이하 첫 구매 추천")).toBeVisible();
+  expect(screen.getByRole("link", { name: /30,000원 이하 첫 구매 추천/ })).toHaveAttribute("href", "/products?promotion=trial");
   expect(screen.getByRole("link", { name: /결제 확인 후/ })).toHaveAttribute("href", "/products?stock=1");
   expect(screen.getByRole("region", { name: "바이타리프 품질 원칙" })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "오늘의 베스트" })).toBeInTheDocument();

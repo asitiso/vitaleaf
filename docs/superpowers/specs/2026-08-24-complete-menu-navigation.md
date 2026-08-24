@@ -13,6 +13,7 @@ The existing route contract only enumerates `STOREFRONT_MENU`. Links declared di
 - Keep one small registry of public destinations that are reused by the visible navigation components.
 - Expand the route contract to include utility, promotion, information, and shopping-flow destinations.
 - Verify product destinations against the sample catalog so each category, concern, age, and promotion menu produces at least one product.
+- Keep promotion copy consistent with the destination's actual filter so a recommendation is not presented as an automatically applied discount.
 - Normalize common punctuation differences in product search so labels such as `오메가-3` find products written as `오메가3`.
 - Use document navigation for destinations inside any menu that unmounts when selected; keep ordinary Next links elsewhere.
 - Preserve the current design, Firebase model, cart behavior, and private access policy.
@@ -23,4 +24,3 @@ The existing route contract only enumerates `STOREFRONT_MENU`. Links declared di
 - Run the complete test suite, lint, and production build.
 - Click representative desktop and mobile navigation paths, including search, category, promotion, footer, product detail, cart, and admin.
 - Publish the exact validated source to the existing private Sites project.
-

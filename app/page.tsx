@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { ProductGrid } from "../components/commerce/product-grid";
 import { getServerProducts } from "../lib/firebase/server-read";
+import { TRIAL_MAX_PRICE_WON } from "../lib/navigation/menu-state";
 import { STOREFRONT_DESTINATIONS, STOREFRONT_MENU } from "../lib/navigation/storefront-menu";
 import { SAMPLE_PRODUCTS } from "../lib/products/sample-products";
 import type { Product } from "../lib/products/types";
@@ -46,8 +47,8 @@ export default async function Home() {
         </div>
         <Link className="home-promo-card home-promo-card--coupon" href={STOREFRONT_DESTINATIONS.trial.href}>
           <span>WELCOME BENEFIT</span>
-          <strong>첫 구매 10% 혜택</strong>
-          <small>처음 만나는 건강 루틴을 가볍게</small>
+          <strong>{TRIAL_MAX_PRICE_WON.toLocaleString("ko-KR")}원 이하 첫 구매 추천</strong>
+          <small>부담 없이 시작하는 건강 루틴</small>
         </Link>
         <Link className="home-promo-card home-promo-card--delivery" href={STOREFRONT_DESTINATIONS.inStock.href}>
           <span>DAILY DELIVERY</span>

@@ -1,5 +1,13 @@
+import { cleanup, render, screen } from "@testing-library/react";
+
 import { parseProductQuery, resolveMenuState } from "../lib/navigation/menu-state";
 import { flattenMenuLinks, STOREFRONT_MENU } from "../lib/navigation/storefront-menu";
+
+const { getProductsMock } = vi.hoisted(() => ({ getProductsMock: vi.fn() }));
+
+vi.mock("../lib/firebase/server-read", () => ({ getServerProducts: getProductsMock }));
+
+import ProductsPage from "./products/page";
 
 const appRouterPages = import.meta.glob("./**/page.tsx");
 
@@ -103,5 +111,21 @@ describe("public storefront menu route contract", () => {
       "/help/shipping",
       "/help/returns",
     ]);
+  });
+
+  it("keeps every product menu destination useful when Firestore falls back to the sample catalog", async () => {
+    const productLinks = flattenMenuLinks(STOREFRONT_MENU).filter(({ href }) => (
+      href === "/products" || href.startsWith("/products?")
+    ));
+
+    for (const link of productLinks) {
+      getProductsMock.mockResolvedValueOnce([]);
+      const url = new URL(link.href, "https://vitaleaf.test");
+      render(await ProductsPage({ searchParams: Promise.resolve(searchParamsRecord(url.searchParams)) }));
+
+      expect(screen.getAllByRole("article").length, link.href).toBeGreaterThan(0);
+      expect(screen.queryByText("총 0개 상품"), link.href).not.toBeInTheDocument();
+      cleanup();
+    }
   });
 });

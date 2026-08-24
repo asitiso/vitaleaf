@@ -29,7 +29,7 @@
 
 **Interfaces:**
 - Consumes: `STOREFRONT_MENU`, `parseProductQuery`, `resolveMenuState`, `SAMPLE_PRODUCTS`
-- Produces: shared `STOREFRONT_MENU.utility`, `STOREFRONT_MENU.promotions`, and `STOREFRONT_MENU.flows` destinations included by `flattenMenuLinks`
+- Produces: shared `STOREFRONT_DESTINATIONS` entries exposed through `STOREFRONT_MENU.destinations` and included by `flattenMenuLinks`
 
 - [ ] **Step 1: Write the failing route-contract test**
 
@@ -43,7 +43,7 @@ Expected: FAIL because the direct destinations are absent from `flattenMenuLinks
 
 - [ ] **Step 3: Implement the minimal shared destination registry**
 
-Add utility, promotion, and flow items to `STOREFRONT_MENU`; reuse their `href` values in the header and home page; keep labels and page copy unchanged.
+Add utility, promotion, and flow items to `STOREFRONT_DESTINATIONS`; reuse their `href` values in the header and home page, and align promotion copy with the filter that actually runs.
 
 - [ ] **Step 4: Run the focused test to verify GREEN**
 
@@ -138,4 +138,3 @@ Verify desktop and mobile navigation for search, top menu, mega-menu category, a
 - [ ] **Step 3: Commit and publish the validated source**
 
 Commit only the files in this plan, package the successful build, save one Site version, deploy it with the existing owner-only policy, and open the deployed URL in the retained Site tab.
-

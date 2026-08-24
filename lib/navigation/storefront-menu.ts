@@ -35,10 +35,13 @@ export const STOREFRONT_DESTINATIONS = {
   returns: { key: "returns", label: "교환·반품", href: "/help/returns" },
 } as const satisfies Record<string, StorefrontMenuItem>;
 
+export const storefrontCategoryHref = (value: (typeof PRODUCT_CATEGORIES)[number]["value"]): string =>
+  `/products?category=${value}`;
+
 const toCategoryMenuItem = (option: TaxonomyOption): StorefrontMenuItem => ({
   key: `category-${option.value}`,
   label: option.label,
-  href: `/products?category=${option.value}`,
+  href: storefrontCategoryHref(option.value),
   value: option.value,
   description: option.description,
 });
