@@ -15,6 +15,25 @@ const byNewest = (left: Product, right: Product) =>
   (right.createdAt?.getTime() ?? Number.NEGATIVE_INFINITY) -
   (left.createdAt?.getTime() ?? Number.NEGATIVE_INFINITY);
 
+function HomePromoCards({ placement }: { placement: "desktop" | "mobile" }) {
+  const label = placement === "mobile" ? "모바일 구매 혜택" : "데스크톱 구매 혜택";
+
+  return (
+    <section className={`home-promo-stack home-promo-stack--${placement}`} aria-label={label}>
+      <Link className="home-promo-card home-promo-card--coupon" href={STOREFRONT_DESTINATIONS.trial.href}>
+        <span>WELCOME BENEFIT</span>
+        <strong>{TRIAL_MAX_PRICE_WON.toLocaleString("ko-KR")}원 이하 첫 구매 추천</strong>
+        <small>부담 없이 시작하는 건강 루틴</small>
+      </Link>
+      <Link className="home-promo-card home-promo-card--delivery" href={STOREFRONT_DESTINATIONS.inStock.href}>
+        <span>DAILY DELIVERY</span>
+        <strong>{STORE_POLICIES.shipping.dispatch}</strong>
+        <small>{formatFreeShippingCondition()}</small>
+      </Link>
+    </section>
+  );
+}
+
 export default async function Home() {
   let products: Product[] = [];
   let isSampleCatalog = false;
@@ -45,16 +64,7 @@ export default async function Home() {
           <p>필요한 기능성과 함량을 확인하고 내 생활에 맞는 건강 루틴을 시작하세요.</p>
           <Link className="home-hero__action" href={STOREFRONT_DESTINATIONS.products.href}>기초 건강 상품 보기 <span aria-hidden="true">→</span></Link>
         </div>
-        <Link className="home-promo-card home-promo-card--coupon" href={STOREFRONT_DESTINATIONS.trial.href}>
-          <span>WELCOME BENEFIT</span>
-          <strong>{TRIAL_MAX_PRICE_WON.toLocaleString("ko-KR")}원 이하 첫 구매 추천</strong>
-          <small>부담 없이 시작하는 건강 루틴</small>
-        </Link>
-        <Link className="home-promo-card home-promo-card--delivery" href={STOREFRONT_DESTINATIONS.inStock.href}>
-          <span>DAILY DELIVERY</span>
-          <strong>{STORE_POLICIES.shipping.dispatch}</strong>
-          <small>{formatFreeShippingCondition()}</small>
-        </Link>
+        <HomePromoCards placement="desktop" />
       </section>
 
       <section className="home-trust-bar" aria-label="바이타리프 품질 원칙">
@@ -80,6 +90,8 @@ export default async function Home() {
             </div>
             <ProductGrid status={bestProducts.length ? "ready" : "empty"} products={bestProducts} showRanks />
           </section>
+
+          <HomePromoCards placement="mobile" />
 
           <section className="home-product-section" aria-labelledby="new-products-title">
             <div className="home-section-heading">

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { beforeEach, vi } from "vitest";
 
 import type { Product } from "../lib/products/types";
@@ -48,9 +48,10 @@ it("renders the approved professional merchandising sections", async () => {
   render(await Home());
 
   expect(screen.getByRole("heading", { name: "하루 한 번, 기초 건강을 빈틈없이" })).toBeInTheDocument();
-  expect(screen.getByText("30,000원 이하 첫 구매 추천")).toBeVisible();
-  expect(screen.getByRole("link", { name: /30,000원 이하 첫 구매 추천/ })).toHaveAttribute("href", "/products?promotion=trial");
-  expect(screen.getByRole("link", { name: /결제 확인 후/ })).toHaveAttribute("href", "/products?stock=1");
+  const desktopBenefits = screen.getByRole("region", { name: "데스크톱 구매 혜택" });
+  expect(within(desktopBenefits).getByText("30,000원 이하 첫 구매 추천")).toBeVisible();
+  expect(within(desktopBenefits).getByRole("link", { name: /30,000원 이하 첫 구매 추천/ })).toHaveAttribute("href", "/products?promotion=trial");
+  expect(within(desktopBenefits).getByRole("link", { name: /결제 확인 후/ })).toHaveAttribute("href", "/products?stock=1");
   expect(screen.getByRole("region", { name: "바이타리프 품질 원칙" })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "오늘의 베스트" })).toBeInTheDocument();
   expect(screen.getByRole("navigation", { name: "연령대별 베스트 탐색" })).toBeInTheDocument();
@@ -65,6 +66,20 @@ it("renders the approved professional merchandising sections", async () => {
   expect(screen.queryByRole("heading", { name: "건강 고민별" })).not.toBeInTheDocument();
 });
 
+it("places the mobile purchase benefits after the best products", async () => {
+  getProductsMock.mockResolvedValue([product]);
+
+  render(await Home());
+
+  const bestSection = screen.getByRole("heading", { name: "오늘의 베스트" }).closest("section");
+  const mobileBenefits = screen.getByRole("region", { name: "모바일 구매 혜택" });
+
+  expect(bestSection).not.toBeNull();
+  expect(bestSection!.compareDocumentPosition(mobileBenefits) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(within(mobileBenefits).getByRole("link", { name: /30,000원 이하 첫 구매 추천/ }))
+    .toHaveAttribute("href", "/products?promotion=trial");
+});
+
 it("renders the home delivery promotion from the shared shipping policy", async () => {
   const shipping = STORE_POLICIES.shipping as { freeThreshold: number; dispatch: string };
   const original = { ...shipping };
@@ -73,8 +88,9 @@ it("renders the home delivery promotion from the shared shipping policy", async 
 
   try {
     render(await Home());
-    expect(screen.getByText("결제 확인 후 정책 기준 순차 출고")).toBeVisible();
-    expect(screen.getByText("5만원 이상 무료배송")).toBeVisible();
+    const desktopBenefits = screen.getByRole("region", { name: "데스크톱 구매 혜택" });
+    expect(within(desktopBenefits).getByText("결제 확인 후 정책 기준 순차 출고")).toBeVisible();
+    expect(within(desktopBenefits).getByText("5만원 이상 무료배송")).toBeVisible();
   } finally {
     Object.assign(shipping, original);
   }

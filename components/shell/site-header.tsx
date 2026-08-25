@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 
 import { useAuth } from "../../features/auth/auth-context";
 import { useCart } from "../../features/cart/cart-context";
@@ -12,11 +12,27 @@ import { MegaMenu } from "./mega-menu";
 
 const MEGA_MENU_ID = "site-header-mega-menu";
 
-function SearchForm({ className }: { className?: string }) {
+function SearchForm({
+  className,
+  formId,
+  hidden,
+  inputRef,
+}: {
+  className?: string;
+  formId?: string;
+  hidden?: boolean;
+  inputRef?: RefObject<HTMLInputElement | null>;
+}) {
   return (
-    <form className={`site-header__search ${className ?? ""}`} action="/products" method="get" role="search">
+    <form id={formId} className={`site-header__search ${className ?? ""}`} action="/products" method="get" role="search" hidden={hidden}>
       <label className="sr-only" htmlFor={className ? "mobile-site-search" : "site-search"}>상품 검색</label>
-      <input id={className ? "mobile-site-search" : "site-search"} name="q" type="search" placeholder="성분, 기능, 상품명으로 검색하세요" />
+      <input
+        ref={inputRef}
+        id={className ? "mobile-site-search" : "site-search"}
+        name="q"
+        type="search"
+        placeholder="성분, 기능, 상품명으로 검색하세요"
+      />
       <button type="submit">검색</button>
     </form>
   );
@@ -76,18 +92,21 @@ function AccountActions({
 function getFocusableElements(container: HTMLElement) {
   return Array.from(
     container.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled])'),
-  );
+  ).filter((element) => !element.closest("[hidden]"));
 }
 
 export function SiteHeader() {
   const { itemCount } = useCart();
   const [isMegaMenuOpen, setIsMegaMenuOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const menuRootRef = useRef<HTMLDivElement>(null);
   const categoryTriggerRef = useRef<HTMLButtonElement>(null);
   const mobileMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const mobileDrawerRef = useRef<HTMLElement>(null);
   const mobileCloseButtonRef = useRef<HTMLButtonElement>(null);
+  const mobileSearchToggleRef = useRef<HTMLButtonElement>(null);
+  const mobileSearchInputRef = useRef<HTMLInputElement>(null);
 
   const closeMegaMenu = (returnFocus = false) => {
     setIsMegaMenuOpen(false);
@@ -95,7 +114,11 @@ export function SiteHeader() {
   };
   const closeMobileMenu = (returnFocus = false) => {
     if (returnFocus) mobileMenuTriggerRef.current?.focus();
+    setIsMobileSearchOpen(false);
     setIsMobileMenuOpen(false);
+  };
+  const toggleMobileSearch = () => {
+    setIsMobileSearchOpen((isOpen) => !isOpen);
   };
 
   useEffect(() => {
@@ -112,10 +135,19 @@ export function SiteHeader() {
   }, [isMobileMenuOpen]);
 
   useEffect(() => {
+    if (isMobileMenuOpen && isMobileSearchOpen) mobileSearchInputRef.current?.focus();
+  }, [isMobileMenuOpen, isMobileSearchOpen]);
+
+  useEffect(() => {
     if (!isMobileMenuOpen) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
+        if (isMobileSearchOpen) {
+          setIsMobileSearchOpen(false);
+          mobileSearchToggleRef.current?.focus();
+          return;
+        }
         mobileMenuTriggerRef.current?.focus();
         setIsMobileMenuOpen(false);
         return;
@@ -137,7 +169,7 @@ export function SiteHeader() {
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isMobileMenuOpen]);
+  }, [isMobileMenuOpen, isMobileSearchOpen]);
 
   useEffect(() => {
     if (!isMegaMenuOpen) return;
@@ -177,8 +209,27 @@ export function SiteHeader() {
         <div className="site-header__drawer-backdrop">
           <button className="site-header__drawer-close" type="button" aria-label="모바일 메뉴 닫기" onClick={() => closeMobileMenu(true)} />
           <aside ref={mobileDrawerRef} className="site-header__mobile-drawer" role="dialog" aria-modal="true" aria-label="모바일 메뉴">
-            <div className="site-header__drawer-header"><span>메뉴</span><button ref={mobileCloseButtonRef} type="button" onClick={() => closeMobileMenu(true)}>닫기</button></div>
-            <SearchForm className="site-header__mobile-search" />
+            <div className="site-header__drawer-header">
+              <span>메뉴</span>
+              <div className="site-header__drawer-actions">
+                <button
+                  ref={mobileSearchToggleRef}
+                  className="site-header__mobile-search-toggle"
+                  type="button"
+                  aria-label={isMobileSearchOpen ? "검색 닫기" : "검색 열기"}
+                  aria-expanded={isMobileSearchOpen}
+                  aria-controls="mobile-site-search-form"
+                  onClick={toggleMobileSearch}
+                >검색</button>
+                <button ref={mobileCloseButtonRef} type="button" onClick={() => closeMobileMenu(true)}>닫기</button>
+              </div>
+            </div>
+            <SearchForm
+              className="site-header__mobile-search"
+              formId="mobile-site-search-form"
+              hidden={!isMobileSearchOpen}
+              inputRef={mobileSearchInputRef}
+            />
             <nav aria-label="모바일 주요 메뉴">
               <AccountActions documentNavigation onLogout={() => closeMobileMenu()} />
               {/* The drawer unmounts on click, so this destination must use browser document navigation. */}

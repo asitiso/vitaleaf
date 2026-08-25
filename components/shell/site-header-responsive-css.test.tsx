@@ -50,8 +50,10 @@ describe("responsive SiteHeader target contract", () => {
     await user.click(screen.getByRole("button", { name: "메뉴 열기" }));
     const drawer = screen.getByRole("dialog", { name: "모바일 메뉴" });
     expect(drawer).toHaveClass("site-header__mobile-drawer");
-    expect(within(drawer).getByRole("button", { name: "닫기" }).parentElement)
+    expect(within(drawer).getByRole("button", { name: "닫기" }).closest(".site-header__drawer-header"))
       .toHaveClass("site-header__drawer-header");
+    expect(within(drawer).getByRole("button", { name: "검색 열기" }))
+      .toHaveClass("site-header__mobile-search-toggle");
     expect(within(drawer).getByRole("link", { name: "전체 상품" }).closest("nav"))
       .toHaveAccessibleName("모바일 주요 메뉴");
     expect(within(drawer).getByRole("link", { name: "영양제" }).closest("ul"))
@@ -84,6 +86,12 @@ describe("responsive SiteHeader target contract", () => {
     ).style;
     expect(textLinks.display).toBe("flex");
     expect(textLinks.alignItems).toBe("center");
+  });
+
+  it("gives the compact search toggle a full mobile tap target", () => {
+    const toggle = mediaRule(".site-header__mobile-search-toggle").style;
+    expect(toggle.minWidth).toBe("48px");
+    expect(toggle.minHeight).toBe("48px");
   });
 
   it("keeps account actions reachable at the representative 768px tablet breakpoint", () => {
