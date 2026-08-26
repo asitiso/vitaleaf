@@ -20,6 +20,7 @@ styleElement.remove();
 
 const styleRules = (rules: CSSRuleList): CSSStyleRule[] => Array.from(rules)
   .filter((rule): rule is CSSStyleRule => rule.type === CSSRule.STYLE_RULE);
+const topLevelStyleRules = styleRules(styleSheet?.cssRules ?? []);
 
 const mediaRulesFor = (conditionText: string): CSSStyleRule[] => {
   const mediaRules = Array.from(styleSheet?.cssRules ?? [])
@@ -30,7 +31,7 @@ const mediaRulesFor = (conditionText: string): CSSStyleRule[] => {
 };
 
 const mediaRule = (selector: string): CSSStyleRule => {
-  const rule = mediaRulesFor("(max-width: 620px)")
+  const rule = mediaRulesFor("(max-width: 767px)")
     .find((candidate) => candidate.selectorText === selector);
   expect(rule, `Missing mobile CSS rule: ${selector}`).toBeDefined();
   return rule!;
@@ -45,7 +46,10 @@ describe("responsive SiteHeader target contract", () => {
 
     expect(screen.getByRole("button", { name: "메뉴 열기" })).toHaveClass("site-header__mobile-trigger");
     expect(screen.getByRole("link", { name: "Vitaleaf 홈" })).toHaveClass("site-header__wordmark");
-    expect(screen.getByRole("link", { name: /장바구니/ })).toHaveClass("site-header__cart");
+    expect(screen.getByRole("link", { name: "장바구니 0개" })).toHaveClass("site-header__cart");
+    expect(screen.getByRole("link", { name: "장바구니, 상품 0개" })).toHaveClass("site-header__mobile-cart");
+    expect(screen.getAllByRole("link", { name: "마이페이지" }).find((link) => link.classList.contains("site-header__mobile-account")))
+      .toHaveClass("site-header__mobile-account");
 
     await user.click(screen.getByRole("button", { name: "메뉴 열기" }));
     const drawer = screen.getByRole("dialog", { name: "모바일 메뉴" });
@@ -88,6 +92,21 @@ describe("responsive SiteHeader target contract", () => {
     expect(textLinks.alignItems).toBe("center");
   });
 
+  it("shows explicit cart and account icon links as at least 44px mobile targets", () => {
+    const icons = mediaRule(".site-header__mobile-cart, .site-header__mobile-account").style;
+    expect(icons.display).toBe("inline-grid");
+    expect(icons.width).toBe("44px");
+    expect(icons.height).toBe("44px");
+    expect(icons.placeItems).toBe("center");
+  });
+
+  it("keeps the search submit label on one horizontal line", () => {
+    const submit = topLevelStyleRules
+      .find((candidate) => candidate.selectorText === ".site-header__search button")?.style;
+    expect(submit?.minWidth).toBe("72px");
+    expect(submit?.whiteSpace).toBe("nowrap");
+  });
+
   it("gives the compact search toggle a full mobile tap target", () => {
     const toggle = mediaRule(".site-header__mobile-search-toggle").style;
     expect(toggle.minWidth).toBe("48px");
@@ -104,8 +123,6 @@ describe("responsive SiteHeader target contract", () => {
       rule.selectorText.includes(".site-header__utility-nav a:not(.site-header__cart)")
       && rule.style.display === "none"
     ))).toBe(false);
-    expect(mediaRule(
-      ".site-header__utility-nav a:not(.site-header__cart), .site-header__utility-nav button, .site-header__account-placeholder, .site-header__account-error",
-    ).style.display).toBe("none");
+    expect(mediaRule(".site-header__utility-nav").style.display).toBe("none");
   });
 });

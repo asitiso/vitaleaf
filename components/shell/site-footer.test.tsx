@@ -27,3 +27,9 @@ it("renders the public support contact from the shared policy", () => {
     Object.assign(support, original);
   }
 });
+
+it("places administrator login at the bottom footer", () => {
+  render(<SiteFooter />);
+
+  expect(screen.getByRole("link", { name: "관리자 로그인" })).toHaveAttribute("href", "/admin");
+});

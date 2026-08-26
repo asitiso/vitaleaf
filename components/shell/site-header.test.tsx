@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -21,7 +21,16 @@ import { STORE_POLICIES } from "../../lib/site/policies";
 
 import { SiteHeader } from "./site-header";
 
-function renderHeader() {
+function renderHeader({ itemCount = 0 }: { itemCount?: number } = {}) {
+  localStorage.setItem("vitaleaf-cart-v1", JSON.stringify(itemCount === 0 ? [] : [{
+    productId: "header-cart-item",
+    name: "헤더 장바구니 상품",
+    thumbnailUrl: "/header-cart-item.jpg",
+    unitPrice: 1_000,
+    stock: itemCount,
+    quantity: itemCount,
+    selected: true,
+  }]));
   return render(
     <CartProvider>
       <SiteHeader />
@@ -30,6 +39,7 @@ function renderHeader() {
 }
 
 beforeEach(() => {
+  localStorage.clear();
   authState.status = "signed-out";
   authState.user = null;
   authState.error = "";
@@ -51,14 +61,18 @@ describe("SiteHeader", () => {
     }
   });
 
-  it("keeps customer navigation linked to real account, admin, and cart routes", () => {
-    renderHeader();
+  it("shows shopper links instead of admin in the signed-out desktop header", async () => {
+    renderHeader({ itemCount: 3 });
 
-    expect(screen.getByRole("link", { name: "로그인" })).toHaveAttribute("href", "/login");
-    expect(screen.getByRole("link", { name: "회원가입" })).toHaveAttribute("href", "/signup");
-    expect(screen.queryByRole("link", { name: "브랜드 스토리" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "관리자" })).toHaveAttribute("href", "/admin");
-    expect(screen.getByRole("link", { name: /장바구니/ })).toHaveAttribute("href", "/cart");
+    const nav = screen.getByRole("navigation", { name: "사용자 메뉴" });
+    expect(within(nav).getByRole("link", { name: "로그인" })).toHaveAttribute("href", "/login");
+    expect(within(nav).getByRole("link", { name: "회원가입" })).toHaveAttribute("href", "/signup");
+    expect(within(nav).getByRole("link", { name: "마이페이지" })).toHaveAttribute("href", "/login?next=/mypage");
+    await waitFor(() => expect(within(nav).getByRole("link", { name: /장바구니 3개/ })).toHaveAttribute("href", "/cart"));
+    expect(within(nav).getByRole("link", { name: "주문조회" })).toHaveAttribute("href", "/order-lookup");
+    expect(within(nav).getAllByRole("link").map((link) => link.getAttribute("aria-label") ?? link.textContent))
+      .toEqual(["로그인", "회원가입", "마이페이지", "장바구니 3개", "주문조회"]);
+    expect(within(nav).queryByRole("link", { name: "관리자" })).not.toBeInTheDocument();
   });
 
   it("shows a stable checking placeholder instead of changing account actions", () => {
@@ -67,22 +81,24 @@ describe("SiteHeader", () => {
 
     expect(screen.getByLabelText("회원 상태 확인 중")).toBeVisible();
     expect(screen.queryByRole("link", { name: "로그인" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "마이페이지" })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("navigation", { name: "사용자 메뉴" })).queryByRole("link", { name: "마이페이지" })).not.toBeInTheDocument();
   });
 
-  it("shows my page and logs out from the mobile drawer before closing it", async () => {
+  it("shows one member my page link and logs out from the mobile drawer before closing it", async () => {
     const user = userEvent.setup();
     authState.status = "signed-in";
     authState.user = { uid: "member-1", email: "member@example.com", emailVerified: true };
     renderHeader();
 
-    expect(screen.getByRole("link", { name: "마이페이지" })).toHaveAttribute("href", "/mypage");
+    const nav = screen.getByRole("navigation", { name: "사용자 메뉴" });
+    expect(within(nav).getByRole("link", { name: "마이페이지" })).toHaveAttribute("href", "/mypage");
+    expect(within(nav).queryByRole("link", { name: "주문조회" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "로그아웃" })).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "메뉴 열기" }));
     const drawer = screen.getByRole("dialog", { name: "모바일 메뉴" });
     expect(within(drawer).getByRole("link", { name: "마이페이지" })).toHaveAttribute("href", "/mypage");
-    expect(within(drawer).getByRole("link", { name: "관리자" })).toHaveAttribute("href", "/admin");
+    expect(within(drawer).queryByRole("link", { name: "관리자" })).not.toBeInTheDocument();
 
     await user.click(within(drawer).getByRole("button", { name: "로그아웃" }));
 
@@ -111,7 +127,19 @@ describe("SiteHeader", () => {
     renderHeader();
 
     expect(screen.getByRole("alert")).toHaveTextContent("로그아웃하지 못했습니다");
-    expect(screen.getByRole("link", { name: "마이페이지" })).toBeVisible();
+    expect(within(screen.getByRole("navigation", { name: "사용자 메뉴" })).getByRole("link", { name: "마이페이지" })).toBeVisible();
+  });
+
+  it("provides labelled cart and account icons outside the mobile drawer", async () => {
+    renderHeader({ itemCount: 2 });
+
+    const cart = await screen.findByRole("link", { name: "장바구니, 상품 2개" });
+    expect(cart).toHaveClass("site-header__mobile-cart");
+    expect(cart.querySelector("svg")).toHaveAttribute("focusable", "false");
+    const account = screen.getAllByRole("link", { name: "마이페이지" })
+      .find((link) => link.classList.contains("site-header__mobile-account"));
+    expect(account).toHaveClass("site-header__mobile-account");
+    expect(account).toHaveAttribute("href", "/login?next=/mypage");
   });
 
   it("links best navigation to the supported popular sort", () => {

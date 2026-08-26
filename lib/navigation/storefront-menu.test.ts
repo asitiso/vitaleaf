@@ -1,6 +1,6 @@
 import { PRODUCT_CATEGORIES } from "../catalog/taxonomy";
 
-import { flattenMenuLinks, STOREFRONT_MENU } from "./storefront-menu";
+import { flattenMenuLinks, STOREFRONT_DESTINATIONS, STOREFRONT_MENU } from "./storefront-menu";
 
 describe("STOREFRONT_MENU", () => {
   it("uses unique supported destinations and shares taxonomy values", () => {
@@ -16,5 +16,12 @@ describe("STOREFRONT_MENU", () => {
     const hrefs = STOREFRONT_MENU.destinations.map((item) => item.href);
 
     expect(hrefs).toEqual(expect.arrayContaining(["/login", "/signup", "/mypage"]));
+  });
+
+  it("provides the guest order lookup destination used by shopper navigation", () => {
+    expect(STOREFRONT_DESTINATIONS.orderLookup).toMatchObject({
+      label: "주문조회",
+      href: "/order-lookup",
+    });
   });
 });

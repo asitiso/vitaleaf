@@ -38,14 +38,33 @@ function SearchForm({
   );
 }
 
+type HeaderAuth = ReturnType<typeof useAuth>;
+
+function CartIcon({ "aria-hidden": ariaHidden }: { "aria-hidden": true }) {
+  return <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden={ariaHidden} focusable="false">
+    <path d="M3 4h2l2.2 10.2h10.8l2-7H6.2" />
+    <circle cx="9" cy="19" r="1" />
+    <circle cx="17" cy="19" r="1" />
+  </svg>;
+}
+
+function AccountIcon({ "aria-hidden": ariaHidden }: { "aria-hidden": true }) {
+  return <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden={ariaHidden} focusable="false">
+    <circle cx="12" cy="8" r="3.5" />
+    <path d="M4.5 20c.8-3.6 3.5-5.5 7.5-5.5s6.7 1.9 7.5 5.5" />
+  </svg>;
+}
+
 function AccountActions({
+  auth,
   documentNavigation = false,
   onLogout,
 }: {
+  auth: HeaderAuth;
   documentNavigation?: boolean;
   onLogout?: () => void;
 }) {
-  const { status, user, error, signOutMember } = useAuth();
+  const { status, user, error, signOutMember } = auth;
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const isMember = status === "signed-in" && user !== null;
 
@@ -68,13 +87,8 @@ function AccountActions({
   );
   const errorNotice = error ? <span className="site-header__account-error" role="alert">{error}</span> : null;
 
-  if (status === "checking") {
-    return <span className="site-header__account-placeholder" role="status" aria-label="회원 상태 확인 중" />;
-  }
-
   if (isMember) {
     return <>
-      {accountLink(STOREFRONT_DESTINATIONS.mypage.href, STOREFRONT_DESTINATIONS.mypage.label)}
       <button type="button" onClick={() => void logout()} disabled={isLoggingOut}>
         {isLoggingOut ? "로그아웃 중" : "로그아웃"}
       </button>
@@ -89,6 +103,34 @@ function AccountActions({
   </>;
 }
 
+function AccountMenu({
+  auth,
+  documentNavigation = false,
+  onLogout,
+}: {
+  auth: HeaderAuth;
+  documentNavigation?: boolean;
+  onLogout?: () => void;
+}) {
+  const isMember = auth.status === "signed-in" && auth.user !== null;
+  const accountHref = isMember ? STOREFRONT_DESTINATIONS.mypage.href : "/login?next=/mypage";
+  const accountLink = documentNavigation
+    ? <a href={accountHref}>{STOREFRONT_DESTINATIONS.mypage.label}</a>
+    : <Link href={accountHref}>{STOREFRONT_DESTINATIONS.mypage.label}</Link>;
+
+  if (auth.status === "checking") {
+    return <span className="site-header__account-placeholder" role="status" aria-label="회원 상태 확인 중" />;
+  }
+
+  return isMember ? <>
+    {accountLink}
+    <AccountActions auth={auth} documentNavigation={documentNavigation} onLogout={onLogout} />
+  </> : <>
+    <AccountActions auth={auth} documentNavigation={documentNavigation} onLogout={onLogout} />
+    {accountLink}
+  </>;
+}
+
 function getFocusableElements(container: HTMLElement) {
   return Array.from(
     container.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled])'),
@@ -97,6 +139,9 @@ function getFocusableElements(container: HTMLElement) {
 
 export function SiteHeader() {
   const { itemCount } = useCart();
+  const auth = useAuth();
+  const isMember = auth.status === "signed-in" && auth.user !== null;
+  const accountHref = isMember ? STOREFRONT_DESTINATIONS.mypage.href : "/login?next=/mypage";
   const [isMegaMenuOpen, setIsMegaMenuOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
@@ -192,10 +237,17 @@ export function SiteHeader() {
           <Link className="site-header__wordmark" href={STOREFRONT_DESTINATIONS.home.href} aria-label="Vitaleaf 홈"><span>VITA</span>LEAF</Link>
           <SearchForm />
           <nav className="site-header__utility-nav" aria-label="사용자 메뉴">
-            <AccountActions />
-            <Link href={STOREFRONT_DESTINATIONS.admin.href}>관리자</Link>
+            <AccountMenu auth={auth} />
             <Link className="site-header__cart" href={STOREFRONT_DESTINATIONS.cart.href} aria-label={`장바구니 ${itemCount}개`}>장바구니 <span aria-hidden="true">{itemCount}</span></Link>
+            {!isMember && auth.status !== "checking" ? <Link href={STOREFRONT_DESTINATIONS.orderLookup.href}>{STOREFRONT_DESTINATIONS.orderLookup.label}</Link> : null}
           </nav>
+          <div className="site-header__mobile-actions">
+            <Link className="site-header__mobile-cart" href={STOREFRONT_DESTINATIONS.cart.href} aria-label={`장바구니, 상품 ${itemCount}개`}>
+              <CartIcon aria-hidden />
+              <span aria-hidden="true">{itemCount}</span>
+            </Link>
+            <Link className="site-header__mobile-account" href={accountHref} aria-label="마이페이지"><AccountIcon aria-hidden /></Link>
+          </div>
         </div>
         <div ref={menuRootRef} className="site-header__navigation-row">
           <nav className="site-header__primary-nav" aria-label="주요 메뉴">
@@ -231,12 +283,12 @@ export function SiteHeader() {
               inputRef={mobileSearchInputRef}
             />
             <nav aria-label="모바일 주요 메뉴">
-              <AccountActions documentNavigation onLogout={() => closeMobileMenu()} />
+              <AccountMenu auth={auth} documentNavigation onLogout={() => closeMobileMenu()} />
               {/* The drawer unmounts on click, so this destination must use browser document navigation. */}
               <a href={STOREFRONT_DESTINATIONS.products.href} onClick={() => closeMobileMenu()}>전체 상품</a>
               {STOREFRONT_MENU.header.map((item) => <a key={item.key} href={item.href} onClick={() => closeMobileMenu()}>{item.label}</a>)}
-              <a href={STOREFRONT_DESTINATIONS.admin.href} onClick={() => closeMobileMenu()}>관리자</a>
               <a href={STOREFRONT_DESTINATIONS.cart.href} onClick={() => closeMobileMenu()}>장바구니 ({itemCount})</a>
+              {!isMember && auth.status !== "checking" ? <a href={STOREFRONT_DESTINATIONS.orderLookup.href} onClick={() => closeMobileMenu()}>{STOREFRONT_DESTINATIONS.orderLookup.label}</a> : null}
             </nav>
             <MegaMenu variant="drawer" onNavigate={() => closeMobileMenu()} />
           </aside>

@@ -19,6 +19,7 @@ export const STOREFRONT_DESTINATIONS = {
   login: { key: "login", label: "로그인", href: "/login" },
   signup: { key: "signup", label: "회원가입", href: "/signup" },
   mypage: { key: "mypage", label: "마이페이지", href: "/mypage" },
+  orderLookup: { key: "order-lookup", label: "주문조회", href: "/order-lookup" },
   admin: { key: "admin", label: "관리자", href: "/admin" },
   cart: { key: "cart", label: "장바구니", href: "/cart" },
   checkout: { key: "checkout", label: "주문하기", href: "/checkout" },
