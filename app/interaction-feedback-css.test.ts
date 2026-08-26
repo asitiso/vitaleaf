@@ -39,7 +39,7 @@ describe("storefront press feedback", () => {
   });
 
   it("highlights dense navigation controls without keeping motion for reduced-motion users", () => {
-    const denseNavigation = rule(".site-header__mobile-drawer nav a:active, .site-header__mobile-drawer nav button:active, .product-info__accordion h3 button:active, .product-browser__filter-toggle:active");
+    const denseNavigation = rule(".site-header__mobile-drawer nav a:active, .site-header__mobile-drawer nav button:not(:disabled):active, .product-info__accordion h3 button:active, .product-browser__filter-toggle:active");
     expect(denseNavigation.backgroundColor).toBe("var(--color-mint)");
 
     const reducedMedia = topLevelRules
