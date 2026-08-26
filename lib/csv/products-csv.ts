@@ -1,4 +1,5 @@
 import type { Ingredient, Product, ProductDraft, ProductInput } from "../products/types";
+import { canonicalAgeTargets } from "../catalog/taxonomy";
 
 export type CsvRowError = {
   row: number;
@@ -11,6 +12,7 @@ export const PRODUCT_CSV_HEADERS = [
   "slug",
   "category",
   "concerns",
+  "ageTargets",
   "price",
   "originalPrice",
   "thumbnailUrl",
@@ -45,6 +47,7 @@ const emptyProduct = (): ProductInput => ({
   slug: "",
   category: "",
   concerns: [],
+  ageTargets: [],
   price: 0,
   originalPrice: null,
   thumbnailUrl: "",
@@ -299,6 +302,7 @@ export const parseProductCsv = (text: string): { valid: ProductInput[]; errors: 
     product.category = value("category");
     if (!product.category) addError("category", "카테고리를 입력해 주세요.");
     product.concerns = list("concerns");
+    product.ageTargets = canonicalAgeTargets(list("ageTargets"));
 
     const priceText = value("price");
     const price = Number(priceText);
@@ -375,6 +379,7 @@ const productCells = (product: Product): Record<ProductCsvHeader, string> => ({
   slug: product.slug,
   category: product.category,
   concerns: encodeList(product.concerns),
+  ageTargets: encodeList(product.ageTargets ?? []),
   price: String(product.price),
   originalPrice: product.originalPrice === null ? "" : String(product.originalPrice),
   thumbnailUrl: product.thumbnailUrl,

@@ -17,6 +17,7 @@ const FIELD_LABELS: Record<CsvRowError["field"], string> = {
   slug: "슬러그",
   category: "카테고리",
   concerns: "관련 건강",
+  ageTargets: "추천 연령",
   price: "판매가",
   originalPrice: "정상가",
   thumbnailUrl: "대표 이미지 URL",

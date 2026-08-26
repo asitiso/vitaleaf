@@ -42,6 +42,16 @@ const representativeProduct: Product = {
 };
 
 describe("parseProductCsv", () => {
+  it("keeps only supported recommendation ages from the escaped pipe list", () => {
+    const result = parseProductCsv([
+      "name,category,price,stock,ageTargets",
+      "오메가3,혈행,35000,10,teen|unsupported|20|teen",
+    ].join("\n"));
+
+    expect(result.errors).toEqual([]);
+    expect(result.valid[0]?.ageTargets).toEqual(["teen", "20"]);
+  });
+
   it("removes a BOM and parses quoted commas, escaped quotes, arrays, numbers, and booleans", () => {
     const csv = [
       "\uFEFFname,category,price,originalPrice,stock,benefits,description,isBest,isNew,salesRank",
@@ -187,6 +197,16 @@ it("maps a valid CSV input to a new, unpublished draft identity", () => {
 });
 
 describe("serializeProducts", () => {
+  it("round-trips recommendation ages", () => {
+    const result = parseProductCsv(serializeProducts([{
+      ...representativeProduct,
+      ageTargets: ["teen", "20"],
+    }]));
+
+    expect(result.errors).toEqual([]);
+    expect(result.valid[0]?.ageTargets).toEqual(["teen", "20"]);
+  });
+
   it("round-trips every ProductInput field while intentionally omitting id and timestamps", () => {
     const csv = serializeProducts([representativeProduct]);
     const result = parseProductCsv(csv);
@@ -197,6 +217,7 @@ describe("serializeProducts", () => {
       slug: "premium-omega-3",
       category: "혈행 건강",
       concerns: ["혈행", "기억력"],
+      ageTargets: [],
       price: 35_000,
       originalPrice: 42_000,
       thumbnailUrl: "https://example.com/omega,front.jpg",
@@ -290,6 +311,6 @@ describe("serializeProducts", () => {
 it("ships the exact BOM-prefixed import template consumed by the parser", () => {
   const template = readFileSync(resolve(process.cwd(), "public/products-template.csv"), "utf8");
 
-  expect(template.replaceAll("\r\n", "\n")).toBe("\uFEFFname,slug,category,concerns,price,originalPrice,thumbnailUrl,images,description,benefits,ingredients,dosage,origin,certifications,cautions,stock,isBest,isNew,salesRank,ratingAverage,reviewCount\n");
+  expect(template.replaceAll("\r\n", "\n")).toBe("\uFEFFname,slug,category,concerns,ageTargets,price,originalPrice,thumbnailUrl,images,description,benefits,ingredients,dosage,origin,certifications,cautions,stock,isBest,isNew,salesRank,ratingAverage,reviewCount\n");
   expect(parseProductCsv(template)).toEqual({ valid: [], errors: [] });
 });

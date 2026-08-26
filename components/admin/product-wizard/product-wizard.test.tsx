@@ -90,6 +90,16 @@ it("shows legacy Korean taxonomy values in the canonical wizard controls", () =>
   expect(screen.getByRole("checkbox", { name: "면역" })).toBeChecked();
 });
 
+it("lets an administrator select a recommendation age", async () => {
+  const user = userEvent.setup();
+  const props = propsFor({ ageTargets: [] });
+  render(<ProductWizard {...props} />);
+
+  await user.click(screen.getByRole("checkbox", { name: "어린이" }));
+
+  expect(props.onChange).toHaveBeenCalledWith(expect.objectContaining({ ageTargets: ["child"] }));
+});
+
 it("flushes the latest draft before validating a publish attempt", async () => {
   const user = userEvent.setup();
   const props = propsFor();

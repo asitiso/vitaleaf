@@ -3,6 +3,8 @@ import { useState } from "react";
 import {
   canonicalTaxonomyValue,
   canonicalTaxonomyValues,
+  AGE_TARGETS,
+  canonicalAgeTargets,
   PRODUCT_CATEGORIES,
   HEALTH_CONCERNS,
   PRODUCT_TEMPLATES,
@@ -85,6 +87,9 @@ export function BasicStep({
   const [selectedTemplate, setSelectedTemplate] = useState("");
   const categoryValue = canonicalTaxonomyValue(PRODUCT_CATEGORIES, draft.category);
   const concernValues = canonicalTaxonomyValues(HEALTH_CONCERNS, draft.concerns);
+  const ageTargetValues = AGE_TARGETS
+    .filter((option) => canonicalAgeTargets(draft.ageTargets ?? []).includes(option.value))
+    .map((option) => option.value);
   const updateName = (name: string) => {
     const slug = slugWasManuallyEdited ? draft.slug : toSlug(name);
     onChange({ ...draft, name, slug });
@@ -95,6 +100,16 @@ export function BasicStep({
       ? [...new Set([...concernValues, concern])]
       : concernValues.filter((item) => item !== concern);
     onChange({ ...draft, concerns });
+  };
+
+  const updateAgeTarget = (ageTarget: (typeof AGE_TARGETS)[number]["value"], checked: boolean) => {
+    const selected = new Set(ageTargetValues);
+    if (checked) selected.add(ageTarget);
+    else selected.delete(ageTarget);
+    const ageTargets = AGE_TARGETS
+      .filter((option) => selected.has(option.value))
+      .map((option) => option.value);
+    onChange({ ...draft, ageTargets });
   };
 
   const selectTemplate = (value: string) => {
@@ -179,6 +194,20 @@ export function BasicStep({
               type="checkbox"
               checked={concernValues.includes(option.value)}
               onChange={(event) => updateConcern(option.value, event.target.checked)}
+            />
+            {option.label}
+          </label>
+        ))}
+      </fieldset>
+      <fieldset className="product-wizard__checks">
+        <legend>추천 연령 (선택)</legend>
+        <p className="product-wizard__field-help">실제 표시사항을 확인한 연령만 선택하세요. 선택하지 않으면 연령별 추천에 노출되지 않습니다.</p>
+        {AGE_TARGETS.map((option) => (
+          <label key={option.value}>
+            <input
+              type="checkbox"
+              checked={ageTargetValues.includes(option.value)}
+              onChange={(event) => updateAgeTarget(option.value, event.target.checked)}
             />
             {option.label}
           </label>

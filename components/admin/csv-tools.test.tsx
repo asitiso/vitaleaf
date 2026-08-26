@@ -118,9 +118,9 @@ it("previews valid rows and requires explicit confirmation before saving drafts"
   render(<CsvTools products={[]} onImportDrafts={onImport} />);
 
   await user.upload(screen.getByLabelText("상품 CSV 파일"), csvFile([
-    "name,category,price,stock,isBest",
-    "오메가3,혈행,35000,10,true",
-    "비타민D,뼈 건강,12000,8,false",
+    "name,category,price,stock,isBest,ageTargets",
+    "오메가3,혈행,35000,10,true,teen|20",
+    "비타민D,뼈 건강,12000,8,false,",
   ].join("\n")));
 
   expect(await screen.findByText("임시저장할 상품 2개를 확인해 주세요.")).toBeVisible();
@@ -129,7 +129,7 @@ it("previews valid rows and requires explicit confirmation before saving drafts"
 
   await waitFor(() => expect(onImport).toHaveBeenCalledTimes(1));
   expect(onImport).toHaveBeenCalledWith([
-    expect.objectContaining({ name: "오메가3", price: 35_000, isBest: true }),
+    expect.objectContaining({ name: "오메가3", price: 35_000, isBest: true, ageTargets: ["teen", "20"] }),
     expect.objectContaining({ name: "비타민D", price: 12_000, isBest: false }),
   ]);
   expect(await screen.findByText("상품 2개를 임시저장했습니다.")).toBeVisible();
