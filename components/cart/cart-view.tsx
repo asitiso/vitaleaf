@@ -22,26 +22,93 @@ function getFocusableElements(container: HTMLElement) {
 function CartQuantity({ line }: { line: CartLine }) {
   const { setQuantity } = useCart();
   const isUnavailable = line.stock < 1;
+  const [draftQuantity, setDraftQuantity] = useState(String(line.quantity));
+  const [announcement, setAnnouncement] = useState("");
+
+  useEffect(() => {
+    // Keep the editable draft aligned with quantity changes from cart controls or storage.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDraftQuantity(String(line.quantity));
+  }, [line.quantity]);
+
+  const commitValidQuantity = (raw: string) => {
+    if (!/^\d+$/.test(raw)) {
+      return false;
+    }
+
+    const requested = Number(raw);
+    const availableStock = Math.trunc(line.stock);
+    if (!Number.isSafeInteger(requested) || requested < 1 || availableStock < 1) {
+      return false;
+    }
+
+    const next = Math.min(requested, availableStock);
+    setDraftQuantity(String(next));
+    setQuantity(line.productId, next);
+    setAnnouncement(
+      requested > availableStock ? `재고가 ${availableStock}개라 ${availableStock}개로 조정했어요.` : "",
+    );
+    return true;
+  };
+
+  const commitDraft = () => {
+    if (!commitValidQuantity(draftQuantity)) {
+      setDraftQuantity(String(line.quantity));
+      setAnnouncement("");
+    }
+  };
 
   return (
-    <div className="cart-view__quantity" role="group" aria-label={`${line.name} 수량 선택`}>
-      <button
-        type="button"
-        aria-label="수량 줄이기"
-        disabled={isUnavailable || line.quantity <= 1}
-        onClick={() => setQuantity(line.productId, line.quantity - 1)}
-      >
-        −
-      </button>
-      <output aria-label={`${line.name} 수량`}>{line.quantity}</output>
-      <button
-        type="button"
-        aria-label="수량 늘리기"
-        disabled={isUnavailable || line.quantity >= line.stock}
-        onClick={() => setQuantity(line.productId, line.quantity + 1)}
-      >
-        +
-      </button>
+    <div className="cart-view__quantity-wrap">
+      <div className="cart-view__quantity" role="group" aria-label={`${line.name} 수량 선택`}>
+        <button
+          type="button"
+          aria-label="수량 줄이기"
+          disabled={isUnavailable || line.quantity <= 1}
+          onClick={() => setQuantity(line.productId, line.quantity - 1)}
+        >
+          −
+        </button>
+        <input
+          type="number"
+          min={1}
+          max={line.stock}
+          step={1}
+          inputMode="numeric"
+          aria-label={`${line.name} 수량`}
+          value={draftQuantity}
+          disabled={isUnavailable}
+          onChange={(event) => {
+            const raw = event.target.value;
+            if (raw === "") {
+              setDraftQuantity("");
+              setAnnouncement("");
+              return;
+            }
+
+            if (!commitValidQuantity(raw)) {
+              setDraftQuantity(raw);
+              setAnnouncement("");
+            }
+          }}
+          onBlur={commitDraft}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              commitDraft();
+            }
+          }}
+        />
+        <button
+          type="button"
+          aria-label="수량 늘리기"
+          disabled={isUnavailable || line.quantity >= line.stock}
+          onClick={() => setQuantity(line.productId, line.quantity + 1)}
+        >
+          +
+        </button>
+      </div>
+      {announcement ? <span className="cart-view__quantity-status" role="status" aria-live="polite">{announcement}</span> : null}
     </div>
   );
 }

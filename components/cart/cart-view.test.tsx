@@ -19,6 +19,10 @@ const line: CartLine = {
   selected: true,
 };
 
+function makeLine(overrides: Partial<CartLine> = {}): CartLine {
+  return { ...line, ...overrides };
+}
+
 function renderCart(lines: CartLine[] = [line]) {
   localStorage.setItem(storageKey, JSON.stringify(lines));
   return render(
@@ -48,6 +52,37 @@ it("updates selection, quantity, free-shipping progress, and total", async () =>
   await user.click(screen.getByRole("checkbox", { name: "전체 선택" }));
 
   expect(screen.getByRole("link", { name: "선택 상품 주문하기" })).toHaveAttribute("aria-disabled", "true");
+});
+
+it("updates the payment total while the shopper types a valid quantity", async () => {
+  const user = userEvent.setup();
+  renderCart([makeLine({ unitPrice: 10_000, quantity: 1, stock: 10 })]);
+  const input = await screen.findByRole("spinbutton", { name: /수량/ });
+
+  await user.clear(input);
+  await user.type(input, "3");
+
+  const summary = screen.getByRole("complementary", { name: "주문 금액" });
+  const amounts = Array.from(summary.querySelectorAll("dl > div"));
+  expect(amounts[0]).toHaveTextContent("상품 금액30,000원");
+  expect(amounts[1]).toHaveTextContent("배송비0원");
+  expect(amounts[2]).toHaveTextContent("총 결제 예정 금액30,000원");
+});
+
+it("restores blank input and clamps stock overflow", async () => {
+  const user = userEvent.setup();
+  renderCart([makeLine({ quantity: 2, stock: 5 })]);
+  const input = await screen.findByRole("spinbutton", { name: /수량/ });
+
+  await user.clear(input);
+  await user.tab();
+  expect(input).toHaveValue(2);
+
+  await user.clear(input);
+  await user.type(input, "99");
+
+  expect(input).toHaveValue(5);
+  expect(screen.getByRole("status")).toHaveTextContent("재고");
 });
 
 it("keeps the current payment total beside the mobile checkout action", async () => {

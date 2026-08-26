@@ -331,11 +331,14 @@ main {
 .cart-view__product h3 { margin: 0; color: #203c30; font-size: 16px; }
 .cart-view__product p { margin: 7px 0 0; color: #697a70; font-size: 13px; }
 .cart-view__product .cart-view__stock-warning { color: #a54232; font-weight: 700; }
+.cart-view__quantity-wrap { display: grid; gap: 4px; min-width: 0; }
 .cart-view__quantity { display: grid; grid-template-columns: 37px 1fr 37px; overflow: hidden; border: 1px solid #cbd8ce; border-radius: 4px; }
-.cart-view__quantity button, .cart-view__quantity output { display: grid; min-width: 0; height: 37px; place-items: center; border: 0; color: #203d31; background: #fff; }
+.cart-view__quantity button, .cart-view__quantity input { display: grid; min-width: 0; height: 37px; place-items: center; border: 0; color: #203d31; background: #fff; }
 .cart-view__quantity button { font-size: 18px; cursor: pointer; }
 .cart-view__quantity button:disabled { color: #b7c0bb; cursor: not-allowed; }
-.cart-view__quantity output { border-inline: 1px solid #dce4de; font-size: 13px; font-weight: 800; }
+.cart-view__quantity input { border-inline: 1px solid #dce4de; font: inherit; font-size: 13px; font-weight: 800; text-align: center; }
+.cart-view__quantity input::-webkit-inner-spin-button, .cart-view__quantity input::-webkit-outer-spin-button { margin: 0; appearance: none; }
+.cart-view__quantity-status { color: #6b4a27; font-size: 11px; line-height: 1.35; text-align: center; }
 .cart-view__line-total { color: #1f382d; font-size: 15px; text-align: right; }
 .cart-view__remove { padding: 5px; }
 .cart-view__summary { position: sticky; top: 24px; padding: 26px; border: 1px solid #d3ded5; border-radius: 7px; background: #fbfcfa; }
@@ -378,8 +381,8 @@ main {
   .cart-view__line-actions h2 { font-size: 18px; }
   .cart-view__line { grid-template-columns: auto 78px minmax(0, 1fr) auto; gap: 11px; padding: 16px 0; }
   .cart-view__product h3 { font-size: 14px; line-height: 1.45; }
-  .cart-view__quantity { grid-column: 3; width: 116px; margin-top: -4px; }
-  .cart-view__quantity button, .cart-view__quantity output { height: 34px; }
+  .cart-view__quantity-wrap { grid-column: 3; width: 116px; margin-top: -4px; }
+  .cart-view__quantity button, .cart-view__quantity input { height: 34px; }
   .cart-view__line-total { grid-column: 4; grid-row: 2; align-self: center; font-size: 13px; }
   .cart-view__remove { grid-column: 4; grid-row: 1; justify-self: end; padding: 0; font-size: 12px; }
   .cart-view__summary { padding: 22px 19px; }
