@@ -50,6 +50,19 @@ it("updates selection, quantity, free-shipping progress, and total", async () =>
   expect(screen.getByRole("link", { name: "선택 상품 주문하기" })).toHaveAttribute("aria-disabled", "true");
 });
 
+it("keeps the current payment total beside the mobile checkout action", async () => {
+  const user = userEvent.setup();
+  renderCart();
+
+  const checkout = await screen.findByRole("link", { name: "선택 상품 주문하기" });
+  const checkoutBar = checkout.closest(".cart-view__checkout-bar");
+  expect(checkoutBar).not.toBeNull();
+  expect(within(checkoutBar as HTMLElement).getByText("19,000원")).toBeVisible();
+
+  await user.click(screen.getByRole("button", { name: "수량 늘리기" }));
+  expect(within(checkoutBar as HTMLElement).getByText("32,000원")).toBeVisible();
+});
+
 it("confirms before deleting selected products and shows an empty-cart guide", async () => {
   const user = userEvent.setup();
   renderCart();

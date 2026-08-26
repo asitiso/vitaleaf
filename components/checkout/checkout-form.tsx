@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import Script from "next/script";
 import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from "react";
 
 import { type AuthStatus, useAuth } from "../../features/auth/auth-context";
@@ -14,6 +15,20 @@ import { processPayment, type OrderDraft } from "../../lib/payment/process-payme
 type RequiredField = "customerName" | "phone" | "postcode" | "address" | "addressDetail";
 type FormErrors = Partial<Record<RequiredField, string>>;
 type DeliveryValues = Record<RequiredField, string>;
+
+type KakaoPostcodeResult = {
+  zonecode: string;
+  userSelectedType: "R" | "J";
+  roadAddress: string;
+  jibunAddress: string;
+  address?: string;
+};
+
+type KakaoPostcodeWindow = Window & {
+  kakao?: {
+    Postcode: new (options: { oncomplete: (data: KakaoPostcodeResult) => void }) => { open: () => void };
+  };
+};
 
 const REQUIRED_FIELDS: RequiredField[] = [
   "customerName",
@@ -153,6 +168,7 @@ function CheckoutFormContents({
   const [saveDefaultAddress, setSaveDefaultAddress] = useState({ uid: null as string | null, selected: false });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [addressLookupError, setAddressLookupError] = useState("");
   const submittingRef = useRef(false);
   const editedDeliveryFieldsRef = useRef<Set<RequiredField>>(new Set());
   const profileRef = useRef<UserProfile | null>(null);
@@ -200,6 +216,32 @@ function CheckoutFormContents({
     editedDeliveryFieldsRef.current.add(field);
     const value = event.currentTarget.value;
     setDelivery((current) => ({ ...current, [field]: value }));
+  };
+
+  const openAddressSearch = () => {
+    const Postcode = (window as KakaoPostcodeWindow).kakao?.Postcode;
+    if (!Postcode) {
+      setAddressLookupError("주소 검색 기능을 불러오는 중입니다. 잠시 후 다시 시도해 주세요.");
+      return;
+    }
+
+    setAddressLookupError("");
+    new Postcode({
+      oncomplete: (data) => {
+        const selectedAddress = data.userSelectedType === "R"
+          ? data.roadAddress
+          : data.jibunAddress;
+        editedDeliveryFieldsRef.current.add("postcode");
+        editedDeliveryFieldsRef.current.add("address");
+        setDelivery((current) => ({
+          ...current,
+          postcode: data.zonecode,
+          address: selectedAddress || data.address || "",
+        }));
+        setErrors((current) => ({ ...current, postcode: undefined, address: undefined }));
+        fieldRefs.current.addressDetail?.focus();
+      },
+    }).open();
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -316,6 +358,13 @@ function CheckoutFormContents({
 
   return (
     <main className="checkout-page">
+      <Script
+        id="kakao-postcode-service"
+        src="https://t1.kakaocdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"
+        strategy="lazyOnload"
+        onLoad={() => setAddressLookupError("")}
+        onError={() => setAddressLookupError("주소 검색 기능을 불러오지 못했습니다. 우편번호와 주소를 직접 입력해 주세요.")}
+      />
       <header className="checkout-page__heading">
         <p>VITALEAF CHECKOUT</p>
         <h1>주문 및 결제</h1>
@@ -327,16 +376,10 @@ function CheckoutFormContents({
           <section className="checkout-card" aria-labelledby="delivery-heading">
             <h2 id="delivery-heading">배송 정보</h2>
             <div className="checkout-form__grid">
-              {REQUIRED_FIELDS.map((field) => (
-                <label
-                  key={field}
-                  className={field === "address" || field === "addressDetail" ? "checkout-field checkout-field--wide" : "checkout-field"}
-                >
-                  <span>
-                    {FIELD_LABELS[field]}
-                    <em aria-hidden="true">필수</em>
-                  </span>
+              {REQUIRED_FIELDS.map((field) => {
+                const input = (
                   <input
+                    id={`checkout-${field}`}
                     ref={(element) => {
                       if (element) fieldRefs.current[field] = element;
                     }}
@@ -362,9 +405,41 @@ function CheckoutFormContents({
                     value={delivery[field]}
                     onChange={changeDelivery(field)}
                   />
+                );
+
+                if (field === "postcode") {
+                  return (
+                    <div key={field} className="checkout-field checkout-field--postcode">
+                      <label htmlFor={`checkout-${field}`}>
+                        <span>
+                          {FIELD_LABELS[field]}
+                          <em aria-hidden="true">필수</em>
+                        </span>
+                      </label>
+                      <div className="checkout-field__postcode-control">
+                        {input}
+                        <button type="button" onClick={openAddressSearch}>우편번호 찾기</button>
+                      </div>
+                      {errors[field] ? <small id={`${field}-error`}>{errors[field]}</small> : null}
+                      {addressLookupError ? <small className="checkout-field__lookup-error" role="status">{addressLookupError}</small> : null}
+                    </div>
+                  );
+                }
+
+                return (
+                  <label
+                    key={field}
+                    className={field === "address" || field === "addressDetail" ? "checkout-field checkout-field--wide" : "checkout-field"}
+                  >
+                  <span>
+                    {FIELD_LABELS[field]}
+                    <em aria-hidden="true">필수</em>
+                  </span>
+                  {input}
                   {errors[field] ? <small id={`${field}-error`}>{errors[field]}</small> : null}
-                </label>
-              ))}
+                  </label>
+                );
+              })}
               <label className="checkout-field checkout-field--wide">
                 <span>배송 요청사항 (선택)</span>
                 <textarea name="deliveryNote" rows={3} />

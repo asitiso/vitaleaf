@@ -167,6 +167,7 @@ beforeEach(() => {
 
 afterEach(() => {
   localStorage.clear();
+  Reflect.deleteProperty(window, "kakao");
 });
 
 it("shows only selected cart lines, their totals, and all payment choices", async () => {
@@ -217,7 +218,7 @@ it("identifies every required field with native, ARIA, and visible semantics", a
 
   for (const name of ["받는 분", "연락처", "우편번호", "주소", "상세주소"]) {
     const input = screen.getByLabelText(name);
-    const label = input.closest("label");
+    const label = input.closest("label") ?? document.querySelector(`label[for="${input.id}"]`);
     expect(input).toHaveAttribute("required");
     expect(input).toHaveAttribute("aria-required", "true");
     expect(label).not.toBeNull();
@@ -300,6 +301,41 @@ it("submits the selected order once, clears it, and routes with only the order n
   await waitFor(() => {
     expect(JSON.parse(localStorage.getItem(storageKey) ?? "[]")).toEqual([unselectedLine]);
   });
+});
+
+it("fills postcode and address from Kakao search and moves focus to address detail", async () => {
+  const user = userEvent.setup();
+  const open = vi.fn();
+  let complete: ((data: {
+    zonecode: string;
+    userSelectedType: "R" | "J";
+    roadAddress: string;
+    jibunAddress: string;
+  }) => void) | undefined;
+  Object.defineProperty(window, "kakao", {
+    configurable: true,
+    value: {
+      Postcode: function Postcode(options: { oncomplete: typeof complete }) {
+        complete = options.oncomplete;
+        return { open };
+      },
+    },
+  });
+  renderCheckout();
+
+  await user.click(await screen.findByRole("button", { name: "우편번호 찾기" }));
+  expect(open).toHaveBeenCalledOnce();
+
+  act(() => complete?.({
+    zonecode: "04524",
+    userSelectedType: "R",
+    roadAddress: "서울특별시 중구 세종대로 110",
+    jibunAddress: "서울특별시 중구 태평로1가 31",
+  }));
+
+  expect(screen.getByLabelText("우편번호")).toHaveValue("04524");
+  expect(screen.getByLabelText("주소")).toHaveValue("서울특별시 중구 세종대로 110");
+  expect(screen.getByLabelText("상세주소")).toHaveFocus();
 });
 
 it("prefills a signed-in member address without overwriting typing", async () => {

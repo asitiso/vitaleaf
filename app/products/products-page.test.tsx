@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
@@ -148,6 +148,25 @@ it("ignores invalid menu values instead of rendering a blank or broken catalog",
   expect(screen.getAllByRole("article")).toHaveLength(3);
   expect(screen.getByLabelText("카테고리")).toHaveValue("");
   expect(screen.getByLabelText("건강 고민")).toHaveValue("");
+});
+
+it("keeps mobile filters collapsed until requested and shows the active filter count", async () => {
+  const user = userEvent.setup();
+  render(<ProductBrowser initialProducts={products} />);
+
+  const toggle = screen.getByRole("button", { name: "상품 필터" });
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+  await user.click(toggle);
+  expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+  await user.selectOptions(screen.getByLabelText("카테고리"), "혈행 건강");
+  await user.click(screen.getByRole("checkbox", { name: "구매 가능한 상품만" }));
+
+  expect(within(toggle).getByText("2")).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "결과 1개 보기" }));
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  expect(toggle).toHaveFocus();
 });
 
 it("resets an empty applied filter back to usable product results", async () => {

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
@@ -117,11 +117,24 @@ it("adds the exact selected quantity before routing buy-now to checkout", async 
   expect(add.mock.invocationCallOrder[0]).toBeLessThan(push.mock.invocationCallOrder[0]);
 });
 
+it("keeps the selected quantity and total visible in the mobile purchase bar", async () => {
+  render(<ProductDetail product={product} reviews={[]} />);
+
+  const purchaseSummary = screen.getByLabelText("구매 요약");
+  expect(within(purchaseSummary).getByText("수량 1개")).toBeVisible();
+  expect(within(purchaseSummary).getByText("32,000원")).toBeVisible();
+
+  await userEvent.click(screen.getByRole("button", { name: "수량 늘리기" }));
+
+  expect(within(purchaseSummary).getByText("수량 2개")).toBeVisible();
+  expect(within(purchaseSummary).getByText("64,000원")).toBeVisible();
+});
+
 it("shows pricing and shipping facts and prevents purchasing a sold-out product", () => {
   render(<ProductDetail product={{ ...product, stock: 0 }} reviews={[]} />);
 
   expect(screen.getByText("20%")).toBeInTheDocument();
-  expect(screen.getByText("32,000원")).toBeInTheDocument();
+  expect(screen.getByText("32,000원", { selector: ".product-detail__price" })).toBeInTheDocument();
   expect(screen.getByText("품절된 상품입니다")).toBeInTheDocument();
   expect(screen.getByText("3만원 이상 무료배송")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "장바구니 담기" })).toBeDisabled();

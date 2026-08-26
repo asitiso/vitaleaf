@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { formatWon } from "../../lib/format";
 import { canonicalTaxonomyValues, HEALTH_CONCERNS, PRODUCT_CATEGORIES, taxonomyLabel } from "../../lib/catalog/taxonomy";
@@ -58,6 +58,8 @@ export function ProductBrowser({
 }: ProductBrowserProps) {
   const startingFilters = useMemo(() => ({ ...defaultProductFilters, ...initialFilters }), [initialFilters]);
   const [filters, setFilters] = useState<ProductFilterValues>(startingFilters);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const mobileFilterToggleRef = useRef<HTMLButtonElement>(null);
   const [previousStartingFilters, setPreviousStartingFilters] = useState(startingFilters);
   const categories = useMemo(() => uniqueValues(canonicalTaxonomyValues(PRODUCT_CATEGORIES, initialProducts.map((product) => product.category))), [initialProducts]);
   const concerns = useMemo(() => uniqueValues(canonicalTaxonomyValues(HEALTH_CONCERNS, initialProducts.flatMap((product) => product.concerns))), [initialProducts]);
@@ -77,15 +79,46 @@ export function ProductBrowser({
     setFilters((current) => ({ ...current, ...changes }));
   };
 
+  const closeMobileFilters = () => {
+    setMobileFiltersOpen(false);
+    mobileFilterToggleRef.current?.focus();
+  };
+
   return (
     <div className="product-browser">
-      <ProductFilters
-        filters={filters}
-        categories={categories}
-        concerns={concerns}
-        onChange={updateFilters}
-        onReset={() => setFilters(defaultProductFilters)}
-      />
+      <button
+        ref={mobileFilterToggleRef}
+        type="button"
+        className="product-browser__filter-toggle"
+        aria-label="상품 필터"
+        aria-expanded={mobileFiltersOpen}
+        aria-controls="product-filter-panel"
+        onClick={() => setMobileFiltersOpen((current) => !current)}
+      >
+        <span>필터</span>
+        {chips.length ? <strong>{chips.length}</strong> : null}
+        <span aria-hidden="true">{mobileFiltersOpen ? "접기" : "열기"}</span>
+      </button>
+
+      <div
+        id="product-filter-panel"
+        className={`product-browser__filter-panel${mobileFiltersOpen ? " product-browser__filter-panel--open" : ""}`}
+      >
+        <ProductFilters
+          filters={filters}
+          categories={categories}
+          concerns={concerns}
+          onChange={updateFilters}
+          onReset={() => setFilters(defaultProductFilters)}
+        />
+        <button
+          type="button"
+          className="product-browser__filter-done"
+          onClick={closeMobileFilters}
+        >
+          결과 {visibleProducts.length.toLocaleString("ko-KR")}개 보기
+        </button>
+      </div>
 
       <section className="product-browser__results" aria-labelledby="product-results-title">
         {discoveryView ? (

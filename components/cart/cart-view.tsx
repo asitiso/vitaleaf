@@ -241,17 +241,23 @@ export function CartView() {
             <div className="cart-view__total"><dt>총 결제 예정 금액</dt><dd>{formatWon(total)}</dd></div>
           </dl>
           {selectedHasNoStock ? <p className="cart-view__checkout-warning" role="alert">재고가 없는 선택 상품을 해제한 뒤 주문해 주세요.</p> : null}
-          <Link
-            className="cart-view__checkout"
-            href="/checkout"
-            aria-disabled={checkoutDisabled}
-            tabIndex={checkoutDisabled ? -1 : undefined}
-            onClick={(event) => {
-              if (checkoutDisabled) event.preventDefault();
-            }}
-          >
-            선택 상품 주문하기
-          </Link>
+          <div className="cart-view__checkout-bar">
+            <p aria-label="모바일 총 결제 예정 금액">
+              <span>결제 예정</span>
+              <strong>{formatWon(total)}</strong>
+            </p>
+            <Link
+              className="cart-view__checkout"
+              href="/checkout"
+              aria-disabled={checkoutDisabled}
+              tabIndex={checkoutDisabled ? -1 : undefined}
+              onClick={(event) => {
+                if (checkoutDisabled) event.preventDefault();
+              }}
+            >
+              선택 상품 주문하기
+            </Link>
+          </div>
         </aside>
       </div>
 

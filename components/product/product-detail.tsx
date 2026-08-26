@@ -160,6 +160,10 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
         </button>
       </div>
       <form className="product-detail__actions" onSubmit={buyNow}>
+        <div className="product-detail__mobile-purchase" aria-label="구매 요약" aria-live="polite">
+          <span>수량 {quantity}개</span>
+          <strong>{formatWon(product.price * quantity)}</strong>
+        </div>
         <button type="button" disabled={soldOut} onClick={() => add(product, quantity)}>
           장바구니 담기
         </button>
