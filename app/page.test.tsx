@@ -38,6 +38,15 @@ const product: Product = {
   updatedAt: null,
 };
 
+const productAt = (index: number): Product => ({
+  ...product,
+  id: `product-${index}`,
+  name: `건강 상품 ${index}`,
+  slug: `product-${index}`,
+  salesRank: index,
+  createdAt: new Date(`2026-08-${String(index).padStart(2, "0")}T00:00:00.000Z`),
+});
+
 beforeEach(() => {
   getProductsMock.mockReset();
 });
@@ -64,6 +73,31 @@ it("renders the approved professional merchandising sections", async () => {
   expect(screen.getByRole("link", { name: /성분 기준으로 살펴보기/ })).toHaveAttribute("href", "/products?view=ingredients");
   expect(screen.getAllByRole("article", { name: "데일리 오메가3" })).toHaveLength(2);
   expect(screen.queryByRole("heading", { name: "건강 고민별" })).not.toBeInTheDocument();
+});
+
+it("places a product search before the hero for mobile shoppers", async () => {
+  getProductsMock.mockResolvedValue([product]);
+
+  render(await Home());
+
+  const search = screen.getByRole("search", { name: "홈 상품 검색" });
+  const hero = screen.getByRole("heading", { name: "하루 한 번, 기초 건강을 빈틈없이" }).closest("section");
+  expect(search).toHaveAttribute("action", "/products");
+  expect(within(search).getByRole("searchbox", { name: "상품 검색" })).toHaveAttribute("name", "q");
+  expect(search.compareDocumentPosition(hero!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+it("keeps products after the first four available in both home swipe sections", async () => {
+  getProductsMock.mockResolvedValue(Array.from({ length: 6 }, (_, index) => productAt(index + 1)));
+
+  render(await Home());
+
+  const bestSection = screen.getByRole("region", { name: "오늘의 베스트" });
+  const newestSection = screen.getByRole("region", { name: "새로 들어왔어요" });
+  expect(within(bestSection).getAllByRole("article")).toHaveLength(6);
+  expect(within(newestSection).getAllByRole("article")).toHaveLength(6);
+  expect(within(bestSection).getByText("옆으로 밀어 더 보기")).toBeVisible();
+  expect(within(newestSection).getByText("옆으로 밀어 더 보기")).toBeVisible();
 });
 
 it("places the mobile purchase benefits after the best products", async () => {
@@ -103,7 +137,7 @@ it("shows clearly labelled sample products when the catalog is empty", async () 
 
   expect(screen.getByText("샘플 상품으로 쇼핑몰 기능을 미리 확인하고 있습니다.")).toBeVisible();
   expect(screen.getAllByRole("article", { name: "[샘플] 데일리 멀티비타민" })).toHaveLength(2);
-  expect(screen.getByRole("article", { name: "[샘플] 패밀리 건강 선물세트" })).toBeVisible();
+  expect(screen.getAllByRole("article", { name: "[샘플] 패밀리 건강 선물세트" })).toHaveLength(2);
 });
 
 it("keeps the demo catalog usable when Firestore cannot load", async () => {

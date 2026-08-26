@@ -73,6 +73,7 @@ export function ProductBrowser({
   if (previousStartingFilters !== startingFilters) {
     setPreviousStartingFilters(startingFilters);
     setFilters(startingFilters);
+    setMobileFiltersOpen(false);
   }
 
   const updateFilters = (changes: Partial<ProductFilterValues>) => {

@@ -520,6 +520,11 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
 
 /* Home merchandising */
 .home-page { display: grid; gap: 80px; padding-top: 42px; }
+.home-mobile-search { display: none; min-width: 0; min-height: 48px; overflow: hidden; border: 1px solid #b7cabb; border-radius: 999px; background: #fff; }
+.home-mobile-search:focus-within { border-color: var(--color-sage); box-shadow: var(--focus-ring); }
+.home-mobile-search input { width: 100%; min-width: 0; border: 0; outline: 0; padding: 13px 16px; color: var(--color-ink); background: transparent; font: inherit; }
+.home-mobile-search input::placeholder { color: #718078; }
+.home-mobile-search button { flex: 0 0 auto; border: 0; padding: 0 18px; color: #fff; background: var(--color-sage); font-weight: 800; cursor: pointer; }
 .home-promotions { display: grid; min-height: 440px; grid-template-columns: minmax(0, 2.05fr) minmax(230px, .95fr); gap: 16px; }
 .home-hero { position: relative; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; overflow: hidden; padding: clamp(38px, 6vw, 76px); border-radius: 8px; color: #fff; background: linear-gradient(135deg, var(--color-forest), #2f7256); isolation: isolate; }
 .home-hero::after { position: absolute; z-index: -1; right: -60px; bottom: -150px; width: 440px; height: 440px; border: 70px solid rgb(255 255 255 / 8%); border-radius: 50%; content: ""; }
@@ -544,6 +549,8 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
 .sample-catalog-notice { margin: 18px 0 0; border: 1px solid #c7d9ca; padding: 12px 16px; border-radius: 5px; color: #315544; background: #f3f7f2; font-size: 13px; font-weight: 700; text-align: center; }
 .sample-catalog-notice--products { margin: -24px 0 30px; }
 .home-product-section { display: grid; gap: 28px; }
+.home-product-swipe-hint { display: none; }
+.home-product-section > .product-grid > .product-card:nth-child(n + 5) { display: none; }
 .home-section-heading { display: flex; gap: 30px; align-items: end; min-height: 65px; }
 .home-section-heading p { margin-bottom: 3px; color: var(--color-sage); }
 .home-section-heading h2 { margin: 0; color: var(--color-forest); font-size: 32px; letter-spacing: -.045em; }
@@ -659,6 +666,7 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
 
 @media (max-width: 620px) {
   .home-page { gap: 28px; padding-top: 12px; }
+  .home-mobile-search { display: flex; }
   .home-promotions { display: block; }
   .home-hero { min-height: 220px; padding: 24px 22px; }
   .home-hero h1 { font-size: 32px; }
@@ -674,6 +682,7 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
   .home-trust-bar span { display: none; }
   .sample-catalog-notice { margin: 0; }
   .home-product-section { gap: 20px; }
+  .home-product-swipe-hint { display: block; margin: -10px 0 -5px; color: #6a7a72; font-size: 12px; font-weight: 700; text-align: right; }
   .home-section-heading { align-items: start; flex-wrap: wrap; }
   .home-section-heading h2 { font-size: 27px; }
   .home-age-tabs { order: 3; width: 100%; overflow-x: auto; }
@@ -682,6 +691,9 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
   .home-catalog-state { grid-template-columns: auto 1fr; padding: 25px; }
   .home-catalog-state a { grid-column: 2; }
   .product-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 12px; }
+  .home-product-section > .product-grid { grid-template-columns: none; grid-template-rows: repeat(2, auto); grid-auto-flow: column; grid-auto-columns: calc((100% - 12px) / 2); overflow-x: auto; padding-bottom: 10px; overscroll-behavior-inline: contain; scroll-snap-type: x mandatory; scrollbar-width: thin; }
+  .home-product-section > .product-grid > .product-card { scroll-snap-align: start; }
+  .home-product-section > .product-grid > .product-card:nth-child(n + 5) { display: block; }
   .product-card h3 { min-height: 43px; font-size: 15px; }
   .product-card__category, .product-card__rating { font-size: 11px; }
   .product-card__price { font-size: 16px; }

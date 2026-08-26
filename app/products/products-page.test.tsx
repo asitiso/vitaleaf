@@ -219,17 +219,21 @@ it("normalizes existing menu slugs and age targets into catalog filters", async 
   expect(screen.getByRole("article", { name: "장 건강 유산균" })).toBeInTheDocument();
 });
 
-it("synchronizes filters when App Router search props change on the same route", () => {
+it("synchronizes filters and collapses the mobile panel when menu search props change", async () => {
+  const user = userEvent.setup();
   const { rerender } = render(
     <ProductBrowser initialProducts={products} initialFilters={{ query: "데일리" }} />,
   );
 
   expect(screen.getByRole("searchbox", { name: "상품 검색" })).toHaveValue("데일리");
+  await user.click(screen.getByRole("button", { name: "상품 필터" }));
+  expect(screen.getByRole("button", { name: "상품 필터" })).toHaveAttribute("aria-expanded", "true");
 
   rerender(
     <ProductBrowser initialProducts={products} initialFilters={{ category: "probiotic" }} />,
   );
 
+  expect(screen.getByRole("button", { name: "상품 필터" })).toHaveAttribute("aria-expanded", "false");
   expect(screen.getByRole("searchbox", { name: "상품 검색" })).toHaveValue("");
   expect(screen.getByLabelText("카테고리")).toHaveValue("probiotic");
   expect(screen.getByRole("article", { name: "장 건강 유산균" })).toBeInTheDocument();

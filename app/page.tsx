@@ -51,12 +51,16 @@ export default async function Home() {
 
   const bestProducts = products
     .filter((product) => product.salesRank !== null || product.isBest)
-    .sort(byRank)
-    .slice(0, 4);
-  const newProducts = products.filter((product) => product.isNew).sort(byNewest).slice(0, 4);
+    .sort(byRank);
+  const newProducts = products.filter((product) => product.isNew).sort(byNewest);
 
   return (
     <main className="home-page">
+      <form className="home-mobile-search" action="/products" method="get" role="search" aria-label="홈 상품 검색">
+        <label className="sr-only" htmlFor="home-product-search">상품 검색</label>
+        <input id="home-product-search" name="q" type="search" placeholder="상품명, 성분, 기능을 검색하세요" />
+        <button type="submit">검색</button>
+      </form>
       <section className="home-promotions" aria-label="주요 혜택">
         <div className="home-hero">
           <p className="home-hero__eyebrow">매일의 기본을 제대로</p>
@@ -88,6 +92,7 @@ export default async function Home() {
               </nav>
               <Link className="home-section-heading__more" href={STOREFRONT_DESTINATIONS.best.href}>전체 보기</Link>
             </div>
+            {bestProducts.length > 4 ? <p className="home-product-swipe-hint">옆으로 밀어 더 보기</p> : null}
             <ProductGrid status={bestProducts.length ? "ready" : "empty"} products={bestProducts} showRanks />
           </section>
 
@@ -98,6 +103,7 @@ export default async function Home() {
               <div><p>JUST ARRIVED</p><h2 id="new-products-title">새로 들어왔어요</h2></div>
               <Link className="home-section-heading__more" href={STOREFRONT_DESTINATIONS.newest.href}>전체 보기</Link>
             </div>
+            {newProducts.length > 4 ? <p className="home-product-swipe-hint">옆으로 밀어 더 보기</p> : null}
             <ProductGrid status={newProducts.length ? "ready" : "empty"} products={newProducts} />
           </section>
       </>
