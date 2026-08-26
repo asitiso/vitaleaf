@@ -66,7 +66,7 @@ function getDiscountRate(product: Product): number | null {
 }
 
 export function ProductDetail({ product, reviews, reviewLoadError = false }: ProductDetailProps) {
-  const { add } = useCart();
+  const { add, prepareBuyNow } = useCart();
   const router = useRouter();
   const [quantity, setQuantity] = useState(1);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
@@ -85,8 +85,8 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
   const increaseQuantity = () => setQuantity((current) => Math.min(product.stock, current + 1));
   const buyNow = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    add(product, quantity);
-    router.push("/checkout");
+    prepareBuyNow(product, quantity);
+    router.push("/checkout?mode=buy-now");
   };
 
   return (

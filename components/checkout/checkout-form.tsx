@@ -7,6 +7,7 @@ import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from "r
 
 import { type AuthStatus, useAuth } from "../../features/auth/auth-context";
 import { useCart } from "../../features/cart/cart-context";
+import { calculateCart } from "../../features/cart/cart-utils";
 import type { MemberIdentity } from "../../lib/firebase/member-auth";
 import { createMemberOrder } from "../../lib/firebase/member-orders";
 import { getUserProfile, type UserProfile, updateUserProfile } from "../../lib/firebase/user-profile";
@@ -84,7 +85,9 @@ function validateOrder(values: Record<RequiredField, string>) {
   return errors;
 }
 
-export function CheckoutForm() {
+type CheckoutMode = "cart" | "buy-now";
+
+export function CheckoutForm({ mode = "cart" }: { mode?: CheckoutMode }) {
   const { error: authError, retryAuth, status, user } = useAuth();
   const member = status === "signed-in" && user ? user : null;
   const memberUid = member?.uid ?? null;
@@ -114,6 +117,7 @@ export function CheckoutForm() {
       authStatus={status}
       key={`checkout-session:${nextSession.generation}`}
       member={member}
+      mode={mode}
       onContinueAsGuest={() => setGuestChoice({ allowed: true, authStateKey })}
       onRetryAuth={retryAuthentication}
     />
@@ -148,6 +152,7 @@ type CheckoutFormContentsProps = {
   authError: string;
   authStatus: AuthStatus;
   member: MemberIdentity | null;
+  mode: CheckoutMode;
   onContinueAsGuest: () => void;
   onRetryAuth: () => void;
 };
@@ -157,11 +162,12 @@ function CheckoutFormContents({
   authError,
   authStatus,
   member,
+  mode,
   onContinueAsGuest,
   onRetryAuth,
 }: CheckoutFormContentsProps) {
   const router = useRouter();
-  const { lines, hasHydrated, subtotal, shippingFee, total, clearSubmitted } = useCart();
+  const { buyNowLine, lines, hasHydrated, clearBuyNow, clearSubmitted } = useCart();
   const memberUid = member?.uid ?? null;
   const [errors, setErrors] = useState<FormErrors>({});
   const [delivery, setDelivery] = useState<DeliveryValues>(EMPTY_DELIVERY_VALUES);
@@ -173,7 +179,10 @@ function CheckoutFormContents({
   const editedDeliveryFieldsRef = useRef<Set<RequiredField>>(new Set());
   const profileRef = useRef<UserProfile | null>(null);
   const fieldRefs = useRef<Partial<Record<RequiredField, HTMLInputElement>>>({});
-  const selectedLines = lines.filter((line) => line.selected);
+  const selectedLines = mode === "buy-now"
+    ? buyNowLine ? [buyNowLine] : []
+    : lines.filter((line) => line.selected);
+  const { subtotal, shippingFee, total } = calculateCart(selectedLines);
   const unavailableSelectedLines = selectedLines.filter((line) => line.stock < 1);
   const hasUnavailableItems = unavailableSelectedLines.length > 0;
   const shouldSaveDefaultAddress = saveDefaultAddress.uid === memberUid && saveDefaultAddress.selected;
@@ -324,7 +333,11 @@ function CheckoutFormContents({
           addressSaved = false;
         }
       }
-      clearSubmitted(submittedLines);
+      if (mode === "buy-now") {
+        clearBuyNow();
+      } else {
+        clearSubmitted(submittedLines);
+      }
       const query = new URLSearchParams({ orderNumber: result.orderNumber });
       if (!addressSaved) query.set("addressSaved", "0");
       router.push(`/order-complete?${query.toString()}`);
@@ -346,6 +359,17 @@ function CheckoutFormContents({
   }
 
   if (selectedLines.length === 0) {
+    if (mode === "buy-now") {
+      return (
+        <main className="checkout-empty">
+          <p>VITALEAF CHECKOUT</p>
+          <h1>바로 구매 정보가 없습니다</h1>
+          <p>상품 정보가 만료되었거나 올바르게 저장되지 않았습니다.</p>
+          <Link href="/products">상품 다시 선택하기</Link>
+        </main>
+      );
+    }
+
     return (
       <main className="checkout-empty">
         <p>VITALEAF CHECKOUT</p>

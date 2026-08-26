@@ -5,14 +5,15 @@ import { vi } from "vitest";
 import type { Product, Review } from "@/lib/products/types";
 import { STORE_POLICIES } from "../../lib/site/policies";
 
-const { add, getApprovedReviewsMock, push } = vi.hoisted(() => ({
+const { add, getApprovedReviewsMock, prepareBuyNow, push } = vi.hoisted(() => ({
   add: vi.fn(),
   getApprovedReviewsMock: vi.fn(),
+  prepareBuyNow: vi.fn(),
   push: vi.fn(),
 }));
 
 vi.mock("../../features/cart/cart-context", () => ({
-  useCart: () => ({ add }),
+  useCart: () => ({ add, prepareBuyNow }),
 }));
 
 vi.mock("../../lib/firebase/reviews", () => ({
@@ -89,6 +90,7 @@ const reviews: Review[] = [
 beforeEach(() => {
   add.mockClear();
   getApprovedReviewsMock.mockReset();
+  prepareBuyNow.mockClear();
   push.mockClear();
 });
 
@@ -105,16 +107,17 @@ it("caps quantity at stock and sends the selected quantity to cart", async () =>
   expect(add).toHaveBeenCalledWith(stockedProduct, 2);
 });
 
-it("adds the exact selected quantity before routing buy-now to checkout", async () => {
+it("prepares only the current product before routing to buy-now checkout", async () => {
   render(<ProductDetail product={product} reviews={[]} />);
 
   await userEvent.click(screen.getByRole("button", { name: "수량 늘리기" }));
   await userEvent.click(screen.getByRole("button", { name: "수량 늘리기" }));
   await userEvent.click(screen.getByRole("button", { name: "바로 구매" }));
 
-  expect(add).toHaveBeenCalledWith(product, 3);
-  expect(push).toHaveBeenCalledWith("/checkout");
-  expect(add.mock.invocationCallOrder[0]).toBeLessThan(push.mock.invocationCallOrder[0]);
+  expect(prepareBuyNow).toHaveBeenCalledWith(product, 3);
+  expect(add).not.toHaveBeenCalled();
+  expect(push).toHaveBeenCalledWith("/checkout?mode=buy-now");
+  expect(prepareBuyNow.mock.invocationCallOrder[0]).toBeLessThan(push.mock.invocationCallOrder[0]);
 });
 
 it("keeps the selected quantity and total visible in the mobile purchase bar", async () => {

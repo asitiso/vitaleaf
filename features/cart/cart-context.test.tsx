@@ -4,8 +4,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { CartProvider, useCart } from "./cart-context";
 import type { CartLine } from "./cart-types";
+import type { Product } from "../../lib/products/types";
 
 const storageKey = "vitaleaf-cart-v1";
+const buyNowStorageKey = "vitaleaf-buy-now-v1";
 
 const line: CartLine = {
   productId: "omega-3",
@@ -17,19 +19,51 @@ const line: CartLine = {
   selected: true,
 };
 
+const buyNowProduct: Product = {
+  id: "probiotic",
+  name: "장편한 유산균",
+  slug: "probiotic",
+  category: "유산균",
+  concerns: ["장 건강"],
+  price: 21_000,
+  originalPrice: null,
+  thumbnailUrl: "/probiotic.jpg",
+  images: [],
+  media: [],
+  description: "",
+  benefits: [],
+  ingredients: [],
+  dosage: "",
+  origin: "대한민국",
+  certifications: [],
+  cautions: [],
+  stock: 5,
+  isBest: false,
+  isNew: false,
+  salesRank: null,
+  ratingAverage: 0,
+  reviewCount: 0,
+  createdAt: null,
+  updatedAt: null,
+};
+
 function CartProbe() {
-  const { clearSubmitted, itemCount, lines, setQuantity, subtotal } = useCart();
+  const { buyNowLine, clearSubmitted, itemCount, lines, prepareBuyNow, setQuantity, subtotal } = useCart();
 
   return (
     <>
       <p>Items: {itemCount}</p>
       <p>Subtotal: {subtotal}</p>
       <p>Quantity: {lines[0]?.quantity ?? 0}</p>
+      <p>Buy now: {buyNowLine ? `${buyNowLine.name} × ${buyNowLine.quantity}` : "none"}</p>
       <button type="button" onClick={() => setQuantity(line.productId, 2)}>
         Increase quantity
       </button>
       <button type="button" onClick={() => clearSubmitted([line])}>
         Clear submitted
+      </button>
+      <button type="button" onClick={() => prepareBuyNow(buyNowProduct, 2)}>
+        Prepare buy now
       </button>
     </>
   );
@@ -37,6 +71,7 @@ function CartProbe() {
 
 afterEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
 });
 
 describe("CartProvider", () => {
@@ -116,5 +151,31 @@ describe("CartProvider", () => {
 
     expect(await screen.findByText("Items: 4")).toBeInTheDocument();
     expect(JSON.parse(localStorage.getItem(storageKey) ?? "[]")).toEqual([changedLine, newLine]);
+  });
+
+  it("stores a buy-now line separately without changing the existing cart", async () => {
+    localStorage.setItem(storageKey, JSON.stringify([line]));
+    const user = userEvent.setup();
+
+    render(
+      <CartProvider>
+        <CartProbe />
+      </CartProvider>,
+    );
+
+    expect(await screen.findByText("Items: 1")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Prepare buy now" }));
+
+    expect(screen.getByText("Buy now: 장편한 유산균 × 2")).toBeVisible();
+    expect(JSON.parse(localStorage.getItem(storageKey) ?? "[]")).toEqual([line]);
+    expect(JSON.parse(sessionStorage.getItem(buyNowStorageKey) ?? "null")).toEqual({
+      productId: "probiotic",
+      name: "장편한 유산균",
+      thumbnailUrl: "/probiotic.jpg",
+      unitPrice: 21_000,
+      stock: 5,
+      quantity: 2,
+      selected: true,
+    });
   });
 });

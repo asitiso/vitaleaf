@@ -17,6 +17,7 @@ import { calculateCart, clampQuantity } from "./cart-utils";
 import type { CartContextValue, CartLine } from "./cart-types";
 
 const STORAGE_KEY = "vitaleaf-cart-v1";
+const BUY_NOW_STORAGE_KEY = "vitaleaf-buy-now-v1";
 
 type CartSummary = ReturnType<typeof calculateCart>;
 type CartContextState = CartContextValue & CartSummary;
@@ -92,6 +93,20 @@ function toCartLine(product: Product, quantity: number, selected = true): CartLi
   return { ...line, quantity: clampQuantity(line, quantity) };
 }
 
+function readStoredBuyNowLine(): CartLine | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const stored = window.sessionStorage.getItem(BUY_NOW_STORAGE_KEY);
+    const line = stored === null ? undefined : normalizeStoredCart([JSON.parse(stored)])[0];
+    return line ? { ...line, selected: true } : null;
+  } catch {
+    return null;
+  }
+}
+
 function isSameCartLineSnapshot(current: CartLine, snapshot: CartLine) {
   return current.productId === snapshot.productId
     && current.name === snapshot.name
@@ -104,12 +119,15 @@ function isSameCartLineSnapshot(current: CartLine, snapshot: CartLine) {
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [lines, setLines] = useState<CartLine[]>([]);
+  const [buyNowLine, setBuyNowLine] = useState<CartLine | null>(null);
   const [hasHydrated, setHasHydrated] = useState(false);
 
   useEffect(() => {
     const storedLines = readStoredCart();
+    const storedBuyNowLine = readStoredBuyNowLine();
     startTransition(() => {
       setLines(storedLines);
+      setBuyNowLine(storedBuyNowLine);
       setHasHydrated(true);
     });
   }, []);
@@ -125,6 +143,22 @@ export function CartProvider({ children }: { children: ReactNode }) {
       // The cart remains usable if browser storage is unavailable.
     }
   }, [hasHydrated, lines]);
+
+  useEffect(() => {
+    if (!hasHydrated) {
+      return;
+    }
+
+    try {
+      if (buyNowLine) {
+        window.sessionStorage.setItem(BUY_NOW_STORAGE_KEY, JSON.stringify(buyNowLine));
+      } else {
+        window.sessionStorage.removeItem(BUY_NOW_STORAGE_KEY);
+      }
+    } catch {
+      // The current page keeps the buy-now line even if session storage is unavailable.
+    }
+  }, [buyNowLine, hasHydrated]);
 
   useEffect(() => {
     const syncCart = (event: StorageEvent) => {
@@ -185,6 +219,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setLines((currentLines) => currentLines.filter((line) => !line.selected));
   }, []);
 
+  const prepareBuyNow = useCallback((product: Product, quantity: number) => {
+    if (product.stock < 1 || !Number.isFinite(quantity)) {
+      return;
+    }
+    setBuyNowLine(toCartLine(product, quantity));
+  }, []);
+
+  const clearBuyNow = useCallback(() => setBuyNowLine(null), []);
+
   const clearSubmitted = useCallback((submittedLines: readonly CartLine[]) => {
     const submittedByProductId = new Map(submittedLines.map((line) => [line.productId, line]));
     setLines((currentLines) => currentLines.filter((line) => {
@@ -196,8 +239,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const summary = useMemo(() => calculateCart(lines), [lines]);
   const itemCount = useMemo(() => lines.reduce((count, line) => count + line.quantity, 0), [lines]);
   const value = useMemo<CartContextState>(
-    () => ({ lines, itemCount, hasHydrated, add, remove, setQuantity, setSelected, selectAll, clearSelected, clearSubmitted, ...summary }),
-    [add, clearSelected, clearSubmitted, hasHydrated, itemCount, lines, remove, selectAll, setQuantity, setSelected, summary],
+    () => ({ lines, buyNowLine, itemCount, hasHydrated, add, prepareBuyNow, clearBuyNow, remove, setQuantity, setSelected, selectAll, clearSelected, clearSubmitted, ...summary }),
+    [add, buyNowLine, clearBuyNow, clearSelected, clearSubmitted, hasHydrated, itemCount, lines, prepareBuyNow, remove, selectAll, setQuantity, setSelected, summary],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

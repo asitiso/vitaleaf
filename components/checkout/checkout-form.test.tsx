@@ -55,6 +55,7 @@ vi.mock("../../lib/firebase/member-orders", () => ({
 }));
 
 const storageKey = "vitaleaf-cart-v1";
+const buyNowStorageKey = "vitaleaf-buy-now-v1";
 const selectedLine: CartLine = {
   productId: "omega-3",
   name: "데일리 오메가3",
@@ -74,11 +75,31 @@ const unselectedLine: CartLine = {
   selected: false,
 };
 
+const buyNowLine: CartLine = {
+  productId: "probiotic",
+  name: "장편한 유산균",
+  thumbnailUrl: "/probiotic.jpg",
+  unitPrice: 21_000,
+  stock: 5,
+  quantity: 2,
+  selected: true,
+};
+
 function renderCheckout(lines: CartLine[] = [selectedLine, unselectedLine]) {
   localStorage.setItem(storageKey, JSON.stringify(lines));
   return render(
     <CartProvider>
       <CheckoutForm />
+    </CartProvider>,
+  );
+}
+
+function renderBuyNowCheckout(lines: CartLine[] = [selectedLine, unselectedLine]) {
+  localStorage.setItem(storageKey, JSON.stringify(lines));
+  sessionStorage.setItem(buyNowStorageKey, JSON.stringify(buyNowLine));
+  return render(
+    <CartProvider>
+      <CheckoutForm mode="buy-now" />
     </CartProvider>,
   );
 }
@@ -167,6 +188,7 @@ beforeEach(() => {
 
 afterEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
   Reflect.deleteProperty(window, "kakao");
 });
 
@@ -301,6 +323,53 @@ it("submits the selected order once, clears it, and routes with only the order n
   await waitFor(() => {
     expect(JSON.parse(localStorage.getItem(storageKey) ?? "[]")).toEqual([unselectedLine]);
   });
+});
+
+it("shows only the prepared product in buy-now mode without changing the cart", async () => {
+  const existingCart = [selectedLine, unselectedLine];
+  renderBuyNowCheckout(existingCart);
+
+  const buyNowItem = await screen.findByText(/^장편한 유산균/);
+  expect(buyNowItem).toBeVisible();
+  expect(screen.queryByText(/^데일리 오메가3/)).not.toBeInTheDocument();
+  expect(within(buyNowItem.closest("li")!).getByText("42,000원")).toBeVisible();
+  expect(within(screen.getByText("총 결제 금액").closest("div")!).getByText("42,000원")).toBeVisible();
+  expect(JSON.parse(localStorage.getItem(storageKey) ?? "[]")).toEqual(existingCart);
+});
+
+it("clears the buy-now request after payment while preserving the existing cart", async () => {
+  const user = userEvent.setup();
+  const existingCart = [selectedLine, unselectedLine];
+  processPaymentMock.mockResolvedValue(paymentResult);
+  renderBuyNowCheckout(existingCart);
+  await screen.findByRole("form", { name: "주문 및 결제" });
+  await fillValidOrder(user);
+
+  await user.click(screen.getByRole("button", { name: "결제하기" }));
+
+  await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/order-complete?orderNumber=VL-20260810-ABC123"));
+  await waitFor(() => expect(sessionStorage.getItem(buyNowStorageKey)).toBeNull());
+  expect(JSON.parse(localStorage.getItem(storageKey) ?? "[]")).toEqual(existingCart);
+  expect(processPaymentMock).toHaveBeenCalledWith(expect.objectContaining({
+    lines: [buyNowLine],
+    subtotal: 42_000,
+    shippingFee: 0,
+    total: 42_000,
+  }));
+});
+
+it("stops buy-now checkout when its temporary product information is missing", async () => {
+  localStorage.setItem(storageKey, JSON.stringify([selectedLine]));
+
+  render(
+    <CartProvider>
+      <CheckoutForm mode="buy-now" />
+    </CartProvider>,
+  );
+
+  expect(await screen.findByRole("heading", { name: "바로 구매 정보가 없습니다" })).toBeVisible();
+  expect(screen.queryByRole("form", { name: "주문 및 결제" })).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "상품 다시 선택하기" })).toHaveAttribute("href", "/products");
 });
 
 it("fills postcode and address from Kakao search and moves focus to address detail", async () => {
