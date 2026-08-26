@@ -1,20 +1,14 @@
-import { AGE_TARGETS, HEALTH_CONCERNS, PRODUCT_CATEGORIES, taxonomyLabel, type TaxonomyOption } from "../catalog/taxonomy";
+import { AGE_TARGETS, HEALTH_CONCERNS, PRODUCT_CATEGORIES, type TaxonomyOption } from "../catalog/taxonomy";
 import type { ProductFilters } from "../products/types";
 
 export const TRIAL_MAX_PRICE_WON = 30_000;
-
-export const AGE_CONCERN_GROUPS: Record<string, readonly string[]> = {
-  "30": ["gut", "energy"],
-  "40": ["eyes", "circulation"],
-  "50": ["brain", "bones"],
-};
 
 export type MenuPageState = {
   title: string;
   description: string;
   filters: ProductFilters;
   promotion: "today" | "trial" | null;
-  age: "30" | "40" | "50" | null;
+  age: string | null;
   discoveryView: "concerns" | "ingredients" | null;
   contextLabel?: string;
 };
@@ -108,8 +102,7 @@ export function resolveMenuState(params: SearchParams): MenuPageState {
   const base = { filters, promotion, age, discoveryView };
 
   if (ageOption) {
-    const firstConcern = AGE_CONCERN_GROUPS[ageOption.value]?.[0] ?? "";
-    return { ...base, title: `${ageOption.label} 추천`, description: `${ageOption.label}의 일상 건강 관리에 맞춰 상품을 살펴보세요.`, contextLabel: `연령 추천 기준: ${taxonomyLabel(HEALTH_CONCERNS, firstConcern)}` };
+    return { ...base, title: `${ageOption.label} 추천`, description: `${ageOption.label}의 일상 건강 관리에 맞춰 상품을 살펴보세요.`, contextLabel: "관리자가 확인한 추천 연령 기준" };
   }
   if (category) return { ...base, title: category.label, description: category.description };
   if (concern) return { ...base, title: `${concern.label} 상품`, description: concern.description };

@@ -20,6 +20,7 @@ export type Product = {
   slug: string;
   category: string;
   concerns: string[];
+  ageTargets?: string[];
   price: number;
   originalPrice: number | null;
   thumbnailUrl: string;

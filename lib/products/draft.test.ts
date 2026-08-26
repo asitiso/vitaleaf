@@ -9,6 +9,7 @@ const makeDraft = (overrides: Partial<ProductDraft> = {}): ProductDraft => ({
   slug: "omega-3",
   category: "supplements",
   concerns: [],
+  ageTargets: [],
   price: 20_000,
   originalPrice: null,
   thumbnailUrl: "",
@@ -109,10 +110,12 @@ describe("product drafts", () => {
     const input = toPublishedProductInput(makeDraft({
       category: "유산균",
       concerns: ["장 건강", "면역"],
+      ageTargets: ["어린이", "20", "unknown", "20"],
     }));
 
     expect(input.category).toBe("probiotic");
     expect(input.concerns).toEqual(["gut", "immunity"]);
+    expect(input.ageTargets).toEqual(["child", "20"]);
   });
 
 

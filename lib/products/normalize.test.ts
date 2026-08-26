@@ -69,6 +69,17 @@ describe("normalizeProduct", () => {
     expect(product.updatedAt).toBe(updatedAt);
   });
 
+  it("normalizes only supported age targets", () => {
+    const product = normalizeProduct("p1", {
+      name: "Age target product",
+      price: 10_000,
+      stock: 1,
+      ageTargets: ["어린이", "20", "unknown", "20"],
+    });
+
+    expect(product.ageTargets).toEqual(["child", "20"]);
+  });
+
   it("drops malformed or blank-name ingredients and trims valid names", () => {
     const product = normalizeProduct("ingredients", {
       name: "Ingredient product",

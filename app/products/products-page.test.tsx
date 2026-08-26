@@ -61,6 +61,7 @@ const products = [
     slug: "probiotic",
     category: "유산균",
     concerns: ["장 건강"],
+    ageTargets: ["30"],
     benefits: ["30대 추천"],
     price: 25_000,
     stock: 4,
@@ -266,43 +267,24 @@ it.each([
   expect(screen.getByRole("article", { name: expectedName })).toBeInTheDocument();
 });
 
-it.each([
-  ["30", "장 건강 상품", "장 건강"],
-  ["40", "눈 건강 상품", "눈 건강"],
-  ["50", "뇌 건강 상품", "뇌 건강"],
-])("maps age %s to documented concern groups", async (age, expectedName, concern) => {
+it("shows only products explicitly tagged for the selected age", async () => {
   getProductsMock.mockResolvedValue([
-    makeProduct({ id: "gut", name: "장 건강 상품", slug: "gut", concerns: ["장 건강"] }),
-    makeProduct({ id: "eyes", name: "눈 건강 상품", slug: "eyes", concerns: ["눈 건강"] }),
-    makeProduct({ id: "brain", name: "뇌 건강 상품", slug: "brain", concerns: ["뇌 건강"] }),
+    makeProduct({ id: "child", name: "어린이 추천 상품", slug: "child", ageTargets: ["child"] }),
+    makeProduct({ id: "legacy", name: "기존 면역 상품", slug: "legacy", concerns: ["immunity"] }),
+    makeProduct({ id: "adult", name: "성인 면역 상품", slug: "adult", concerns: ["immunity"], ageTargets: ["30"] }),
   ]);
 
-  render(await ProductsPage({ searchParams: Promise.resolve({ age }) }));
+  render(await ProductsPage({ searchParams: Promise.resolve({ age: "child" }) }));
 
-  expect(screen.getByRole("article", { name: expectedName })).toBeInTheDocument();
-  expect(screen.getByText(`연령 추천 기준: ${concern}`)).toBeInTheDocument();
-});
-
-it.each([
-  ["40", "circulation", "혈행"],
-  ["50", "bones", "관절·뼈 건강"],
-])("keeps age %s secondary concerns matching canonical codes and legacy Korean labels", async (age, code, legacyLabel) => {
-  getProductsMock.mockResolvedValue([
-    makeProduct({ id: `${code}-canonical`, name: `${legacyLabel} 코드 상품`, slug: `${code}-canonical`, concerns: [code] }),
-    makeProduct({ id: `${code}-legacy`, name: `${legacyLabel} 기존 상품`, slug: `${code}-legacy`, concerns: [legacyLabel] }),
-    makeProduct({ id: "unrelated", name: "무관 상품", slug: "unrelated", concerns: ["gut"] }),
-  ]);
-
-  render(await ProductsPage({ searchParams: Promise.resolve({ age }) }));
-
-  expect(screen.getByRole("article", { name: `${legacyLabel} 코드 상품` })).toBeVisible();
-  expect(screen.getByRole("article", { name: `${legacyLabel} 기존 상품` })).toBeVisible();
-  expect(screen.queryByRole("article", { name: "무관 상품" })).not.toBeInTheDocument();
+  expect(screen.getByRole("article", { name: "어린이 추천 상품" })).toBeInTheDocument();
+  expect(screen.queryByRole("article", { name: "기존 면역 상품" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("article", { name: "성인 면역 상품" })).not.toBeInTheDocument();
+  expect(screen.getByText("관리자가 확인한 추천 연령 기준")).toBeInTheDocument();
 });
 
 it("shows both canonical wizard values and legacy Korean labels at category, concern, and age destinations", async () => {
   const canonicalDraft: ProductDraft = {
-    ...makeProduct({ id: "canonical", name: "새 유산균", category: "probiotic", concerns: ["gut"] }),
+    ...makeProduct({ id: "canonical", name: "새 유산균", category: "probiotic", concerns: ["gut"], ageTargets: ["30"] }),
     status: "draft",
     mode: "create",
     sessionId: "canonical-session",
@@ -332,5 +314,5 @@ it("shows both canonical wizard values and legacy Korean labels at category, con
 
   render(await ProductsPage({ searchParams: Promise.resolve({ age: "30" }) }));
   expect(screen.getByRole("article", { name: "새 유산균" })).toBeVisible();
-  expect(screen.getByRole("article", { name: "기존 유산균" })).toBeVisible();
+  expect(screen.queryByRole("article", { name: "기존 유산균" })).not.toBeInTheDocument();
 });

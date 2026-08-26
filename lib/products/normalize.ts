@@ -1,5 +1,5 @@
 import type { Ingredient, Product, ProductMedia } from "./types";
-import { canonicalTaxonomyValue, canonicalTaxonomyValues, HEALTH_CONCERNS, PRODUCT_CATEGORIES } from "../catalog/taxonomy";
+import { canonicalAgeTargets, canonicalTaxonomyValue, canonicalTaxonomyValues, HEALTH_CONCERNS, PRODUCT_CATEGORIES } from "../catalog/taxonomy";
 
 type ProductRecord = Record<string, unknown>;
 
@@ -122,6 +122,7 @@ export const normalizeProduct = (id: string, raw: unknown): Product => {
     slug: asString(product.slug),
     category: canonicalTaxonomyValue(PRODUCT_CATEGORIES, asString(product.category)),
     concerns: canonicalTaxonomyValues(HEALTH_CONCERNS, asStringArray(product.concerns)),
+    ageTargets: canonicalAgeTargets(asStringArray(product.ageTargets)),
     price: product.price,
     originalPrice: asNullableNonNegativeNumber(product.originalPrice),
     thumbnailUrl: media[0]?.url ?? "",

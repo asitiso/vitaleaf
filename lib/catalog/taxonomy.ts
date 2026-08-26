@@ -61,10 +61,17 @@ export const HEALTH_CONCERNS = [
 ] as const satisfies readonly TaxonomyOption[];
 
 export const AGE_TARGETS = [
+  { value: "child", label: "어린이", description: "성장기 어린이를 위해 확인된 상품" },
+  { value: "teen", label: "청소년", description: "청소년 생활 리듬에 맞춘 상품" },
+  { value: "20", label: "20대", description: "바쁜 일상의 기초 건강 관리" },
   { value: "30", label: "30대", description: "바쁜 일상을 위한 기본 관리" },
   { value: "40", label: "40대", description: "변화가 느껴질 때의 건강 관리" },
   { value: "50", label: "50대+", description: "활기찬 일상을 위한 건강 관리" },
 ] as const satisfies readonly TaxonomyOption[];
+
+export const canonicalAgeTargets = (candidates: readonly string[]): string[] =>
+  canonicalTaxonomyValues(AGE_TARGETS, candidates)
+    .filter((value) => AGE_TARGETS.some((option) => option.value === value));
 
 export const PRODUCT_TEMPLATES = [
   { value: "vitamin", label: "비타민", description: "비타민·미네랄 상품 등록" },

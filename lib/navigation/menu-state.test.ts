@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { AGE_TARGETS, HEALTH_CONCERNS, PRODUCT_CATEGORIES } from "../catalog/taxonomy";
-import { AGE_CONCERN_GROUPS, parseProductQuery, resolveMenuState } from "./menu-state";
+import { parseProductQuery, resolveMenuState } from "./menu-state";
 
 describe("parseProductQuery", () => {
   it.each([
@@ -67,7 +67,12 @@ describe("resolveMenuState", () => {
     [{ promotion: "today" }, "오늘의 혜택"],
     [{ view: "concerns" }, "건강 고민별 상품"],
     [{ category: "gift" }, "선물세트"],
+    [{ age: "child" }, "어린이 추천"],
+    [{ age: "teen" }, "청소년 추천"],
+    [{ age: "20" }, "20대 추천"],
+    [{ age: "30" }, "30대 추천"],
     [{ age: "40" }, "40대 추천"],
+    [{ age: "50" }, "50대+ 추천"],
   ])("resolves supported menu state", (params, title) => {
     expect(resolveMenuState(params)).toMatchObject({ title });
   });
@@ -128,12 +133,11 @@ describe("resolveMenuState", () => {
     });
   });
 
-  it("preserves the established age recommendation concern groups", () => {
-    expect(AGE_CONCERN_GROUPS).toMatchObject({
-      "30": ["gut", "energy"],
-      "40": ["eyes", "circulation"],
-      "50": ["brain", "bones"],
-    });
+  it.each([
+    ["child", "어린이 추천"], ["teen", "청소년 추천"], ["20", "20대 추천"],
+    ["30", "30대 추천"], ["40", "40대 추천"], ["50", "50대+ 추천"],
+  ])("resolves age=%s", (age, title) => {
+    expect(resolveMenuState({ age })).toMatchObject({ age, title, contextLabel: "관리자가 확인한 추천 연령 기준" });
   });
 
   it("keeps menu filter values canonical instead of converting them to display labels", () => {
