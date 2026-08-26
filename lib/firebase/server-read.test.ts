@@ -113,6 +113,10 @@ describe("Worker-safe Firestore server reads", () => {
     expect(firstUrl.searchParams.get("pageSize")).toBe("100");
     expect(firstUrl.searchParams.get("orderBy")).toBeNull();
     expect(firstUrl.searchParams.get("key")).toBe("public-api-key");
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({
+      cache: "force-cache",
+      next: { revalidate: 60, tags: ["products"] },
+    });
 
     const secondUrl = new URL(String(fetchMock.mock.calls[1][0]));
     expect(secondUrl.searchParams.get("pageToken")).toBe("next/page");
@@ -134,6 +138,10 @@ describe("Worker-safe Firestore server reads", () => {
     await expect(repository.getProduct("missing/product")).resolves.toBeNull();
     await expect(repository.getProduct("offline")).rejects.toThrow("Firestore REST request failed (503)");
     expect(String(fetchMock.mock.calls[0][0])).toContain("products/missing%2Fproduct");
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({
+      cache: "force-cache",
+      next: { revalidate: 60, tags: ["products", "product:missing/product"] },
+    });
   });
 
   it("queries only approved reviews for the requested product and decodes the response", async () => {
@@ -170,6 +178,7 @@ describe("Worker-safe Firestore server reads", () => {
       "https://firestore.googleapis.com/v1/projects/demo-project/databases/(default)/documents:runQuery",
     );
     expect(requestInit?.method).toBe("POST");
+    expect(requestInit?.cache).toBe("no-store");
     expect(JSON.parse(String(requestInit?.body))).toEqual({
       structuredQuery: {
         from: [{ collectionId: "reviews" }],

@@ -26,6 +26,15 @@ type ServerReadRepositoryOptions = {
   fetch?: typeof globalThis.fetch;
 };
 
+type NextFetchRequestInit = RequestInit & {
+  next?: {
+    revalidate?: number;
+    tags?: string[];
+  };
+};
+
+const PRODUCT_CACHE_SECONDS = 60;
+
 const asObject = (value: unknown): Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -107,11 +116,11 @@ export function createServerReadRepository({
     return url;
   };
 
-  const fetchJson = async (url: URL, init?: RequestInit): Promise<unknown> => {
+  const fetchJson = async (url: URL, init?: NextFetchRequestInit): Promise<unknown> => {
     const response = await fetchImplementation(url.toString(), {
       cache: "no-store",
       ...init,
-    });
+    } as RequestInit);
     if (!response.ok) {
       throw new Error(`Firestore REST request failed (${response.status}).`);
     }
@@ -129,7 +138,10 @@ export function createServerReadRepository({
         url.searchParams.set("pageSize", "100");
         if (pageToken) url.searchParams.set("pageToken", pageToken);
 
-        const body = asObject(await fetchJson(url));
+        const body = asObject(await fetchJson(url, {
+          cache: "force-cache",
+          next: { revalidate: PRODUCT_CACHE_SECONDS, tags: ["products"] },
+        }));
         if (Array.isArray(body.documents)) {
           documents.push(...body.documents.map((document) => document as FirestoreDocument));
         }
@@ -149,7 +161,13 @@ export function createServerReadRepository({
 
     async getProduct(id: string): Promise<Product | null> {
       const url = withApiKey(new URL(`${documentsUrl}/products/${encodeURIComponent(id)}`));
-      const response = await fetchImplementation(url.toString(), { cache: "no-store" });
+      const response = await fetchImplementation(url.toString(), {
+        cache: "force-cache",
+        next: {
+          revalidate: PRODUCT_CACHE_SECONDS,
+          tags: ["products", `product:${id}`],
+        },
+      } as RequestInit);
       if (response.status === 404) return null;
       if (!response.ok) {
         throw new Error(`Firestore REST request failed (${response.status}).`);

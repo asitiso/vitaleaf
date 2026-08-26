@@ -176,7 +176,7 @@ it("resets an empty applied filter back to usable product results", async () => 
   render(await ProductsPage({ searchParams: Promise.resolve({ q: "찾을 수 없는 검색어" }) }));
 
   expect(screen.getByText("조건에 맞는 상품이 없습니다")).toBeVisible();
-  await user.click(screen.getByRole("button", { name: "전체 초기화" }));
+  await user.click(screen.getByRole("button", { name: "검색·필터 초기화" }));
 
   expect(screen.getAllByRole("article")).toHaveLength(3);
   expect(screen.getByRole("searchbox", { name: "상품 검색" })).toHaveValue("");

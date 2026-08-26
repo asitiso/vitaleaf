@@ -171,6 +171,7 @@ export function ProductBrowser({
           status={loadError ? "error" : visibleProducts.length ? "ready" : "empty"}
           products={visibleProducts}
           retry={loadError ? () => window.location.reload() : undefined}
+          emptyAction={initialProducts.length ? () => setFilters(defaultProductFilters) : undefined}
         />
       </section>
     </div>

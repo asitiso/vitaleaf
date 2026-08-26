@@ -130,6 +130,15 @@ it("keeps the selected quantity and total visible in the mobile purchase bar", a
   expect(within(purchaseSummary).getByText("64,000원")).toBeVisible();
 });
 
+it("surfaces dosage, primary ingredient, and certifications before the accordions", () => {
+  render(<ProductDetail product={product} reviews={[]} />);
+
+  const facts = screen.getByLabelText("구매 핵심 정보");
+  expect(within(facts).getByText("하루 1회, 1캡슐을 물과 함께 섭취하세요.")).toBeVisible();
+  expect(within(facts).getByText("EPA 및 DHA 600 mg")).toBeVisible();
+  expect(within(facts).getByText("건강기능식품 · GMP")).toBeVisible();
+});
+
 it("shows pricing and shipping facts and prevents purchasing a sold-out product", () => {
   render(<ProductDetail product={{ ...product, stock: 0 }} reviews={[]} />);
 

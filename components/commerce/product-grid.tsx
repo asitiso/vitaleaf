@@ -11,11 +11,19 @@ type ProductGridProps = {
   status: ProductGridStatus;
   products: Product[];
   retry?: () => void;
+  emptyAction?: () => void;
   isAdmin?: boolean;
   showRanks?: boolean;
 };
 
-export function ProductGrid({ status, products, retry, isAdmin = false, showRanks = false }: ProductGridProps) {
+export function ProductGrid({
+  status,
+  products,
+  retry,
+  emptyAction,
+  isAdmin = false,
+  showRanks = false,
+}: ProductGridProps) {
   if (status === "loading") {
     return (
       <div className="product-grid product-grid--loading" role="status">
@@ -45,6 +53,9 @@ export function ProductGrid({ status, products, retry, isAdmin = false, showRank
         <strong>조건에 맞는 상품이 없습니다</strong>
         <p>검색어나 필터를 바꾸면 더 많은 상품을 확인할 수 있습니다.</p>
         {isAdmin ? <Link href="/admin">상품 등록 안내</Link> : null}
+        {!isAdmin && emptyAction ? (
+          <button type="button" onClick={emptyAction}>검색·필터 초기화</button>
+        ) : null}
       </div>
     );
   }

@@ -75,6 +75,11 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
   const discountRate = getDiscountRate(product);
   const gallery = buildProductGallery(product);
   const selectedImage = gallery[selectedImageIndex];
+  const primaryIngredient = product.ingredients[0];
+  const primaryIngredientText = primaryIngredient
+    ? [primaryIngredient.name, primaryIngredient.amount].filter(Boolean).join(" ")
+    : "상세 정보 확인";
+  const certificationText = product.certifications.slice(0, 2).join(" · ") || "상세 정보 확인";
 
   const decreaseQuantity = () => setQuantity((current) => Math.max(1, current - 1));
   const increaseQuantity = () => setQuantity((current) => Math.min(product.stock, current + 1));
@@ -132,6 +137,20 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
             <del>{formatWon(product.originalPrice)}</del>
           ) : null}
         </div>
+        <dl className="product-detail__facts" aria-label="구매 핵심 정보">
+          <div>
+            <dt>섭취</dt>
+            <dd>{product.dosage || "상세 정보 확인"}</dd>
+          </div>
+          <div>
+            <dt>대표 성분</dt>
+            <dd>{primaryIngredientText}</dd>
+          </div>
+          <div>
+            <dt>인증</dt>
+            <dd>{certificationText}</dd>
+          </div>
+        </dl>
         <p className={`product-detail__stock${soldOut ? " product-detail__stock--sold-out" : ""}`}>
           {soldOut ? "품절된 상품입니다" : product.stock <= 5 ? `재고 ${product.stock}개 남음` : "재고 있음"}
         </p>

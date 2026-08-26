@@ -723,6 +723,11 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
 .product-detail__discount { color: var(--color-sale); font-size: 25px; }
 .product-detail__price { color: #152f25; font-size: 30px; }
 .product-detail__price-row del { color: #5f6f67; font-size: 14px; }
+.product-detail__facts { display: grid; gap: 0; margin: 20px 0 0; border-block: 1px solid #dce4dd; }
+.product-detail__facts > div { display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: 12px; padding: 10px 2px; border-bottom: 1px solid #edf1ed; }
+.product-detail__facts > div:last-child { border-bottom: 0; }
+.product-detail__facts dt { color: #64756c; font-size: 13px; font-weight: 700; }
+.product-detail__facts dd { margin: 0; color: #294438; font-size: 13px; font-weight: 800; line-height: 1.45; }
 .product-detail__stock { display: inline-flex; padding: 6px 9px; margin: 18px 0 0; border-radius: 3px; color: #315a48; background: var(--color-mint); font-size: 12px; font-weight: 800; }
 .product-detail__stock--sold-out { color: #873729; background: #f7e6e1; }
 .product-detail__shipping { padding: 15px 17px; margin: 17px 0 0; border: 1px solid #d8e3da; border-radius: 5px; color: #607168; background: #f8faf7; font-size: 13px; }
