@@ -180,6 +180,15 @@ describe("guest order creation", () => {
     await expect(service.create(input, paymentResult)).rejects.toThrow(GuestOrderValidationError);
   });
 
+  it("rejects a malformed payment receipt passed through the public create boundary", async () => {
+    const service = createGuestOrderService(inMemoryDependencies());
+
+    await expect(service.create(createInput(), {
+      orderNumber: paymentResult.orderNumber,
+      receivedAt: "not-a-date",
+    })).rejects.toThrow(GuestOrderValidationError);
+  });
+
   it("recalculates totals and stored line details from server products", async () => {
     const dependencies = inMemoryDependencies({
       products: [product({ price: 12_000, stock: 5, name: "서버 상품명" })],

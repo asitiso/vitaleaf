@@ -73,6 +73,6 @@ export type GuestOrderRepository = {
 };
 
 export type GuestOrderService = {
-  create(input: unknown, payment: PaymentResult): Promise<PaymentResult>;
+  create(input: unknown, payment: unknown): Promise<PaymentResult>;
   lookup(input: unknown, clientKey: string): Promise<GuestOrderPublic>;
 };

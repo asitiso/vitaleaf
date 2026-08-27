@@ -109,6 +109,31 @@ describe("POST /api/guest-orders", () => {
     expect(mocks.create).not.toHaveBeenCalled();
   });
 
+  it("returns 400 when the real service boundary rejects a malformed wrapped payment", async () => {
+    const actualService = await vi.importActual<typeof import("../../../lib/guest-orders/service")>(
+      "../../../lib/guest-orders/service",
+    );
+    mocks.create.mockImplementation((order, payment) => actualService.createGuestOrderService({
+      lookupSecret: "test-secret",
+      repository: {
+        loadProducts: async () => [],
+        createOrder: async () => undefined,
+        getOrder: async () => null,
+        getAttempt: async () => null,
+        setAttempt: async () => ({ failureCount: 1, expiresAt: new Date() }),
+        deleteAttempt: async () => undefined,
+      },
+    }).create(order, payment));
+
+    const response = await POST(createJsonRequest({
+      order: validCreateBody,
+      payment: { ...validPayment, receivedAt: "not-a-date" },
+    }));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ message: "비회원 주문 정보를 다시 확인해 주세요." });
+  });
+
   it.each([
     [new GuestOrderValidationError(), 400, "비회원 주문 정보를 다시 확인해 주세요."],
     [new GuestOrderUnavailableError(), 409, "주문할 수 없는 상품이 포함되어 있습니다."],
