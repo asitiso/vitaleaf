@@ -9,7 +9,6 @@ import {
   GuestOrderUnavailableError,
 } from "../../../lib/guest-orders/service";
 import { GuestOrderValidationError } from "../../../lib/guest-orders/validation";
-import { processPayment, type OrderDraft } from "../../../lib/payment/process-payment";
 
 export const runtime = "nodejs";
 
@@ -19,6 +18,17 @@ const jsonMessage = (message: string, status: number): Response =>
 const safeErrorClass = (error: unknown): string => {
   const className = error instanceof Error ? error.constructor.name : "UnknownError";
   return /^[A-Za-z][A-Za-z0-9]{0,63}$/u.test(className) ? className : "UnknownError";
+};
+
+const parseCreatePayload = (value: unknown): { order: unknown; payment: unknown } => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new GuestOrderValidationError();
+  }
+  const payload = value as Record<string, unknown>;
+  if (!("order" in payload) || !("payment" in payload)) {
+    throw new GuestOrderValidationError();
+  }
+  return { order: payload.order, payment: payload.payment };
 };
 
 export async function POST(request: Request): Promise<Response> {
@@ -31,8 +41,8 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const service = createGuestOrderService({ repository: guestOrderRepository });
-    const payment = await processPayment(body as OrderDraft);
-    const receipt = await service.create(body, payment);
+    const { order, payment } = parseCreatePayload(body);
+    const receipt = await service.create(order, payment);
     return Response.json({
       orderNumber: receipt.orderNumber,
       receivedAt: receipt.receivedAt,

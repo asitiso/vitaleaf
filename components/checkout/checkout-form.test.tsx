@@ -13,6 +13,7 @@ import { CheckoutForm } from "./checkout-form";
 
 const {
   authState,
+  createGuestOrderMock,
   createMemberOrderMock,
   getUserProfileMock,
   processPaymentMock,
@@ -25,6 +26,7 @@ const {
     user: null as MemberIdentity | null,
     error: "",
   },
+  createGuestOrderMock: vi.fn(),
   createMemberOrderMock: vi.fn(),
   getUserProfileMock: vi.fn(),
   processPaymentMock: vi.fn(),
@@ -52,6 +54,10 @@ vi.mock("../../lib/firebase/user-profile", () => ({
 
 vi.mock("../../lib/firebase/member-orders", () => ({
   createMemberOrder: createMemberOrderMock,
+}));
+
+vi.mock("../../lib/guest-orders/client", () => ({
+  createGuestOrder: createGuestOrderMock,
 }));
 
 const storageKey = "vitaleaf-cart-v1";
@@ -178,6 +184,7 @@ const paymentResult: PaymentResult = {
 beforeEach(() => {
   authState.status = "signed-out";
   authState.user = null;
+  createGuestOrderMock.mockReset().mockResolvedValue(paymentResult);
   createMemberOrderMock.mockReset().mockResolvedValue("member-order-1");
   getUserProfileMock.mockReset().mockResolvedValue(null);
   processPaymentMock.mockReset();
@@ -283,7 +290,7 @@ it("blocks a persisted selected line that is sold out", async () => {
   expect(JSON.parse(localStorage.getItem(storageKey) ?? "[]")).toEqual([soldOutLine]);
 });
 
-it("submits the selected order once, clears it, and routes with only the order number", async () => {
+it("submits the selected order once, clears it, and routes with a stored guest order number", async () => {
   const user = userEvent.setup();
   const payment = deferredPayment();
   processPaymentMock.mockReturnValue(payment.promise);
@@ -318,7 +325,7 @@ it("submits the selected order once, clears it, and routes with only the order n
   });
 
   await waitFor(() => {
-    expect(pushMock).toHaveBeenCalledWith("/order-complete?orderNumber=VL-20260810-ABC123");
+    expect(pushMock).toHaveBeenCalledWith("/order-complete?orderNumber=VL-20260810-ABC123&guest=1");
   });
   await waitFor(() => {
     expect(JSON.parse(localStorage.getItem(storageKey) ?? "[]")).toEqual([unselectedLine]);
@@ -347,7 +354,7 @@ it("clears the buy-now request after payment while preserving the existing cart"
 
   await user.click(screen.getByRole("button", { name: "결제하기" }));
 
-  await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/order-complete?orderNumber=VL-20260810-ABC123"));
+  await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/order-complete?orderNumber=VL-20260810-ABC123&guest=1"));
   await waitFor(() => expect(sessionStorage.getItem(buyNowStorageKey)).toBeNull());
   expect(JSON.parse(localStorage.getItem(storageKey) ?? "[]")).toEqual(existingCart);
   expect(processPaymentMock).toHaveBeenCalledWith(expect.objectContaining({
@@ -453,7 +460,7 @@ it("keeps the cart when member order storage fails", async () => {
   expect(pushMock).not.toHaveBeenCalled();
 });
 
-it("does not persist a guest mock order", async () => {
+it("persists a guest order before clearing and navigating", async () => {
   const user = userEvent.setup();
   processPaymentMock.mockResolvedValue(paymentResult);
   renderGuestCheckout();
@@ -462,8 +469,30 @@ it("does not persist a guest mock order", async () => {
 
   await user.click(screen.getByRole("button", { name: "결제하기" }));
 
-  await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/order-complete?orderNumber=VL-20260810-ABC123"));
+  await waitFor(() => expect(createGuestOrderMock).toHaveBeenCalledWith(
+    expect.objectContaining({ phone: "010-1234-5678" }),
+    paymentResult,
+  ));
+  await waitFor(() => expect(JSON.parse(localStorage.getItem(storageKey) ?? "[]")).toEqual([unselectedLine]));
+  expect(createGuestOrderMock.mock.invocationCallOrder[0]).toBeLessThan(pushMock.mock.invocationCallOrder[0]);
+  expect(pushMock).toHaveBeenCalledWith("/order-complete?orderNumber=VL-20260810-ABC123&guest=1");
   expect(createMemberOrderMock).not.toHaveBeenCalled();
+});
+
+it("keeps the cart and checkout inputs when guest order persistence fails", async () => {
+  const user = userEvent.setup();
+  processPaymentMock.mockResolvedValue(paymentResult);
+  createGuestOrderMock.mockRejectedValueOnce(new Error("storage failed"));
+  renderGuestCheckout();
+  await screen.findByRole("form", { name: "주문 및 결제" });
+  await fillValidOrder(user);
+
+  await user.click(screen.getByRole("button", { name: "결제하기" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("주문을 저장하지 못했습니다");
+  expect(screen.getByLabelText("받는 분")).toHaveValue("홍길동");
+  expect(JSON.parse(localStorage.getItem(storageKey) ?? "[]")).toEqual([selectedLine, unselectedLine]);
+  expect(pushMock).not.toHaveBeenCalled();
 });
 
 it("continues after optional default-address saving fails and marks the completion notice", async () => {
@@ -551,7 +580,7 @@ it("blocks auth-error checkout until the shopper deliberately chooses guest chec
   expect(screen.getByRole("button", { name: "결제하기" })).toBeEnabled();
   await user.click(screen.getByRole("button", { name: "결제하기" }));
 
-  await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/order-complete?orderNumber=VL-20260810-ABC123"));
+  await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/order-complete?orderNumber=VL-20260810-ABC123&guest=1"));
   expect(createMemberOrderMock).not.toHaveBeenCalled();
 });
 

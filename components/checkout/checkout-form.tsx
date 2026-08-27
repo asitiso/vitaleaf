@@ -10,6 +10,7 @@ import { useCart } from "../../features/cart/cart-context";
 import { calculateCart } from "../../features/cart/cart-utils";
 import type { MemberIdentity } from "../../lib/firebase/member-auth";
 import { createMemberOrder } from "../../lib/firebase/member-orders";
+import { createGuestOrder } from "../../lib/guest-orders/client";
 import { getUserProfile, type UserProfile, updateUserProfile } from "../../lib/firebase/user-profile";
 import { processPayment, type OrderDraft } from "../../lib/payment/process-payment";
 
@@ -305,11 +306,19 @@ function CheckoutFormContents({
 
     try {
       const result = await processPayment(orderDraft);
+      let completionResult = result;
       if (member) {
         try {
           await createMemberOrder(member.uid, orderDraft, result);
         } catch {
           setSubmitError("주문 정보를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+          return;
+        }
+      } else {
+        try {
+          completionResult = await createGuestOrder(orderDraft, result);
+        } catch {
+          setSubmitError("주문을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
           return;
         }
       }
@@ -338,8 +347,9 @@ function CheckoutFormContents({
       } else {
         clearSubmitted(submittedLines);
       }
-      const query = new URLSearchParams({ orderNumber: result.orderNumber });
+      const query = new URLSearchParams({ orderNumber: completionResult.orderNumber });
       if (!addressSaved) query.set("addressSaved", "0");
+      if (!member) query.set("guest", "1");
       router.push(`/order-complete?${query.toString()}`);
     } catch {
       setSubmitError("결제를 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.");
@@ -536,7 +546,7 @@ function CheckoutFormContents({
             ? "회원 주문 정보는 주문내역에 저장됩니다."
             : authStatus === "error" && !allowGuestOnAuthError
               ? "인증 상태를 선택한 뒤 결제를 진행할 수 있습니다."
-              : "개인정보와 주문 정보는 저장되지 않습니다."}</small>
+              : "비회원 주문은 주문번호와 휴대전화 번호로 조회할 수 있습니다."}</small>
         </aside>
       </form>
     </main>

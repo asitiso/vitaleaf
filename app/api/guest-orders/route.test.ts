@@ -51,6 +51,11 @@ const validCreateBody = {
   lines: [{ productId: "p1", quantity: 2 }],
 };
 
+const validPayment = {
+  orderNumber: "VL-20260826-ABC123",
+  receivedAt: "2026-08-26T03:00:00.000Z",
+};
+
 const createJsonRequest = (body: unknown): Request => new Request(
   "http://localhost/api/guest-orders",
   {
@@ -78,9 +83,11 @@ describe("POST /api/guest-orders", () => {
       address: "서울특별시 강남구 테헤란로",
     });
 
-    const response = await POST(createJsonRequest(validCreateBody));
+    const response = await POST(createJsonRequest({ order: validCreateBody, payment: validPayment }));
 
     expect(response.status).toBe(201);
+    expect(mocks.processPayment).not.toHaveBeenCalled();
+    expect(mocks.create).toHaveBeenCalledWith(validCreateBody, validPayment);
     const body = await response.json();
     expect(body).toEqual(paymentResult);
     expect(JSON.stringify(body)).not.toContain("01012345678");
@@ -111,7 +118,7 @@ describe("POST /api/guest-orders", () => {
   ])("maps %s to %i", async (error, expectedStatus, expectedMessage) => {
     mocks.create.mockRejectedValue(error);
 
-    const response = await POST(createJsonRequest(validCreateBody));
+    const response = await POST(createJsonRequest({ order: validCreateBody, payment: validPayment }));
 
     expect(response.status).toBe(expectedStatus);
     expect(await response.json()).toEqual({ message: expectedMessage });
@@ -122,7 +129,7 @@ describe("POST /api/guest-orders", () => {
     mocks.create.mockRejectedValue(new Error(privateErrorMessage));
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
-    const response = await POST(createJsonRequest(validCreateBody));
+    const response = await POST(createJsonRequest({ order: validCreateBody, payment: validPayment }));
 
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({
