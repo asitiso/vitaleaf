@@ -44,3 +44,12 @@ it("shows a guest lookup action only for a validated guest order", () => {
   );
   expect(screen.queryByRole("link", { name: "주문내역 보기" })).not.toBeInTheDocument();
 });
+
+it("keeps member history and hides the guest lookup for a signed-in visitor with a guest query", () => {
+  authState.status = "signed-in";
+  authState.user = { uid: "user-1", email: "member@example.com", emailVerified: true };
+  render(<OrderCompleteActions guest orderNumber="VL-20260826-ABC123" />);
+
+  expect(screen.getByRole("link", { name: "주문내역 보기" })).toHaveAttribute("href", "/mypage#orders-heading");
+  expect(screen.queryByRole("link", { name: "비회원 주문조회" })).not.toBeInTheDocument();
+});
