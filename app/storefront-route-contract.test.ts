@@ -14,6 +14,7 @@ import StoryPage from "./story/page";
 import HelpPage from "./help/page";
 import ShippingPage from "./help/shipping/page";
 import ReturnsPage from "./help/returns/page";
+import OrderLookupPage from "./order-lookup/page";
 
 const appRouterPages = import.meta.glob("./**/page.tsx");
 
@@ -116,7 +117,7 @@ describe("public storefront menu route contract", () => {
   it("exposes every account and help destination as a real App Router page", () => {
     const paths = flattenMenuLinks(STOREFRONT_MENU).map(({ href }) => new URL(href, "https://vitaleaf.test").pathname);
 
-    expect(paths).toEqual(expect.arrayContaining(["/login", "/signup", "/mypage"]));
+    expect(paths).toEqual(expect.arrayContaining(["/login", "/signup", "/mypage", "/order-lookup"]));
     expect(paths.filter((path) => path.startsWith("/help"))).toEqual([
       "/help",
       "/help/shipping",
@@ -142,6 +143,12 @@ describe("public storefront menu route contract", () => {
       expect(screen.queryByText("총 0개 상품"), link.href).not.toBeInTheDocument();
       cleanup();
     }
+  });
+
+  it("renders the header order-lookup destination", async () => {
+    render(await OrderLookupPage({ searchParams: Promise.resolve({}) }));
+
+    expect(screen.getByRole("heading", { level: 1, name: "비회원 주문조회" })).toBeVisible();
   });
 
   it.each([

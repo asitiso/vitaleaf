@@ -34,3 +34,13 @@ it("shows the member order-history action only when signed in", () => {
 
   expect(screen.getByRole("link", { name: "주문내역 보기" })).toHaveAttribute("href", "/mypage#orders-heading");
 });
+
+it("shows a guest lookup action only for a validated guest order", () => {
+  render(<OrderCompleteActions guest orderNumber="VL-20260826-ABC123" />);
+
+  expect(screen.getByRole("link", { name: "비회원 주문조회" })).toHaveAttribute(
+    "href",
+    "/order-lookup?orderNumber=VL-20260826-ABC123",
+  );
+  expect(screen.queryByRole("link", { name: "주문내역 보기" })).not.toBeInTheDocument();
+});

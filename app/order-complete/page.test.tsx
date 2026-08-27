@@ -34,3 +34,22 @@ it("keeps a successful order complete while warning when optional address saving
   expect(screen.getByRole("heading", { name: "주문이 접수되었습니다" })).toBeVisible();
   expect(screen.getByRole("alert")).toHaveTextContent("주문은 접수되었지만 기본 배송지는 저장하지 못했습니다.");
 });
+
+it("offers lookup only for a guest completion", async () => {
+  render(await OrderCompletePage({
+    searchParams: Promise.resolve({ orderNumber: "VL-20260826-ABC123", guest: "1" }),
+  }));
+
+  expect(screen.getByRole("link", { name: "비회원 주문조회" })).toHaveAttribute(
+    "href",
+    "/order-lookup?orderNumber=VL-20260826-ABC123",
+  );
+});
+
+it("keeps the member completion action when the guest flag is absent", async () => {
+  render(await OrderCompletePage({
+    searchParams: Promise.resolve({ orderNumber: "VL-20260826-ABC123" }),
+  }));
+
+  expect(screen.queryByRole("link", { name: "비회원 주문조회" })).not.toBeInTheDocument();
+});
