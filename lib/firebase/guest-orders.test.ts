@@ -1,0 +1,284 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { Product } from "../products/types";
+import type { GuestOrderStored } from "../guest-orders/types";
+import { GuestOrderDuplicateError } from "../guest-orders/service";
+
+const adminMocks = vi.hoisted(() => ({
+  cert: vi.fn((value: unknown) => ({ credential: value })),
+  getApps: vi.fn<() => { name: string }[]>(() => []),
+  getFirestore: vi.fn((app: unknown) => ({ app })),
+  initializeApp: vi.fn((options: unknown, name: string) => ({ name, options })),
+}));
+
+vi.mock("firebase-admin/app", () => ({
+  cert: adminMocks.cert,
+  getApps: adminMocks.getApps,
+  initializeApp: adminMocks.initializeApp,
+}));
+vi.mock("firebase-admin/firestore", () => ({ getFirestore: adminMocks.getFirestore }));
+
+import { getAdminFirestore } from "./admin";
+import { createFirestoreGuestOrderRepository } from "./guest-orders";
+
+const NOW = new Date("2026-08-26T03:00:00.000Z");
+const order: GuestOrderStored = {
+  orderNumber: "VL-20260826-ABC123",
+  status: "mock-received",
+  paymentMethod: "card",
+  customerName: "김민수",
+  phoneNormalized: "01012345678",
+  postcode: "06236",
+  address: "서울특별시 강남구 테헤란로",
+  addressDetail: "4층 401호",
+  deliveryNote: "문 앞에 놓아 주세요.",
+  lines: [{
+    productId: "p1",
+    name: "비타민 C",
+    thumbnailUrl: "/products/vitamin-c.jpg",
+    unitPrice: 12_000,
+    quantity: 2,
+  }],
+  subtotal: 24_000,
+  shippingFee: 3_000,
+  total: 27_000,
+  createdAt: NOW,
+  receivedAt: new Date("2026-08-26T02:59:00.000Z"),
+};
+
+const environmentNames = [
+  "FIREBASE_ADMIN_PROJECT_ID",
+  "FIREBASE_ADMIN_CLIENT_EMAIL",
+  "FIREBASE_ADMIN_PRIVATE_KEY",
+] as const;
+const savedEnvironment = Object.fromEntries(
+  environmentNames.map((name) => [name, process.env[name]]),
+);
+
+beforeEach(() => {
+  adminMocks.cert.mockClear();
+  adminMocks.getApps.mockReset().mockReturnValue([]);
+  adminMocks.getFirestore.mockClear();
+  adminMocks.initializeApp.mockClear();
+  for (const name of environmentNames) delete process.env[name];
+});
+
+afterEach(() => {
+  for (const name of environmentNames) {
+    const saved = savedEnvironment[name];
+    if (saved === undefined) delete process.env[name];
+    else process.env[name] = saved;
+  }
+});
+
+describe("Firebase Admin initialization", () => {
+  it("does not initialize Firebase Admin when server modules are imported", () => {
+    expect(adminMocks.initializeApp).not.toHaveBeenCalled();
+    expect(adminMocks.getFirestore).not.toHaveBeenCalled();
+  });
+
+  it("validates required credentials only when Firestore is requested", () => {
+    expect(() => getAdminFirestore()).toThrow(/FIREBASE_ADMIN_.* is required for Firebase Admin/u);
+    expect(adminMocks.initializeApp).not.toHaveBeenCalled();
+  });
+
+  it("reuses the named vitaleaf-server app instead of the first app", () => {
+    const unrelatedApp = { name: "unrelated" };
+    const serverApp = { name: "vitaleaf-server" };
+    adminMocks.getApps.mockReturnValue([unrelatedApp, serverApp]);
+    adminMocks.getFirestore.mockReturnValue({ app: serverApp });
+
+    expect(getAdminFirestore()).toEqual({ app: serverApp });
+    expect(adminMocks.getFirestore).toHaveBeenCalledWith(serverApp);
+    expect(adminMocks.initializeApp).not.toHaveBeenCalled();
+  });
+
+  it("initializes a named app and restores private-key newlines", () => {
+    process.env.FIREBASE_ADMIN_PROJECT_ID = "vitaleaf-test";
+    process.env.FIREBASE_ADMIN_CLIENT_EMAIL = "server@example.test";
+    process.env.FIREBASE_ADMIN_PRIVATE_KEY = "line-1\\nline-2";
+
+    getAdminFirestore();
+
+    expect(adminMocks.cert).toHaveBeenCalledWith({
+      projectId: "vitaleaf-test",
+      clientEmail: "server@example.test",
+      privateKey: "line-1\nline-2",
+    });
+    expect(adminMocks.initializeApp).toHaveBeenCalledWith({
+      credential: { credential: {
+        projectId: "vitaleaf-test",
+        clientEmail: "server@example.test",
+        privateKey: "line-1\nline-2",
+      } },
+    }, "vitaleaf-server");
+  });
+});
+
+type DocumentSnapshot = { exists: boolean; data(): unknown };
+
+const firestoreHarness = () => {
+  const snapshots = new Map<string, DocumentSnapshot>();
+  const references = new Map<string, {
+    path: string;
+    create: ReturnType<typeof vi.fn>;
+    delete: ReturnType<typeof vi.fn>;
+    get: ReturnType<typeof vi.fn>;
+  }>();
+  const transactionGet = vi.fn(async (reference: { path: string }) =>
+    snapshots.get(reference.path) ?? { exists: false, data: () => undefined });
+  const transactionSet = vi.fn();
+  const runTransaction = vi.fn(async (operation: (transaction: unknown) => Promise<unknown>) =>
+    operation({ get: transactionGet, set: transactionSet }));
+  const doc = vi.fn((path: string) => {
+    const existing = references.get(path);
+    if (existing) return existing;
+    const reference = {
+      path,
+      create: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined),
+      get: vi.fn(async () => snapshots.get(path) ?? { exists: false, data: () => undefined }),
+    };
+    references.set(path, reference);
+    return reference;
+  });
+
+  return {
+    firestore: { doc, runTransaction },
+    references,
+    snapshots,
+    transactionGet,
+    transactionSet,
+    runTransaction,
+  };
+};
+
+describe("Firestore guest-order repository", () => {
+  it("loads every requested public server product", async () => {
+    const harness = firestoreHarness();
+    const p1 = { id: "p1" } as Product;
+    const loadProduct = vi.fn(async (id: string) => id === "p1" ? p1 : null);
+    const repository = createFirestoreGuestOrderRepository({
+      getFirestore: () => harness.firestore as never,
+      loadProduct,
+    });
+
+    await expect(repository.loadProducts(["p1", "missing"])).resolves.toEqual([p1, null]);
+    expect(loadProduct).toHaveBeenNthCalledWith(1, "p1");
+    expect(loadProduct).toHaveBeenNthCalledWith(2, "missing");
+  });
+
+  it("creates an order document without overwrite semantics", async () => {
+    const harness = firestoreHarness();
+    const repository = createFirestoreGuestOrderRepository({
+      getFirestore: () => harness.firestore as never,
+      loadProduct: vi.fn(),
+    });
+
+    await repository.createOrder(order);
+
+    const reference = harness.references.get(`guestOrders/${order.orderNumber}`);
+    expect(reference?.create).toHaveBeenCalledWith(order);
+  });
+
+  it("maps Firestore create conflicts to the domain duplicate error", async () => {
+    const harness = firestoreHarness();
+    const repository = createFirestoreGuestOrderRepository({
+      getFirestore: () => harness.firestore as never,
+      loadProduct: vi.fn(),
+    });
+    const reference = harness.firestore.doc(`guestOrders/${order.orderNumber}`);
+    reference.create.mockRejectedValueOnce({ code: 6 });
+
+    await expect(repository.createOrder(order)).rejects.toThrow(GuestOrderDuplicateError);
+  });
+
+  it("converts order and attempt Firestore timestamps to domain Dates", async () => {
+    const harness = firestoreHarness();
+    const createdAt = new Date("2026-08-26T03:00:00.000Z");
+    const receivedAt = new Date("2026-08-26T02:59:00.000Z");
+    const expiresAt = new Date("2026-08-26T03:10:00.000Z");
+    harness.snapshots.set(`guestOrders/${order.orderNumber}`, {
+      exists: true,
+      data: () => ({
+        ...order,
+        createdAt: { toDate: () => createdAt },
+        receivedAt: { toDate: () => receivedAt },
+      }),
+    });
+    harness.snapshots.set("guestOrderLookupAttempts/fingerprint", {
+      exists: true,
+      data: () => ({ failureCount: 4, expiresAt: { toDate: () => expiresAt } }),
+    });
+    const repository = createFirestoreGuestOrderRepository({
+      getFirestore: () => harness.firestore as never,
+      loadProduct: vi.fn(),
+    });
+
+    await expect(repository.getOrder(order.orderNumber)).resolves.toMatchObject({
+      createdAt,
+      receivedAt,
+    });
+    await expect(repository.getAttempt("fingerprint")).resolves.toEqual({
+      failureCount: 4,
+      expiresAt,
+    });
+  });
+
+  it("increments an active lookup window in a transaction", async () => {
+    const harness = firestoreHarness();
+    const expiresAt = new Date("2026-08-26T03:10:00.000Z");
+    harness.snapshots.set("guestOrderLookupAttempts/fingerprint", {
+      exists: true,
+      data: () => ({ failureCount: 4, expiresAt: { toDate: () => expiresAt } }),
+    });
+    const repository = createFirestoreGuestOrderRepository({
+      getFirestore: () => harness.firestore as never,
+      loadProduct: vi.fn(),
+    });
+
+    await expect(repository.setAttempt("fingerprint", NOW)).resolves.toEqual({
+      failureCount: 5,
+      expiresAt,
+    });
+
+    expect(harness.runTransaction).toHaveBeenCalledOnce();
+    expect(harness.transactionSet).toHaveBeenCalledWith(
+      expect.objectContaining({ path: "guestOrderLookupAttempts/fingerprint" }),
+      { failureCount: 5, expiresAt },
+    );
+  });
+
+  it("starts a new ten-minute window after an attempt expires", async () => {
+    const harness = firestoreHarness();
+    harness.snapshots.set("guestOrderLookupAttempts/fingerprint", {
+      exists: true,
+      data: () => ({
+        failureCount: 5,
+        expiresAt: { toDate: () => new Date("2026-08-26T02:59:59.999Z") },
+      }),
+    });
+    const repository = createFirestoreGuestOrderRepository({
+      getFirestore: () => harness.firestore as never,
+      loadProduct: vi.fn(),
+    });
+
+    await expect(repository.setAttempt("fingerprint", NOW)).resolves.toEqual({
+      failureCount: 1,
+      expiresAt: new Date("2026-08-26T03:10:00.000Z"),
+    });
+  });
+
+  it("deletes the fingerprint document after a successful lookup", async () => {
+    const harness = firestoreHarness();
+    const repository = createFirestoreGuestOrderRepository({
+      getFirestore: () => harness.firestore as never,
+      loadProduct: vi.fn(),
+    });
+
+    await repository.deleteAttempt("fingerprint");
+
+    expect(harness.references.get("guestOrderLookupAttempts/fingerprint")?.delete)
+      .toHaveBeenCalledOnce();
+  });
+});
