@@ -212,6 +212,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /guestOrders/{orderNumber} {
+      allow read, write: if false;
+    }
+
+    match /guestOrderLookupAttempts/{fingerprint} {
+      allow read, write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

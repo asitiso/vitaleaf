@@ -3,9 +3,18 @@ import { getFirestore } from "firebase-admin/firestore";
 
 const SERVER_APP_NAME = "vitaleaf-server";
 
+export class FirebaseAdminConfigurationError extends Error {
+  constructor(name?: string) {
+    super(name
+      ? `${name} is required for Firebase Admin.`
+      : "Firebase Admin configuration is required.");
+    this.name = "FirebaseAdminConfigurationError";
+  }
+}
+
 const required = (name: string): string => {
   const value = process.env[name]?.trim();
-  if (!value) throw new Error(`${name} is required for Firebase Admin.`);
+  if (!value) throw new FirebaseAdminConfigurationError(name);
   return value;
 };
 

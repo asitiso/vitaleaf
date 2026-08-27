@@ -435,6 +435,29 @@ describe("admins", () => {
 });
 
 describe("orders and default deny", () => {
+  it.each(["guestOrders", "guestOrderLookupAttempts"])(
+    "denies unauthenticated, member, and browser-admin %s get/list/create/update/delete",
+    async (collectionName) => {
+      await seed({
+        "admins/admin-1": { role: "admin" },
+        [`${collectionName}/existing`]: { privateValue: "secret" },
+      });
+      const clients = [
+        ["unauthenticated", testEnvironment.unauthenticatedContext().firestore()],
+        ["member", testEnvironment.authenticatedContext("member-1").firestore()],
+        ["browser-admin", testEnvironment.authenticatedContext("admin-1").firestore()],
+      ] as const;
+
+      for (const [label, database] of clients) {
+        await assertFails(getDoc(doc(database, collectionName, "existing")));
+        await assertFails(getDocs(collection(database, collectionName)));
+        await assertFails(setDoc(doc(database, collectionName, `created-${label}`), { privateValue: "new" }));
+        await assertFails(updateDoc(doc(database, collectionName, "existing"), { privateValue: "changed" }));
+        await assertFails(deleteDoc(doc(database, collectionName, "existing")));
+      }
+    },
+  );
+
   it("denies every order read and write, including admin attempts", async () => {
     await seed({ "admins/admin-1": { role: "admin" }, "orders/order-1": { total: 10_000 } });
     const publicDatabase = testEnvironment.unauthenticatedContext().firestore();
