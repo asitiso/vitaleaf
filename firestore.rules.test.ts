@@ -24,6 +24,8 @@ import {
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 const PROJECT_ID = "demo-vitaleaf-rules-test";
+const emulatorConfigured = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
+const describeRules = emulatorConfigured ? describe : describe.skip;
 
 let testEnvironment: RulesTestEnvironment;
 
@@ -101,6 +103,7 @@ const seed = async (documents: Record<string, Record<string, unknown>>) => {
 };
 
 beforeAll(async () => {
+  if (!emulatorConfigured) return;
   testEnvironment = await initializeTestEnvironment({
     projectId: PROJECT_ID,
     firestore: {
@@ -117,7 +120,7 @@ afterAll(async () => {
   await testEnvironment?.cleanup();
 });
 
-describe("products", () => {
+describeRules("products", () => {
   it("allows unauthenticated document and collection reads", async () => {
     await seed({ "products/p1": product });
     const database = testEnvironment.unauthenticatedContext().firestore();
@@ -243,7 +246,7 @@ describe("products", () => {
   });
 });
 
-describe("product drafts", () => {
+describeRules("product drafts", () => {
   it("denies signed-out and role-mismatched draft reads and writes", async () => {
     await seed({
       "admins/editor-1": { role: "editor" },
@@ -353,7 +356,7 @@ describe("product drafts", () => {
   });
 });
 
-describe("reviews", () => {
+describeRules("reviews", () => {
   it("allows direct reads only when the stored review is approved", async () => {
     await seed({
       "admins/admin-1": { role: "admin" },
@@ -404,7 +407,7 @@ describe("reviews", () => {
   });
 });
 
-describe("admins", () => {
+describeRules("admins", () => {
   it("allows an authenticated user to read only their own admin path", async () => {
     await seed({
       "admins/admin-1": { role: "admin" },
@@ -434,7 +437,7 @@ describe("admins", () => {
   });
 });
 
-describe("orders and default deny", () => {
+describeRules("orders and default deny", () => {
   it.each(["guestOrders", "guestOrderLookupAttempts"])(
     "denies unauthenticated, member, and browser-admin %s get/list/create/update/delete",
     async (collectionName) => {
@@ -484,7 +487,7 @@ describe("orders and default deny", () => {
   });
 });
 
-describe("member profiles and orders", () => {
+describeRules("member profiles and orders", () => {
   it("denies signed-out profile and member-order access", async () => {
     const publicDatabase = testEnvironment.unauthenticatedContext().firestore();
 

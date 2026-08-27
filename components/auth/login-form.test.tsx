@@ -29,16 +29,16 @@ beforeEach(() => {
   signInMock.mockReset().mockResolvedValue({ uid: "member-1" });
 });
 
-it("returns to a safe requested page after login", async () => {
+it("returns a signed-out My Page visitor to My Page after authentication", async () => {
   const user = userEvent.setup();
-  render(<LoginForm next="/checkout" />);
+  render(<LoginForm next="/mypage" />);
 
   await user.type(screen.getByLabelText("이메일"), "member@example.com");
   await user.type(screen.getByLabelText("비밀번호"), "abc12345");
   await user.click(screen.getByRole("button", { name: "로그인" }));
 
   expect(signInMock).toHaveBeenCalledWith("member@example.com", "abc12345");
-  expect(pushMock).toHaveBeenCalledWith("/checkout");
+  expect(pushMock).toHaveBeenCalledWith("/mypage");
 });
 
 it("sends a reset message only after a valid email is provided", async () => {

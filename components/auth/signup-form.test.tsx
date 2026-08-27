@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 
@@ -12,7 +12,13 @@ const { createMock, createUserProfileMock, pushMock, removeCurrentMock, sendVeri
 }));
 
 vi.mock("../../lib/firebase/member-auth", () => ({
-  getMemberAuthErrorMessage: () => "인증 오류",
+  getMemberAuthErrorMessage: (reason: unknown) =>
+    typeof reason === "object"
+    && reason !== null
+    && "code" in reason
+    && reason.code === "auth/email-already-in-use"
+      ? "이미 가입된 이메일입니다. 로그인하거나 다른 이메일을 사용해 주세요."
+      : "인증 오류",
   memberAuth: {
     signUp: createMock,
     removeCurrent: removeCurrentMock,
@@ -64,6 +70,61 @@ it("creates the profile before reporting signup success", async () => {
   expect(sendVerificationMock).toHaveBeenCalledOnce();
   expect(screen.queryByRole("status")).not.toBeInTheDocument();
   expect(pushMock).toHaveBeenCalledWith("/mypage");
+});
+
+it("requires agreement to the terms before creating an account", async () => {
+  const user = userEvent.setup();
+  render(<SignupForm />);
+  await fillSignupForm(user);
+  await user.click(screen.getByRole("button", { name: "회원가입" }));
+
+  expect(screen.getByRole("alert")).toHaveTextContent("이용약관에 동의해 주세요.");
+  expect(createMock).not.toHaveBeenCalled();
+});
+
+it("rejects a password confirmation mismatch before creating an account", async () => {
+  const user = userEvent.setup();
+  render(<SignupForm />);
+  await fillSignupForm(user);
+  await user.clear(screen.getByLabelText("비밀번호 확인"));
+  await user.type(screen.getByLabelText("비밀번호 확인"), "different123");
+  await user.click(screen.getByRole("checkbox", { name: /이용약관/ }));
+  await user.click(screen.getByRole("button", { name: "회원가입" }));
+
+  expect(screen.getByRole("alert")).toHaveTextContent("비밀번호 확인이 일치하지 않습니다.");
+  expect(createMock).not.toHaveBeenCalled();
+});
+
+it("shows duplicate-email guidance without creating a profile", async () => {
+  createMock.mockRejectedValueOnce({ code: "auth/email-already-in-use" });
+  const user = userEvent.setup();
+  render(<SignupForm />);
+  await fillSignupForm(user);
+  await user.click(screen.getByRole("checkbox", { name: /이용약관/ }));
+  await user.click(screen.getByRole("button", { name: "회원가입" }));
+
+  expect(screen.getByRole("alert")).toHaveTextContent("이미 가입된 이메일입니다.");
+  expect(createUserProfileMock).not.toHaveBeenCalled();
+  expect(pushMock).not.toHaveBeenCalled();
+});
+
+it("blocks a second signup submission while account creation is pending", async () => {
+  let resolveSignup!: (identity: { uid: string; email: string; emailVerified: boolean }) => void;
+  createMock.mockReturnValueOnce(new Promise((resolve) => {
+    resolveSignup = resolve;
+  }));
+  const user = userEvent.setup();
+  render(<SignupForm />);
+  await fillSignupForm(user);
+  await user.click(screen.getByRole("checkbox", { name: /이용약관/ }));
+
+  const form = screen.getByRole("form", { name: "회원가입" });
+  fireEvent.submit(form);
+  fireEvent.submit(form);
+
+  await waitFor(() => expect(createMock).toHaveBeenCalledOnce());
+  resolveSignup({ uid: "member-1", email: "member@example.com", emailVerified: false });
+  await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/mypage"));
 });
 
 it("removes the new account when profile creation fails", async () => {

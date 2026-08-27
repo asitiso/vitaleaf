@@ -14,6 +14,10 @@ import { afterAll, afterEach, beforeAll, describe, it } from "vitest";
 
 const PROJECT_ID = "demo-vitaleaf-rules-test";
 const MIB = 1024 * 1024;
+const emulatorConfigured = Boolean(
+  process.env.FIRESTORE_EMULATOR_HOST && process.env.FIREBASE_STORAGE_EMULATOR_HOST,
+);
+const describeRules = emulatorConfigured ? describe : describe.skip;
 
 let testEnvironment: RulesTestEnvironment;
 
@@ -37,6 +41,7 @@ const seedImage = async (path: string) => {
 };
 
 beforeAll(async () => {
+  if (!emulatorConfigured) return;
   testEnvironment = await initializeTestEnvironment({
     projectId: PROJECT_ID,
     firestore: { rules: await readFile(resolve(process.cwd(), "firestore.rules"), "utf8") },
@@ -53,7 +58,7 @@ afterAll(async () => {
   await testEnvironment?.cleanup();
 });
 
-describe("product image storage rules", () => {
+describeRules("product image storage rules", () => {
   it("allows public reads of product images", async () => {
     await seedImage("products/draft-1/front.png");
 

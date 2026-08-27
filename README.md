@@ -12,7 +12,7 @@
 4. **초안 → 미리보기 → 공개 → 판매중지:** 새 상품과 수정 상품은 `productDrafts`에 자동 저장하고 관리자 미리보기로 확인합니다. 공개하면 `products`에 반영되고 초안은 정리됩니다. 판매중지는 공개본을 다시 초안으로 보존한 뒤 고객 목록에서 제거합니다.
 5. **업로드 제한과 고아 이미지 정리:** JPEG, PNG, WebP만 파일당 10 MiB 이하로 업로드합니다. 업로드 직후 URL 확인이 실패하거나 그 단계에서 취소되면 앱이 방금 올린 파일 삭제를 최선 노력으로 시도합니다. 마법사에서 이미지를 빼거나 초안·상품을 삭제할 때는 공유 중인 공개 이미지를 보호하기 위해 브라우저가 Storage 파일을 삭제하지 않습니다. 미참조 파일 정리는 아래의 보수적인 운영 절차를 따릅니다.
 6. **CSV는 초안으로 가져오기:** CSV 검증을 통과한 행도 즉시 판매 공개되지 않고 각각 `productDrafts`에 임시 저장됩니다. **임시 저장** 탭에서 검토·보완한 뒤 개별 공개합니다.
-7. **회원 주문과 비회원 주문 구분:** `processPayment(orderDraft)`는 모의 주문번호만 반환합니다. 로그인 회원의 주문은 `users/{uid}/orders`에 읽기 전용 스냅샷으로 저장되고, 비회원 주문은 의도적으로 Firestore에 저장하지 않습니다. 실제 판매 전에는 서버 기반 PG 승인과 주문·재고 저장을 별도로 구현해야 합니다.
+7. **회원 주문과 비회원 주문 구분:** `processPayment(orderDraft)`는 모의 주문번호만 반환합니다. 로그인 회원의 주문은 `users/{uid}/orders`에 저장되고, 비회원 주문은 서버 API만 접근하는 `guestOrders`에 저장되어 주문번호와 일치하는 휴대전화 번호로 조회합니다. 실제 판매 전에는 PG 승인·재고 차감·개인정보 보존/삭제 정책을 별도로 구현해야 합니다.
 8. **에뮬레이터 버전 고정:** 규칙 포함 전체 테스트는 Firebase CLI `15.26.0`과 JDK 21 이상으로 Firestore·Storage Emulator를 함께 실행합니다.
 
 ## 1. 환경 변수와 로컬 실행
@@ -30,7 +30,11 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=YOUR_MEASUREMENT_ID
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
 ```
 
-`NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID`는 Analytics를 쓰지 않으면 비워 둘 수 있습니다. 운영 배포에서는 `NEXT_PUBLIC_SITE_URL`을 실제 HTTPS 주소로 바꿉니다. `NEXT_PUBLIC_*`는 브라우저에 공개되는 웹 앱 설정이므로 서비스 계정 JSON, Admin SDK 비공개 키, PG 비밀 키, 사용자 비밀번호를 넣지 마세요.
+`NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID`는 Analytics를 쓰지 않으면 비워 둘 수 있습니다. 운영 배포에서는 `NEXT_PUBLIC_SITE_URL`을 실제 HTTPS 주소로 바꿉니다.
+
+Vercel 프로젝트의 **Settings → Environment Variables**에 `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL`, `FIREBASE_ADMIN_PRIVATE_KEY`, `GUEST_ORDER_LOOKUP_SECRET` 네 값을 서버 전용 변수로 등록합니다. Admin 비공개 키는 서비스 계정 JSON의 `private_key` 값에 있는 줄바꿈을 `\n`으로 유지하고, `GUEST_ORDER_LOOKUP_SECRET`은 암호학적으로 안전한 무작위 바이트를 32바이트 이상 생성해 사용합니다. 이 네 이름에 `NEXT_PUBLIC_` 접두사를 붙이면 브라우저 번들에 노출될 수 있으므로 절대 붙이지 않습니다.
+
+`NEXT_PUBLIC_*`는 브라우저에 공개되는 웹 앱 설정입니다. 서비스 계정 JSON 전체나 Admin SDK 비공개 키를 공개 변수, 소스 코드, 커밋, 이슈, 로그에 붙여 넣지 마세요. `.env.example`에는 예시값만 두고 실제 값은 로컬 `.env.local`과 Vercel의 암호화된 환경 변수에만 보관합니다.
 
 ```bash
 pnpm install
@@ -56,7 +60,7 @@ pnpm build
 
 - 로그인 회원은 이름·연락처·기본 배송지와 주문 스냅샷을 자기 UID 아래에서만 읽고 쓸 수 있습니다. 주문 문서는 생성 뒤 수정·삭제할 수 없습니다.
 - 회원가입 뒤 이메일 인증 메일을 보낼 수 있지만, 현재 목업 구매를 막지는 않습니다.
-- 비회원 구매는 장바구니와 완료 화면만 제공하며 주문·배송 개인정보를 Firestore에 저장하지 않습니다. 따라서 비회원 주문 조회는 제공하지 않습니다.
+- 비회원 주문은 브라우저가 Firestore에 직접 쓰지 않고 서버 API가 `guestOrders`에 저장합니다. 조회 API는 주문번호와 휴대전화 번호가 모두 일치할 때만 마스킹된 개인정보를 반환하며, 실패 응답은 존재 여부를 구분하지 않습니다.
 - 실제 결제 기능을 붙일 때는 이 정책을 그대로 확장하지 말고, 서버에서 PG 웹훅·결제금액·재고를 검증하는 주문 설계를 먼저 추가해야 합니다.
 
 ### Storage 사용 설정
