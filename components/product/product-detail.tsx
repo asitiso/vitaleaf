@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { useCart } from "../../features/cart/cart-context";
@@ -20,6 +21,11 @@ type ProductDetailProps = {
 type GalleryItem = {
   url: string;
   alt: string;
+};
+
+type CartToastState = {
+  productName: string;
+  quantity: number;
 };
 
 function fallbackGalleryAlt(productName: string, index: number): string {
@@ -69,6 +75,7 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
   const { add, prepareBuyNow } = useCart();
   const router = useRouter();
   const [quantity, setQuantity] = useState(1);
+  const [cartToast, setCartToast] = useState<CartToastState | null>(null);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [failedImages, setFailedImages] = useState<Set<string>>(() => new Set());
   const soldOut = product.stock < 1;
@@ -88,6 +95,23 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
     prepareBuyNow(product, quantity);
     router.push("/checkout?mode=buy-now");
   };
+  const addToCart = () => {
+    if (soldOut) {
+      return;
+    }
+
+    add(product, quantity);
+    setCartToast({ productName: product.name, quantity });
+  };
+
+  useEffect(() => {
+    if (cartToast === null) {
+      return;
+    }
+
+    const dismissalTimer = window.setTimeout(() => setCartToast(null), 3_000);
+    return () => window.clearTimeout(dismissalTimer);
+  }, [cartToast]);
 
   return (
     <main className="product-detail">
@@ -183,11 +207,18 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
           <span>수량 {quantity}개</span>
           <strong>{formatWon(product.price * quantity)}</strong>
         </div>
-        <button type="button" disabled={soldOut} onClick={() => add(product, quantity)}>
+        <button type="button" disabled={soldOut} onClick={addToCart}>
           장바구니 담기
         </button>
         <button type="submit" disabled={soldOut}>바로 구매</button>
       </form>
+      {cartToast ? (
+        <aside className="product-detail__cart-toast" role="status" aria-live="polite">
+          <p><strong>{cartToast.productName}</strong> {cartToast.quantity}개를 장바구니에 담았습니다.</p>
+          <Link href="/cart">장바구니 보기</Link>
+          <button type="button" aria-label="장바구니 알림 닫기" onClick={() => setCartToast(null)}>×</button>
+        </aside>
+      ) : null}
       <ProductInfo product={product} />
       <ReviewSection productId={product.id} initialReviews={reviews} initialLoadError={reviewLoadError} />
     </main>

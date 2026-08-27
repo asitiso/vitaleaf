@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
@@ -118,6 +118,56 @@ it("prepares only the current product before routing to buy-now checkout", async
   expect(add).not.toHaveBeenCalled();
   expect(push).toHaveBeenCalledWith("/checkout?mode=buy-now");
   expect(prepareBuyNow.mock.invocationCallOrder[0]).toBeLessThan(push.mock.invocationCallOrder[0]);
+});
+
+it("shows a desktop cart confirmation with a cart action", async () => {
+  const user = userEvent.setup();
+  render(<ProductDetail product={product} reviews={[]} />);
+
+  await user.click(screen.getByRole("button", { name: "장바구니 담기" }));
+
+  const status = screen.getByRole("status");
+  expect(status).toHaveTextContent(`${product.name} 1개`);
+  expect(status).toHaveAttribute("aria-live", "polite");
+  expect(screen.getByRole("link", { name: "장바구니 보기" })).toHaveAttribute("href", "/cart");
+  expect(add).toHaveBeenCalledWith(product, 1);
+});
+
+it("resets the three-second dismissal when a product is added again", async () => {
+  vi.useFakeTimers();
+
+  try {
+    render(<ProductDetail product={product} reviews={[]} />);
+    const addButton = screen.getByRole("button", { name: "장바구니 담기" });
+    fireEvent.click(addButton);
+    act(() => vi.advanceTimersByTime(2_000));
+    fireEvent.click(addButton);
+    act(() => vi.advanceTimersByTime(2_999));
+
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("allows the cart confirmation to be dismissed manually", async () => {
+  render(<ProductDetail product={product} reviews={[]} />);
+
+  await userEvent.click(screen.getByRole("button", { name: "장바구니 담기" }));
+  await userEvent.click(screen.getByRole("button", { name: "장바구니 알림 닫기" }));
+
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+});
+
+it("does not show a cart confirmation for sold-out products", async () => {
+  render(<ProductDetail product={{ ...product, stock: 0 }} reviews={[]} />);
+
+  await userEvent.click(screen.getByRole("button", { name: "장바구니 담기" }));
+
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  expect(add).not.toHaveBeenCalled();
 });
 
 it("keeps the selected quantity and total visible in the mobile purchase bar", async () => {

@@ -795,6 +795,12 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
 .product-detail__actions button { min-height: 52px; border: 1px solid var(--color-sage); border-radius: 4px; padding: 12px; color: var(--color-sage); background: #fff; font-size: 15px; font-weight: 800; cursor: pointer; }
 .product-detail__actions button[type="submit"] { color: #fff; background: var(--color-sage); }
 .product-detail__actions button:disabled { border-color: #cbd3ce; color: #8e9a93; background: #e8ece9; cursor: not-allowed; }
+.product-detail__cart-toast { position: fixed; z-index: 40; right: 24px; bottom: 24px; display: grid; width: min(360px, calc(100vw - 48px)); grid-template-columns: minmax(0, 1fr) auto; gap: 10px 16px; padding: 18px 20px; border: 1px solid #b9cdbd; border-radius: 8px; color: #294438; background: #fffefb; box-shadow: 0 16px 35px rgb(24 50 41 / 16%); }
+.product-detail__cart-toast p { grid-column: 1 / -1; margin: 0; line-height: 1.5; }
+.product-detail__cart-toast p strong { color: var(--color-forest); }
+.product-detail__cart-toast a { align-self: center; color: var(--color-sage); font-size: 13px; font-weight: 800; }
+.product-detail__cart-toast button { width: 28px; height: 28px; border: 0; border-radius: 4px; color: #51675a; background: transparent; font-size: 22px; line-height: 1; cursor: pointer; }
+.product-detail__cart-toast button:hover { background: #edf3ed; }
 .product-info, .review-section { grid-area: info; margin-top: 76px; padding-top: 48px; border-top: 2px solid var(--color-forest); }
 .review-section { grid-area: reviews; }
 .product-info__heading p, .review-section__heading p { margin: 0 0 5px; color: var(--color-sage); font-size: 11px; font-weight: 800; letter-spacing: .14em; }
@@ -870,6 +876,10 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
   .review-section__list header { align-items: flex-start; flex-wrap: wrap; }
   .review-section__list time { width: 100%; margin-left: 0; }
   .product-detail-loading { width: min(100% - 32px, var(--content-width)); padding-top: 30px; }
+}
+
+@media (max-width: 767px) {
+  .product-detail__cart-toast { display: none; }
 }
 
 /* Admin */

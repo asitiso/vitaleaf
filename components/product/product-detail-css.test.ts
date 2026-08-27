@@ -36,6 +36,22 @@ it("keeps the mobile purchase actions fixed above the safe area", () => {
   expect(actionRule).toMatch(/env\(safe-area-inset-bottom\)/);
 });
 
+it("hides the desktop cart confirmation below 768px", () => {
+  const mobileStart = css.lastIndexOf("@media (max-width: 767px) {");
+  const mobileBlock = mobileStart === -1 ? "" : css.slice(mobileStart);
+  const toastRule = mobileBlock.match(/\.product-detail__cart-toast\s*\{([^}]*)\}/)?.[1] ?? "";
+
+  expect(toastRule).toMatch(/display:\s*none/);
+});
+
+it("positions the desktop cart confirmation above the page edge", () => {
+  const toastRule = css.match(/\.product-detail__cart-toast\s*\{([^}]*)\}/)?.[1] ?? "";
+
+  expect(toastRule).toMatch(/position:\s*fixed/);
+  expect(toastRule).toMatch(/bottom:\s*24px/);
+  expect(toastRule).toMatch(/right:\s*24px/);
+});
+
 it.each([
   [".product-card__original-price", "#fffefb"],
   [".product-detail__price-row del", "#fffefb"],
