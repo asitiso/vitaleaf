@@ -163,12 +163,8 @@ export const createGuestOrderService = ({
       const input = parseGuestOrderLookupInput(value);
       const fingerprint = fingerprintFor(clientKey);
       const lookupTime = now();
-      const attempt = await repository.getAttempt(fingerprint);
-      if (
-        attempt
-        && attempt.expiresAt.getTime() > lookupTime.getTime()
-        && attempt.failureCount >= MAX_FAILED_LOOKUPS
-      ) {
+      const reservation = await repository.setAttempt(fingerprint, lookupTime);
+      if (reservation.failureCount > MAX_FAILED_LOOKUPS) {
         throw new GuestOrderRateLimitError();
       }
 
@@ -178,7 +174,6 @@ export const createGuestOrderService = ({
         order?.phoneNormalized ?? "00000000000",
       );
       if (!order || !phoneMatches) {
-        await repository.setAttempt(fingerprint, lookupTime);
         throw new GuestOrderNotFoundError();
       }
 

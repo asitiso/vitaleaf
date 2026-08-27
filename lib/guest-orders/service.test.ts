@@ -312,6 +312,38 @@ describe("guest order lookup", () => {
     await expect(service.lookup(correctLookup, "client-a")).rejects.toThrow(GuestOrderRateLimitError);
   });
 
+  it("atomically reserves concurrent attempts so the sixth never reads the order", async () => {
+    const dependencies = inMemoryDependencies({ storedOrder });
+    const originalGetOrder = dependencies.repository.getOrder.bind(dependencies.repository);
+    let getOrderCount = 0;
+    let releaseBarrier!: () => void;
+    const barrier = new Promise<void>((resolve) => {
+      releaseBarrier = resolve;
+    });
+    dependencies.repository.getOrder = async (orderNumber) => {
+      getOrderCount += 1;
+      if (getOrderCount === 5) releaseBarrier();
+      await barrier;
+      return originalGetOrder(orderNumber);
+    };
+    const service = createGuestOrderService(dependencies);
+
+    const results = await Promise.allSettled([
+      ...Array.from({ length: 5 }, () => service.lookup(wrongLookup, "client-a")),
+      service.lookup(correctLookup, "client-a"),
+    ]);
+
+    expect(getOrderCount).toBe(5);
+    expect(results.slice(0, 5)).toEqual(Array.from({ length: 5 }, () => expect.objectContaining({
+      status: "rejected",
+      reason: expect.any(GuestOrderNotFoundError),
+    })));
+    expect(results[5]).toEqual(expect.objectContaining({
+      status: "rejected",
+      reason: expect.any(GuestOrderRateLimitError),
+    }));
+  });
+
   it("clears prior failures after a successful lookup", async () => {
     const dependencies = inMemoryDependencies({ storedOrder });
     const service = createGuestOrderService(dependencies);

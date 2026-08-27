@@ -225,7 +225,7 @@ describe("Firestore guest-order repository", () => {
     });
   });
 
-  it("increments an active lookup window in a transaction", async () => {
+  it("atomically reserves an active lookup slot in a transaction", async () => {
     const harness = firestoreHarness();
     const expiresAt = new Date("2026-08-26T03:10:00.000Z");
     harness.snapshots.set("guestOrderLookupAttempts/fingerprint", {
@@ -246,6 +246,30 @@ describe("Firestore guest-order repository", () => {
     expect(harness.transactionSet).toHaveBeenCalledWith(
       expect.objectContaining({ path: "guestOrderLookupAttempts/fingerprint" }),
       { failureCount: 5, expiresAt },
+    );
+  });
+
+  it("returns an over-limit sixth reservation from the transaction", async () => {
+    const harness = firestoreHarness();
+    const expiresAt = new Date("2026-08-26T03:10:00.000Z");
+    harness.snapshots.set("guestOrderLookupAttempts/fingerprint", {
+      exists: true,
+      data: () => ({ failureCount: 5, expiresAt: { toDate: () => expiresAt } }),
+    });
+    const repository = createFirestoreGuestOrderRepository({
+      getFirestore: () => harness.firestore as never,
+      loadProduct: vi.fn(),
+    });
+
+    await expect(repository.setAttempt("fingerprint", NOW)).resolves.toEqual({
+      failureCount: 6,
+      expiresAt,
+    });
+
+    expect(harness.runTransaction).toHaveBeenCalledOnce();
+    expect(harness.transactionSet).toHaveBeenCalledWith(
+      expect.objectContaining({ path: "guestOrderLookupAttempts/fingerprint" }),
+      { failureCount: 6, expiresAt },
     );
   });
 
