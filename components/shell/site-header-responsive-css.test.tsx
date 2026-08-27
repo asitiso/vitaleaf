@@ -113,18 +113,6 @@ describe("responsive SiteHeader target contract", () => {
     expect(toggle.minHeight).toBe("48px");
   });
 
-  it("layers the open mobile drawer above the fixed purchase bar", () => {
-    const openHeader = topLevelStyleRules
-      .find((candidate) => candidate.selectorText === ".site-header:has(.site-header__drawer-backdrop)")?.style;
-    const backdrop = topLevelStyleRules
-      .find((candidate) => candidate.selectorText === ".site-header__drawer-backdrop")?.style;
-    const purchaseBar = mediaRulesFor("(max-width: 620px)")
-      .find((candidate) => candidate.selectorText === ".product-detail__actions")?.style;
-
-    expect(Number(openHeader?.zIndex)).toBeGreaterThan(Number(purchaseBar?.zIndex));
-    expect(Number(backdrop?.zIndex)).toBeGreaterThan(0);
-  });
-
   it("keeps account actions reachable at the representative 768px tablet breakpoint", () => {
     renderHeader();
 

@@ -989,8 +989,13 @@ it("guards actual product links only while the active editor has unsaved work", 
   await user.click(screen.getByRole("button", { name: "편집 닫기" }));
   confirm.mockClear();
   const afterClose = new MouseEvent("click", { bubbles: true, cancelable: true });
+  let guardPreventedNavigation = true;
+  storeLink.addEventListener("click", (event) => {
+    guardPreventedNavigation = event.defaultPrevented;
+    event.preventDefault();
+  }, { once: true });
   storeLink.dispatchEvent(afterClose);
-  expect(afterClose.defaultPrevented).toBe(false);
+  expect(guardPreventedNavigation).toBe(false);
   expect(confirm).not.toHaveBeenCalled();
 });
 
