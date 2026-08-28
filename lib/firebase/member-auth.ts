@@ -9,7 +9,7 @@ import {
   type User,
 } from "firebase/auth";
 
-import { auth } from "./client";
+import { assertFirebaseClientConfigured, auth } from "./client";
 
 export type MemberIdentity = {
   uid: string;
@@ -53,6 +53,15 @@ export const getMemberAuthErrorMessage = (error: unknown): string => {
     : "";
 
   switch (code) {
+    case "firebase/client-config-missing":
+    case "auth/invalid-api-key":
+      return "사이트 인증 설정이 필요합니다. 관리자에게 알려 주세요.";
+    case "auth/configuration-not-found":
+      return "로그인 방식 설정이 필요합니다. 관리자에게 알려 주세요.";
+    case "auth/operation-not-allowed":
+      return "이메일 로그인 설정이 필요합니다. 관리자에게 알려 주세요.";
+    case "auth/unauthorized-domain":
+      return "현재 접속 주소의 로그인 승인이 필요합니다. 관리자에게 알려 주세요.";
     case "auth/invalid-credential":
     case "auth/invalid-email":
     case "auth/wrong-password":
@@ -128,16 +137,24 @@ const toMemberIdentity = (user: User): MemberIdentity => ({
 
 const firebaseMemberAuth = createMemberAuth({
   async create(email, password) {
+    assertFirebaseClientConfigured();
     const credential = await createUserWithEmailAndPassword(auth, email, password);
     return toMemberIdentity(credential.user);
   },
   async signIn(email, password) {
+    assertFirebaseClientConfigured();
     const credential = await signInWithEmailAndPassword(auth, email, password);
     return toMemberIdentity(credential.user);
   },
   signOut: () => signOut(auth),
-  reset: (email) => sendPasswordResetEmail(auth, email),
-  verify: () => sendEmailVerification(auth.currentUser!),
+  reset: (email) => {
+    assertFirebaseClientConfigured();
+    return sendPasswordResetEmail(auth, email);
+  },
+  verify: () => {
+    assertFirebaseClientConfigured();
+    return sendEmailVerification(auth.currentUser!);
+  },
   removeCurrent: () => deleteUser(auth.currentUser!),
   observe(next, fail) {
     return onAuthStateChanged(auth, (user) => next(user ? toMemberIdentity(user) : null), fail);

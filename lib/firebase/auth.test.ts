@@ -1,8 +1,35 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("./client", () => ({ auth: {}, db: {} }));
+const {
+  assertFirebaseClientConfiguredMock,
+  getDocMock,
+  signInWithEmailAndPasswordMock,
+  signOutMock,
+} = vi.hoisted(() => ({
+  assertFirebaseClientConfiguredMock: vi.fn(),
+  getDocMock: vi.fn(),
+  signInWithEmailAndPasswordMock: vi.fn(),
+  signOutMock: vi.fn(),
+}));
 
-import { createAdminAuth, getAdminAuthErrorMessage, memberAuth } from "./auth";
+vi.mock("firebase/auth", () => ({
+  onAuthStateChanged: vi.fn(),
+  signInWithEmailAndPassword: signInWithEmailAndPasswordMock,
+  signOut: signOutMock,
+}));
+
+vi.mock("firebase/firestore", () => ({
+  doc: vi.fn(),
+  getDoc: getDocMock,
+}));
+
+vi.mock("./client", () => ({
+  assertFirebaseClientConfigured: assertFirebaseClientConfiguredMock,
+  auth: { currentUser: { uid: "admin-1" } },
+  db: {},
+}));
+
+import { createAdminAuth, getAdminAuthErrorMessage, memberAuth, signInAdmin } from "./auth";
 
 const stableSession = (uid: string | null) => () => ({ uid, generation: 1 });
 
@@ -226,6 +253,31 @@ describe("getAdminAuthErrorMessage", () => {
     ["auth/user-disabled", "사용이 중지된 계정입니다. 관리자에게 문의해 주세요."],
   ])("maps %s to a useful Korean message", (code, expected) => {
     expect(getAdminAuthErrorMessage({ code })).toBe(expected);
+  });
+
+  it.each([
+    ["firebase/client-config-missing", "사이트 인증 설정이 필요합니다"],
+    ["auth/invalid-api-key", "사이트 인증 설정이 필요합니다"],
+    ["auth/configuration-not-found", "로그인 방식 설정이 필요합니다"],
+    ["auth/operation-not-allowed", "이메일 로그인 설정이 필요합니다"],
+    ["auth/unauthorized-domain", "현재 접속 주소의 로그인 승인이 필요합니다"],
+  ])("maps %s without exposing credentials", (code, copy) => {
+    const message = getAdminAuthErrorMessage({ code });
+    expect(message).toContain(copy);
+    expect(message).not.toContain("AIza");
+  });
+});
+
+describe("Firebase admin authentication adapter", () => {
+  it("checks Firebase client configuration before signing in", async () => {
+    signInWithEmailAndPasswordMock.mockResolvedValue({ user: { uid: "admin-1" } });
+    getDocMock.mockResolvedValue({ exists: () => true, data: () => ({ role: "admin" }) });
+    assertFirebaseClientConfiguredMock.mockImplementationOnce(() => {
+      expect(signInWithEmailAndPasswordMock).not.toHaveBeenCalled();
+    });
+
+    await expect(signInAdmin("admin@example.com", "password")).resolves.toBe("admin");
+    expect(assertFirebaseClientConfiguredMock).toHaveBeenCalledOnce();
   });
 });
 

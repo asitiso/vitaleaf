@@ -1,10 +1,45 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("./client", () => ({ auth: {}, db: {} }));
+const {
+  assertFirebaseClientConfiguredMock,
+  createUserWithEmailAndPasswordMock,
+  deleteUserMock,
+  onAuthStateChangedMock,
+  sendEmailVerificationMock,
+  sendPasswordResetEmailMock,
+  signInWithEmailAndPasswordMock,
+  signOutMock,
+} = vi.hoisted(() => ({
+  assertFirebaseClientConfiguredMock: vi.fn(),
+  createUserWithEmailAndPasswordMock: vi.fn(),
+  deleteUserMock: vi.fn(),
+  onAuthStateChangedMock: vi.fn(),
+  sendEmailVerificationMock: vi.fn(),
+  sendPasswordResetEmailMock: vi.fn(),
+  signInWithEmailAndPasswordMock: vi.fn(),
+  signOutMock: vi.fn(),
+}));
+
+vi.mock("firebase/auth", () => ({
+  createUserWithEmailAndPassword: createUserWithEmailAndPasswordMock,
+  deleteUser: deleteUserMock,
+  onAuthStateChanged: onAuthStateChangedMock,
+  sendEmailVerification: sendEmailVerificationMock,
+  sendPasswordResetEmail: sendPasswordResetEmailMock,
+  signInWithEmailAndPassword: signInWithEmailAndPasswordMock,
+  signOut: signOutMock,
+}));
+
+vi.mock("./client", () => ({
+  assertFirebaseClientConfigured: assertFirebaseClientConfiguredMock,
+  auth: { currentUser: { uid: "member-1" } },
+  db: {},
+}));
 
 import {
   createMemberAuth,
   getMemberAuthErrorMessage,
+  memberAuth,
   safeReturnPath,
   validateMemberPassword,
 } from "./member-auth";
@@ -46,6 +81,18 @@ describe("member authentication helpers", () => {
     ["auth/too-many-requests", "잠시 후"],
   ])("maps %s to useful Korean member guidance", (code, expected) => {
     expect(getMemberAuthErrorMessage({ code })).toContain(expected);
+  });
+
+  it.each([
+    ["firebase/client-config-missing", "사이트 인증 설정이 필요합니다"],
+    ["auth/invalid-api-key", "사이트 인증 설정이 필요합니다"],
+    ["auth/configuration-not-found", "로그인 방식 설정이 필요합니다"],
+    ["auth/operation-not-allowed", "이메일 로그인 설정이 필요합니다"],
+    ["auth/unauthorized-domain", "현재 접속 주소의 로그인 승인이 필요합니다"],
+  ])("maps %s without exposing credentials", (code, copy) => {
+    const message = getMemberAuthErrorMessage({ code });
+    expect(message).toContain(copy);
+    expect(message).not.toContain("AIza");
   });
 
   it("emits checking before the first Firebase observation", () => {
@@ -125,5 +172,35 @@ describe("member authentication helpers", () => {
     expect(adapter.verify).toHaveBeenCalledOnce();
     expect(adapter.removeCurrent).toHaveBeenCalledOnce();
     expect(adapter.signOut).toHaveBeenCalledOnce();
+  });
+
+  it("checks Firebase client configuration before each member auth operation", async () => {
+    const identity = { uid: "member-1", email: "member@example.com", emailVerified: false };
+    createUserWithEmailAndPasswordMock.mockResolvedValue({ user: identity });
+    signInWithEmailAndPasswordMock.mockResolvedValue({ user: identity });
+    sendPasswordResetEmailMock.mockResolvedValue(undefined);
+    sendEmailVerificationMock.mockResolvedValue(undefined);
+
+    assertFirebaseClientConfiguredMock.mockImplementationOnce(() => {
+      expect(createUserWithEmailAndPasswordMock).not.toHaveBeenCalled();
+    });
+    await memberAuth.signUp("member@example.com", "abc12345");
+
+    assertFirebaseClientConfiguredMock.mockImplementationOnce(() => {
+      expect(signInWithEmailAndPasswordMock).not.toHaveBeenCalled();
+    });
+    await memberAuth.signIn("member@example.com", "abc12345");
+
+    assertFirebaseClientConfiguredMock.mockImplementationOnce(() => {
+      expect(sendPasswordResetEmailMock).not.toHaveBeenCalled();
+    });
+    await memberAuth.sendPasswordReset("member@example.com");
+
+    assertFirebaseClientConfiguredMock.mockImplementationOnce(() => {
+      expect(sendEmailVerificationMock).not.toHaveBeenCalled();
+    });
+    await memberAuth.sendVerification();
+
+    expect(assertFirebaseClientConfiguredMock).toHaveBeenCalledTimes(4);
   });
 });

@@ -1,7 +1,7 @@
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 
-import { auth, db } from "./client";
+import { assertFirebaseClientConfigured, auth, db } from "./client";
 
 export { memberAuth } from "./member-auth";
 
@@ -28,6 +28,15 @@ export const getAdminAuthErrorMessage = (error: unknown): string => {
     : "";
 
   switch (code) {
+    case "firebase/client-config-missing":
+    case "auth/invalid-api-key":
+      return "사이트 인증 설정이 필요합니다. 관리자에게 알려 주세요.";
+    case "auth/configuration-not-found":
+      return "로그인 방식 설정이 필요합니다. 관리자에게 알려 주세요.";
+    case "auth/operation-not-allowed":
+      return "이메일 로그인 설정이 필요합니다. 관리자에게 알려 주세요.";
+    case "auth/unauthorized-domain":
+      return "현재 접속 주소의 로그인 승인이 필요합니다. 관리자에게 알려 주세요.";
     case "auth/invalid-credential":
     case "auth/invalid-email":
     case "auth/wrong-password":
@@ -123,6 +132,7 @@ const getFirebaseSession = (): AuthSessionSnapshot => {
 
 const firebaseAdminAuth = createAdminAuth({
   async signIn(email, password) {
+    assertFirebaseClientConfigured();
     const credential = await signInWithEmailAndPassword(auth, email, password);
     return { uid: credential.user.uid };
   },
