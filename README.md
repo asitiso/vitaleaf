@@ -36,6 +36,41 @@ Vercel 프로젝트의 **Settings → Environment Variables**에 `FIREBASE_ADMIN
 
 `NEXT_PUBLIC_*`는 브라우저에 공개되는 웹 앱 설정입니다. 서비스 계정 JSON 전체나 Admin SDK 비공개 키를 공개 변수, 소스 코드, 커밋, 이슈, 로그에 붙여 넣지 마세요. `.env.example`에는 예시값만 두고 실제 값은 로컬 `.env.local`과 Vercel의 암호화된 환경 변수에만 보관합니다.
 
+#### Authentication deployment gate
+
+Preview와 Production에 다음 공개 Firebase 웹 앱 변수 이름을 등록합니다. 앞의 여섯 개는 필수이고 Measurement ID는 선택입니다.
+
+- `NEXT_PUBLIC_FIREBASE_API_KEY`
+- `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`
+- `NEXT_PUBLIC_FIREBASE_PROJECT_ID`
+- `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`
+- `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
+- `NEXT_PUBLIC_FIREBASE_APP_ID`
+- `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID` (optional)
+
+서버 전용 변수는 다음 네 이름으로 분리하며 `NEXT_PUBLIC_` 접두사를 붙이지 않습니다: `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL`, `FIREBASE_ADMIN_PRIVATE_KEY`, `GUEST_ORDER_LOOKUP_SECRET`. 환경변수 점검 시 값은 출력하거나 저장하지 않고, 변수 이름과 Preview/Production별 존재 여부만 확인합니다.
+
+1. Confirm the six required `NEXT_PUBLIC_FIREBASE_*` values in Preview and Production; Measurement ID is optional.
+2. Redeploy after any public-variable change.
+3. Enable Firebase Auth Email/Password.
+4. Authorize the stable Preview alias and Production domain.
+5. Create the Auth admin user and `admins/{uid}` with `role: admin`.
+
+Vercel scope 점검은 다음 읽기 전용 명령으로 수행합니다. 값은 표시하지 않습니다.
+
+```powershell
+vercel env ls preview
+vercel env ls production
+```
+
+최종 외부 배포 게이트에서 stable Preview alias로 다음 브라우저 흐름을 확인합니다. 이 작업에서는 실제 계정을 만들거나 변경하지 않고, Firebase 설정을 변경하거나 배포하지 않습니다.
+
+```text
+회원가입 → 마이페이지 → 로그아웃 → 회원 로그인
+관리자 로그인 → 상품 관리 화면
+일반 회원 계정 → 관리자 로그인 거부
+```
+
 ```bash
 pnpm install
 pnpm dev
