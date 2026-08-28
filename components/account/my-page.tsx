@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { useAuth } from "../../features/auth/auth-context";
-import { memberAuth, type MemberIdentity } from "../../lib/firebase/member-auth";
+import { getMemberAuthErrorMessage, memberAuth, type MemberIdentity } from "../../lib/firebase/member-auth";
 import { listMemberOrders, type MemberOrder } from "../../lib/firebase/member-orders";
 import { createUserProfile, getUserProfile, type UserProfile, type UserProfilePatch, updateUserProfile } from "../../lib/firebase/user-profile";
 import { OrderHistory } from "./order-history";
@@ -144,8 +144,8 @@ function AuthenticatedMyPage({ notice, user }: AuthenticatedMyPageProps) {
     try {
       await memberAuth.sendVerification();
       setVerificationMessage("인증 메일을 보냈습니다. 받은편지함을 확인해 주세요.");
-    } catch {
-      setVerificationMessage("인증 메일을 보내지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    } catch (reason) {
+      setVerificationMessage(`인증 메일을 보내지 못했습니다. ${getMemberAuthErrorMessage(reason)}`);
     } finally {
       setIsSendingVerification(false);
     }

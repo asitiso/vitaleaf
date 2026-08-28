@@ -77,9 +77,12 @@ export function SignupForm() {
       let verificationFailed = false;
       try {
         await memberAuth.sendVerification();
-      } catch {
+      } catch (reason) {
         verificationFailed = true;
-        setNotice("인증 메일을 보내지 못했습니다. 마이페이지에서 다시 요청해 주세요.");
+        const message = await import("../../lib/firebase/member-auth")
+          .then(({ getMemberAuthErrorMessage }) => getMemberAuthErrorMessage(reason))
+          .catch(() => "인증 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
+        setNotice(`인증 메일을 보내지 못했습니다. ${message} 마이페이지에서 다시 요청해 주세요.`);
       }
       router.push(verificationFailed ? "/mypage?notice=verification-email-failed" : "/mypage");
     } catch (reason) {

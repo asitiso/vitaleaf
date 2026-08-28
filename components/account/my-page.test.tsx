@@ -32,6 +32,15 @@ vi.mock("../../features/auth/auth-context", () => ({
 }));
 
 vi.mock("../../lib/firebase/member-auth", () => ({
+  getMemberAuthErrorMessage: (reason: unknown) => {
+    const code = typeof reason === "object" && reason !== null && "code" in reason
+      ? reason.code
+      : "";
+    if (code === "auth/unauthorized-domain") {
+      return "현재 접속 주소의 로그인 승인이 필요합니다. 관리자에게 알려 주세요.";
+    }
+    return "인증 오류";
+  },
   memberAuth: { sendVerification: sendVerificationMock },
 }));
 
@@ -265,6 +274,20 @@ it("surfaces the verification-delivery notice and lets an unverified member retr
 
   expect(sendVerificationMock).toHaveBeenCalledOnce();
   expect(await screen.findByRole("status")).toHaveTextContent("인증 메일을 보냈습니다");
+});
+
+it("includes actionable domain guidance when verification resend fails", async () => {
+  authState.status = "signed-in";
+  authState.user = { uid: "user-1", email: "member@example.com", emailVerified: false };
+  sendVerificationMock.mockRejectedValueOnce({ code: "auth/unauthorized-domain" });
+  const user = userEvent.setup();
+  render(<MyPage />);
+
+  await user.click(await screen.findByRole("button", { name: "인증 메일 다시 보내기" }));
+
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("인증 메일을 보내지 못했습니다");
+  expect(alert).toHaveTextContent("현재 접속 주소의 로그인 승인이 필요합니다");
 });
 
 it("rejects an invalid Korean mobile number before saving the profile", async () => {

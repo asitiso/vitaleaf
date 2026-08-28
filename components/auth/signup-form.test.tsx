@@ -12,13 +12,18 @@ const { createMock, createUserProfileMock, pushMock, removeCurrentMock, sendVeri
 }));
 
 vi.mock("../../lib/firebase/member-auth", () => ({
-  getMemberAuthErrorMessage: (reason: unknown) =>
-    typeof reason === "object"
-    && reason !== null
-    && "code" in reason
-    && reason.code === "auth/email-already-in-use"
-      ? "이미 가입된 이메일입니다. 로그인하거나 다른 이메일을 사용해 주세요."
-      : "인증 오류",
+  getMemberAuthErrorMessage: (reason: unknown) => {
+    const code = typeof reason === "object" && reason !== null && "code" in reason
+      ? reason.code
+      : "";
+    if (code === "auth/email-already-in-use") {
+      return "이미 가입된 이메일입니다. 로그인하거나 다른 이메일을 사용해 주세요.";
+    }
+    if (code === "firebase/client-config-missing") {
+      return "사이트 인증 설정이 필요합니다. 관리자에게 알려 주세요.";
+    }
+    return "인증 오류";
+  },
   memberAuth: {
     signUp: createMock,
     removeCurrent: removeCurrentMock,
@@ -180,4 +185,16 @@ it("keeps the completed account and carries a durable notice when verification d
   expect(removeCurrentMock).not.toHaveBeenCalled();
   expect(screen.getByRole("status")).toHaveTextContent("인증 메일");
   expect(pushMock).toHaveBeenCalledWith("/mypage?notice=verification-email-failed");
+});
+
+it("includes actionable configuration guidance when verification delivery fails", async () => {
+  sendVerificationMock.mockRejectedValueOnce({ code: "firebase/client-config-missing" });
+  const user = userEvent.setup();
+  render(<SignupForm />);
+  await fillSignupForm(user);
+  await user.click(screen.getByRole("checkbox", { name: /이용약관/ }));
+  await user.click(screen.getByRole("button", { name: "회원가입" }));
+
+  expect(await screen.findByRole("status")).toHaveTextContent("인증 메일을 보내지 못했습니다");
+  expect(screen.getByRole("status")).toHaveTextContent("사이트 인증 설정이 필요합니다");
 });
