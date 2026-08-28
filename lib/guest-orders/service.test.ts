@@ -21,6 +21,11 @@ const paymentResult: PaymentResult = {
   orderNumber: "VL-20260826-ABC123",
   receivedAt: "2026-08-26T02:59:00.000Z",
 };
+const serverReceipt: PaymentResult = {
+  orderNumber: "VL-20260826-SERVER",
+  receivedAt: NOW.toISOString(),
+};
+const IDEMPOTENCY_KEY = "550e8400-e29b-41d4-a716-446655440000";
 
 const savedLookupSecret = process.env.GUEST_ORDER_LOOKUP_SECRET;
 
@@ -109,16 +114,26 @@ const inMemoryDependencies = (options: InMemoryOptions = {}) => {
   const sampleProducts = new Map((options.sampleProducts ?? []).map((item) => [item.id, item]));
   const orders = new Map<string, GuestOrderStored>();
   if (options.storedOrder) orders.set(options.storedOrder.orderNumber, options.storedOrder);
+  const idempotentOrders = new Map<string, GuestOrderStored>();
   const attempts = new Map<string, GuestOrderAttempt>();
   let deletedAttemptCount = 0;
+  let persistedOrderCount = 0;
 
   const repository: GuestOrderRepository = {
     async loadProducts(ids) {
       return ids.map((id) => products.get(id) ?? null);
     },
-    async createOrder(order) {
+    async createOrder(order, idempotencyFingerprint) {
+      const existing = idempotentOrders.get(idempotencyFingerprint);
+      if (existing) return existing;
       if (orders.has(order.orderNumber)) throw new GuestOrderDuplicateError();
       orders.set(order.orderNumber, order);
+      idempotentOrders.set(idempotencyFingerprint, order);
+      persistedOrderCount += 1;
+      return order;
+    },
+    async getOrderByIdempotency(idempotencyFingerprint) {
+      return idempotentOrders.get(idempotencyFingerprint) ?? null;
     },
     async getOrder(orderNumber) {
       return orders.get(orderNumber) ?? null;
@@ -148,10 +163,18 @@ const inMemoryDependencies = (options: InMemoryOptions = {}) => {
     repository,
     lookupSecret: "test-only-secret",
     now: () => new Date(NOW),
+    createOrderCode: () => "SERVER",
     ...(options.sampleProducts === undefined
       ? {}
       : { findSampleProduct: (id: string) => sampleProducts.get(id) ?? null }),
-    state: { orders, attempts, deletedAttemptCount: () => deletedAttemptCount },
+    state: {
+      attempts,
+      deletedAttemptCount: () => deletedAttemptCount,
+      idempotentOrders,
+      orders,
+      products,
+      persistedOrderCount: () => persistedOrderCount,
+    },
   };
 };
 
@@ -177,16 +200,25 @@ describe("guest order creation", () => {
     ["fractional quantity", createInput({ lines: [{ productId: "p1", quantity: 1.5 }] })],
   ])("rejects %s", async (_label, input) => {
     const service = createGuestOrderService(inMemoryDependencies());
-    await expect(service.create(input, paymentResult)).rejects.toThrow(GuestOrderValidationError);
+    await expect(service.create(input, paymentResult, IDEMPOTENCY_KEY))
+      .rejects.toThrow(GuestOrderValidationError);
   });
 
-  it("rejects a malformed payment receipt passed through the public create boundary", async () => {
-    const service = createGuestOrderService(inMemoryDependencies());
+  it("ignores tampered browser receipt identity and time in favor of a server-owned receipt", async () => {
+    const dependencies = inMemoryDependencies();
 
-    await expect(service.create(createInput(), {
-      orderNumber: paymentResult.orderNumber,
+    const result = await createGuestOrderService(dependencies).create(createInput(), {
+      orderNumber: "ATTACKER-CONTROLLED",
       receivedAt: "not-a-date",
-    })).rejects.toThrow(GuestOrderValidationError);
+    }, IDEMPOTENCY_KEY);
+
+    expect(result).toEqual(serverReceipt);
+    expect(dependencies.state.orders.get(serverReceipt.orderNumber)).toMatchObject({
+      orderNumber: serverReceipt.orderNumber,
+      createdAt: NOW,
+      receivedAt: NOW,
+    });
+    expect(dependencies.state.orders.has("ATTACKER-CONTROLLED")).toBe(false);
   });
 
   it("recalculates totals and stored line details from server products", async () => {
@@ -194,10 +226,11 @@ describe("guest order creation", () => {
       products: [product({ price: 12_000, stock: 5, name: "서버 상품명" })],
     });
 
-    const result = await createGuestOrderService(dependencies).create(createInput(), paymentResult);
+    const result = await createGuestOrderService(dependencies)
+      .create(createInput(), paymentResult, IDEMPOTENCY_KEY);
 
-    expect(result).toEqual(paymentResult);
-    expect(dependencies.state.orders.get(paymentResult.orderNumber)).toMatchObject({
+    expect(result).toEqual(serverReceipt);
+    expect(dependencies.state.orders.get(serverReceipt.orderNumber)).toMatchObject({
       phoneNormalized: "01012345678",
       subtotal: 24_000,
       shippingFee: 3_000,
@@ -220,8 +253,9 @@ describe("guest order creation", () => {
     } as PaymentResult;
 
     await expect(
-      createGuestOrderService(dependencies).create(createInput(), paymentWithInjectedData),
-    ).resolves.toEqual(paymentResult);
+      createGuestOrderService(dependencies)
+        .create(createInput(), paymentWithInjectedData, IDEMPOTENCY_KEY),
+    ).resolves.toEqual(serverReceipt);
   });
 
   it("uses a legacy sample only when the server product read returns null", async () => {
@@ -231,9 +265,9 @@ describe("guest order creation", () => {
 
     await createGuestOrderService(dependencies).create(createInput({
       lines: [{ productId: "sample-daily-multivitamin", quantity: 1 }],
-    }), paymentResult);
+    }), paymentResult, IDEMPOTENCY_KEY);
 
-    expect(dependencies.state.orders.get(paymentResult.orderNumber)).toMatchObject({
+    expect(dependencies.state.orders.get(serverReceipt.orderNumber)).toMatchObject({
       subtotal: 24_900,
       shippingFee: 3_000,
       total: 27_900,
@@ -251,17 +285,41 @@ describe("guest order creation", () => {
       products: [product({ stock: 1 })],
     }));
 
-    await expect(missing.create(createInput(), paymentResult)).rejects.toThrow(GuestOrderUnavailableError);
-    await expect(insufficient.create(createInput(), paymentResult)).rejects.toThrow(GuestOrderUnavailableError);
+    await expect(missing.create(createInput(), paymentResult, IDEMPOTENCY_KEY))
+      .rejects.toThrow(GuestOrderUnavailableError);
+    await expect(insufficient.create(createInput(), paymentResult, IDEMPOTENCY_KEY))
+      .rejects.toThrow(GuestOrderUnavailableError);
   });
 
   it("preserves create-only semantics for duplicate order numbers", async () => {
-    const dependencies = inMemoryDependencies({ storedOrder });
+    const dependencies = inMemoryDependencies({
+      storedOrder: { ...storedOrder, orderNumber: serverReceipt.orderNumber },
+    });
 
     await expect(
-      createGuestOrderService(dependencies).create(createInput(), paymentResult),
+      createGuestOrderService(dependencies).create(createInput(), paymentResult, IDEMPOTENCY_KEY),
     ).rejects.toThrow(GuestOrderDuplicateError);
-    expect(dependencies.state.orders.get(paymentResult.orderNumber)).toBe(storedOrder);
+  });
+
+  it("returns the original server receipt when the same checkout is retried idempotently", async () => {
+    const dependencies = inMemoryDependencies();
+    const service = createGuestOrderService(dependencies);
+
+    const first = await service.create(createInput(), paymentResult, IDEMPOTENCY_KEY);
+    dependencies.state.products.set("p1", product({ stock: 0, price: 99_000 }));
+    const retry = await service.create(createInput(), {
+      orderNumber: "VL-19990101-RETRY1",
+      receivedAt: "1999-01-01T00:00:00.000Z",
+    }, IDEMPOTENCY_KEY);
+
+    expect(first).toEqual(serverReceipt);
+    expect(retry).toEqual(serverReceipt);
+    expect(dependencies.state.persistedOrderCount()).toBe(1);
+    expect(dependencies.state.orders.size).toBe(1);
+    expect([...dependencies.state.idempotentOrders.keys()]).toEqual([
+      expect.stringMatching(/^[a-f0-9]{64}$/u),
+    ]);
+    expect([...dependencies.state.idempotentOrders.keys()]).not.toContain(IDEMPOTENCY_KEY);
   });
 });
 

@@ -65,7 +65,8 @@ export type GuestOrderAttempt = {
 
 export type GuestOrderRepository = {
   loadProducts(productIds: string[]): Promise<(Product | null)[]>;
-  createOrder(order: GuestOrderStored): Promise<void>;
+  createOrder(order: GuestOrderStored, idempotencyFingerprint: string): Promise<GuestOrderStored>;
+  getOrderByIdempotency(idempotencyFingerprint: string): Promise<GuestOrderStored | null>;
   getOrder(orderNumber: string): Promise<GuestOrderStored | null>;
   getAttempt(fingerprint: string): Promise<GuestOrderAttempt | null>;
   setAttempt(fingerprint: string, now: Date): Promise<GuestOrderAttempt>;
@@ -73,6 +74,6 @@ export type GuestOrderRepository = {
 };
 
 export type GuestOrderService = {
-  create(input: unknown, payment: unknown): Promise<PaymentResult>;
+  create(input: unknown, payment: unknown, idempotencyKey: unknown): Promise<PaymentResult>;
   lookup(input: unknown, clientKey: string): Promise<GuestOrderPublic>;
 };

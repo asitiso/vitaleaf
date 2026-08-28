@@ -2,6 +2,7 @@ import type { GuestOrderCreateInput } from "./types";
 
 const ORDER_NUMBER = /^VL-\d{8}-[A-Z0-9]{6}$/u;
 const PHONE = /^0\d{9,10}$/u;
+const IDEMPOTENCY_KEY = /^[A-Za-z0-9_-]{20,128}$/u;
 
 const hasControlCharacter = (value: string): boolean => [...value].some((character) => {
   const codePoint = character.codePointAt(0) ?? 0;
@@ -92,6 +93,12 @@ export const parseGuestOrderLookupInput = (
   const orderNumber = boundedText(input.orderNumber, 32);
   if (!ORDER_NUMBER.test(orderNumber)) throw new GuestOrderValidationError();
   return { orderNumber, phone: normalizePhone(boundedText(input.phone, 30)) };
+};
+
+export const parseIdempotencyKey = (value: unknown): string => {
+  const idempotencyKey = boundedText(value, 128);
+  if (!IDEMPOTENCY_KEY.test(idempotencyKey)) throw new GuestOrderValidationError();
+  return idempotencyKey;
 };
 
 export const parsePaymentResult = (value: unknown): { orderNumber: string; receivedAt: Date } => {

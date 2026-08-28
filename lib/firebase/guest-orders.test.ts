@@ -128,8 +128,9 @@ const firestoreHarness = () => {
   const transactionGet = vi.fn(async (reference: { path: string }) =>
     snapshots.get(reference.path) ?? { exists: false, data: () => undefined });
   const transactionSet = vi.fn();
+  const transactionCreate = vi.fn();
   const runTransaction = vi.fn(async (operation: (transaction: unknown) => Promise<unknown>) =>
-    operation({ get: transactionGet, set: transactionSet }));
+    operation({ create: transactionCreate, get: transactionGet, set: transactionSet }));
   const doc = vi.fn((path: string) => {
     const existing = references.get(path);
     if (existing) return existing;
@@ -148,6 +149,7 @@ const firestoreHarness = () => {
     references,
     snapshots,
     transactionGet,
+    transactionCreate,
     transactionSet,
     runTransaction,
   };
@@ -168,17 +170,91 @@ describe("Firestore guest-order repository", () => {
     expect(loadProduct).toHaveBeenNthCalledWith(2, "missing");
   });
 
-  it("creates an order document without overwrite semantics", async () => {
+  it("reads the latest Admin product snapshot for every checkout verification", async () => {
+    const harness = firestoreHarness();
+    const path = "products/p1";
+    harness.snapshots.set(path, {
+      exists: true,
+      data: () => ({ name: "비타민 C", price: 12_000, stock: 5 }),
+    });
+    const repository = createFirestoreGuestOrderRepository({
+      getFirestore: () => harness.firestore as never,
+    });
+
+    await expect(repository.loadProducts(["p1"])).resolves.toEqual([
+      expect.objectContaining({ id: "p1", price: 12_000, stock: 5 }),
+    ]);
+
+    harness.snapshots.set(path, {
+      exists: true,
+      data: () => ({ name: "비타민 C", price: 15_000, stock: 0 }),
+    });
+
+    await expect(repository.loadProducts(["p1"])).resolves.toEqual([
+      expect.objectContaining({ id: "p1", price: 15_000, stock: 0 }),
+    ]);
+    expect(harness.references.get(path)?.get).toHaveBeenCalledTimes(2);
+  });
+
+  it("atomically creates an order and its hashed idempotency mapping", async () => {
     const harness = firestoreHarness();
     const repository = createFirestoreGuestOrderRepository({
       getFirestore: () => harness.firestore as never,
       loadProduct: vi.fn(),
     });
 
-    await repository.createOrder(order);
+    await expect(repository.createOrder(order, "idempotency-fingerprint")).resolves.toBe(order);
 
-    const reference = harness.references.get(`guestOrders/${order.orderNumber}`);
-    expect(reference?.create).toHaveBeenCalledWith(order);
+    expect(harness.runTransaction).toHaveBeenCalledOnce();
+    expect(harness.transactionCreate).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ path: `guestOrders/${order.orderNumber}` }),
+      order,
+    );
+    expect(harness.transactionCreate).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ path: "guestOrderIdempotency/idempotency-fingerprint" }),
+      { orderNumber: order.orderNumber, createdAt: order.createdAt },
+    );
+  });
+
+  it("returns the existing order for an idempotent retry without creating another document", async () => {
+    const harness = firestoreHarness();
+    harness.snapshots.set("guestOrderIdempotency/idempotency-fingerprint", {
+      exists: true,
+      data: () => ({ orderNumber: order.orderNumber }),
+    });
+    harness.snapshots.set(`guestOrders/${order.orderNumber}`, {
+      exists: true,
+      data: () => order,
+    });
+    const repository = createFirestoreGuestOrderRepository({
+      getFirestore: () => harness.firestore as never,
+      loadProduct: vi.fn(),
+    });
+
+    await expect(repository.createOrder({ ...order, total: 999 }, "idempotency-fingerprint"))
+      .resolves.toEqual(order);
+    expect(harness.transactionCreate).not.toHaveBeenCalled();
+  });
+
+  it("resolves an idempotency mapping before checkout revalidation", async () => {
+    const harness = firestoreHarness();
+    harness.snapshots.set("guestOrderIdempotency/idempotency-fingerprint", {
+      exists: true,
+      data: () => ({ orderNumber: order.orderNumber }),
+    });
+    harness.snapshots.set(`guestOrders/${order.orderNumber}`, {
+      exists: true,
+      data: () => order,
+    });
+    const repository = createFirestoreGuestOrderRepository({
+      getFirestore: () => harness.firestore as never,
+      loadProduct: vi.fn(),
+    });
+
+    await expect(repository.getOrderByIdempotency("idempotency-fingerprint"))
+      .resolves.toEqual(order);
   });
 
   it("maps Firestore create conflicts to the domain duplicate error", async () => {
@@ -187,10 +263,10 @@ describe("Firestore guest-order repository", () => {
       getFirestore: () => harness.firestore as never,
       loadProduct: vi.fn(),
     });
-    const reference = harness.firestore.doc(`guestOrders/${order.orderNumber}`);
-    reference.create.mockRejectedValueOnce({ code: 6 });
+    harness.runTransaction.mockRejectedValueOnce({ code: 6 });
 
-    await expect(repository.createOrder(order)).rejects.toThrow(GuestOrderDuplicateError);
+    await expect(repository.createOrder(order, "idempotency-fingerprint"))
+      .rejects.toThrow(GuestOrderDuplicateError);
   });
 
   it("converts order and attempt Firestore timestamps to domain Dates", async () => {

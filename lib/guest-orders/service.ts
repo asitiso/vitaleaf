@@ -1,4 +1,4 @@
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomInt, timingSafeEqual } from "node:crypto";
 
 import { calculateCart } from "../../features/cart/cart-utils";
 import { findSampleProduct as findLegacySampleProduct } from "../products/sample-products";
@@ -16,10 +16,11 @@ import {
   maskPhone,
   parseGuestOrderCreateInput,
   parseGuestOrderLookupInput,
-  parsePaymentResult,
+  parseIdempotencyKey,
 } from "./validation";
 
 const MAX_FAILED_LOOKUPS = 5;
+const ORDER_CODE_CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
 export class GuestOrderUnavailableError extends Error {
   constructor() {
@@ -61,7 +62,23 @@ type GuestOrderServiceDependencies = {
   lookupSecret?: string;
   now?: () => Date;
   findSampleProduct?: (id: string) => Product | null;
+  createOrderCode?: () => string;
 };
+
+const randomOrderCode = (): string => Array.from(
+  { length: 6 },
+  () => ORDER_CODE_CHARACTERS[randomInt(ORDER_CODE_CHARACTERS.length)],
+).join("");
+
+const orderNumberFor = (receivedAt: Date, orderCode: string): string => {
+  const date = receivedAt.toISOString().slice(0, 10).replaceAll("-", "");
+  return `VL-${date}-${orderCode}`;
+};
+
+const receiptFor = (order: GuestOrderStored): PaymentResult => ({
+  orderNumber: order.orderNumber,
+  receivedAt: order.receivedAt.toISOString(),
+});
 
 const usableProduct = (product: Product | null, quantity: number): product is Product => Boolean(
   product
@@ -95,6 +112,7 @@ export const createGuestOrderService = ({
   lookupSecret = process.env.GUEST_ORDER_LOOKUP_SECRET,
   now = () => new Date(),
   findSampleProduct = findLegacySampleProduct,
+  createOrderCode = randomOrderCode,
 }: GuestOrderServiceDependencies): GuestOrderService => {
   const secret = lookupSecret?.trim();
   if (!secret) throw new GuestOrderConfigurationError();
@@ -103,9 +121,17 @@ export const createGuestOrderService = ({
     createHmac("sha256", secret).update(clientKey).digest("hex");
 
   return {
-    async create(value, paymentResult) {
+    async create(value, paymentResult, rawIdempotencyKey) {
       const input = parseGuestOrderCreateInput(value);
-      const payment = parsePaymentResult(paymentResult);
+      const idempotencyKey = parseIdempotencyKey(rawIdempotencyKey);
+      const idempotencyFingerprint = createHmac("sha256", secret)
+        .update(`create:${idempotencyKey}`)
+        .digest("hex");
+      void paymentResult;
+
+      const existingOrder = await repository.getOrderByIdempotency(idempotencyFingerprint);
+      if (existingOrder) return receiptFor(existingOrder);
+
       const loadedProducts = await repository.loadProducts(input.lines.map((line) => line.productId));
       const products = input.lines.map((line, index) =>
         loadedProducts[index] ?? findSampleProduct(line.productId));
@@ -128,8 +154,9 @@ export const createGuestOrderService = ({
         };
       });
       const totals = calculateCart(cartLines);
+      const receivedAt = now();
       const order: GuestOrderStored = {
-        orderNumber: payment.orderNumber,
+        orderNumber: orderNumberFor(receivedAt, createOrderCode()),
         status: "mock-received",
         paymentMethod: input.paymentMethod,
         customerName: input.customerName,
@@ -148,15 +175,12 @@ export const createGuestOrderService = ({
         subtotal: totals.subtotal,
         shippingFee: totals.shippingFee,
         total: totals.total,
-        createdAt: now(),
-        receivedAt: payment.receivedAt,
+        createdAt: receivedAt,
+        receivedAt,
       };
 
-      await repository.createOrder(order);
-      return {
-        orderNumber: payment.orderNumber,
-        receivedAt: payment.receivedAt.toISOString(),
-      };
+      const persistedOrder = await repository.createOrder(order, idempotencyFingerprint);
+      return receiptFor(persistedOrder);
     },
 
     async lookup(value, clientKey) {

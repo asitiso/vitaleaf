@@ -8,7 +8,10 @@ import {
   GuestOrderDuplicateError,
   GuestOrderUnavailableError,
 } from "../../../lib/guest-orders/service";
-import { GuestOrderValidationError } from "../../../lib/guest-orders/validation";
+import {
+  GuestOrderValidationError,
+  parseIdempotencyKey,
+} from "../../../lib/guest-orders/validation";
 
 export const runtime = "nodejs";
 
@@ -20,15 +23,21 @@ const safeErrorClass = (error: unknown): string => {
   return /^[A-Za-z][A-Za-z0-9]{0,63}$/u.test(className) ? className : "UnknownError";
 };
 
-const parseCreatePayload = (value: unknown): { order: unknown; payment: unknown } => {
+const parseCreatePayload = (
+  value: unknown,
+): { order: unknown; payment: unknown; idempotencyKey: string } => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new GuestOrderValidationError();
   }
   const payload = value as Record<string, unknown>;
-  if (!("order" in payload) || !("payment" in payload)) {
+  if (!("order" in payload) || !("payment" in payload) || !("idempotencyKey" in payload)) {
     throw new GuestOrderValidationError();
   }
-  return { order: payload.order, payment: payload.payment };
+  return {
+    order: payload.order,
+    payment: payload.payment,
+    idempotencyKey: parseIdempotencyKey(payload.idempotencyKey),
+  };
 };
 
 export async function POST(request: Request): Promise<Response> {
@@ -41,8 +50,8 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const service = createGuestOrderService({ repository: guestOrderRepository });
-    const { order, payment } = parseCreatePayload(body);
-    const receipt = await service.create(order, payment);
+    const { order, payment, idempotencyKey } = parseCreatePayload(body);
+    const receipt = await service.create(order, payment, idempotencyKey);
     return Response.json({
       orderNumber: receipt.orderNumber,
       receivedAt: receipt.receivedAt,

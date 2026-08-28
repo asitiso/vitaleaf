@@ -177,6 +177,7 @@ function CheckoutFormContents({
   const [submitError, setSubmitError] = useState("");
   const [addressLookupError, setAddressLookupError] = useState("");
   const submittingRef = useRef(false);
+  const guestIdempotencyKeyRef = useRef<string | null>(null);
   const editedDeliveryFieldsRef = useRef<Set<RequiredField>>(new Set());
   const profileRef = useRef<UserProfile | null>(null);
   const fieldRefs = useRef<Partial<Record<RequiredField, HTMLInputElement>>>({});
@@ -316,7 +317,9 @@ function CheckoutFormContents({
         }
       } else {
         try {
-          completionResult = await createGuestOrder(orderDraft, result);
+          const idempotencyKey = guestIdempotencyKeyRef.current ?? globalThis.crypto.randomUUID();
+          guestIdempotencyKeyRef.current = idempotencyKey;
+          completionResult = await createGuestOrder(orderDraft, result, idempotencyKey);
         } catch {
           setSubmitError("주문을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
           return;

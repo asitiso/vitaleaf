@@ -438,7 +438,7 @@ describeRules("admins", () => {
 });
 
 describeRules("orders and default deny", () => {
-  it.each(["guestOrders", "guestOrderLookupAttempts"])(
+  it.each(["guestOrders", "guestOrderLookupAttempts", "guestOrderIdempotency"])(
     "denies unauthenticated, member, and browser-admin %s get/list/create/update/delete",
     async (collectionName) => {
       await seed({

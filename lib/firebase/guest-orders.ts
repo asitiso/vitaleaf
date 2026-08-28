@@ -8,7 +8,7 @@ import type {
   GuestOrderStored,
 } from "../guest-orders/types";
 import type { Product } from "../products/types";
-import { getServerProduct } from "./server-read";
+import { normalizeProduct } from "../products/normalize";
 import { getAdminFirestore } from "./admin";
 
 const LOOKUP_WINDOW_MILLISECONDS = 10 * 60 * 1000;
@@ -91,19 +91,66 @@ const isAlreadyExists = (error: unknown): boolean => {
 
 export const createFirestoreGuestOrderRepository = ({
   getFirestore = getAdminFirestore,
-  loadProduct = getServerProduct,
+  loadProduct,
 }: FirestoreRepositoryDependencies = {}): GuestOrderRepository => ({
   async loadProducts(productIds) {
-    return Promise.all(productIds.map((productId) => loadProduct(productId)));
+    if (loadProduct) {
+      return Promise.all(productIds.map((productId) => loadProduct(productId)));
+    }
+    const firestore = getFirestore();
+    return Promise.all(productIds.map(async (productId) => {
+      const snapshot = await firestore.doc(`products/${productId}`).get();
+      return snapshot.exists ? normalizeProduct(productId, snapshot.data()) : null;
+    }));
   },
 
-  async createOrder(order) {
+  async createOrder(order, idempotencyFingerprint) {
     try {
-      await getFirestore().doc(`guestOrders/${order.orderNumber}`).create(order);
+      const firestore = getFirestore();
+      const idempotencyReference = firestore.doc(
+        `guestOrderIdempotency/${idempotencyFingerprint}`,
+      );
+      return await firestore.runTransaction(async (transaction) => {
+        const idempotencySnapshot = await transaction.get(idempotencyReference);
+        if (idempotencySnapshot.exists) {
+          const existingOrderNumber = asString(asRecord(idempotencySnapshot.data()).orderNumber);
+          if (!existingOrderNumber) throw new Error("Stored guest order idempotency mapping is invalid.");
+          const existingOrderSnapshot = await transaction.get(
+            firestore.doc(`guestOrders/${existingOrderNumber}`),
+          );
+          if (!existingOrderSnapshot.exists) {
+            throw new Error("Stored guest order idempotency mapping has no order.");
+          }
+          return normalizeOrder(existingOrderNumber, existingOrderSnapshot.data());
+        }
+
+        transaction.create(firestore.doc(`guestOrders/${order.orderNumber}`), order);
+        transaction.create(idempotencyReference, {
+          orderNumber: order.orderNumber,
+          createdAt: order.createdAt,
+        });
+        return order;
+      });
     } catch (error) {
       if (isAlreadyExists(error)) throw new GuestOrderDuplicateError();
       throw error;
     }
+  },
+
+  async getOrderByIdempotency(idempotencyFingerprint) {
+    const firestore = getFirestore();
+    const idempotencySnapshot = await firestore
+      .doc(`guestOrderIdempotency/${idempotencyFingerprint}`)
+      .get();
+    if (!idempotencySnapshot.exists) return null;
+
+    const orderNumber = asString(asRecord(idempotencySnapshot.data()).orderNumber);
+    if (!orderNumber) throw new Error("Stored guest order idempotency mapping is invalid.");
+    const orderSnapshot = await firestore.doc(`guestOrders/${orderNumber}`).get();
+    if (!orderSnapshot.exists) {
+      throw new Error("Stored guest order idempotency mapping has no order.");
+    }
+    return normalizeOrder(orderNumber, orderSnapshot.data());
   },
 
   async getOrder(orderNumber) {

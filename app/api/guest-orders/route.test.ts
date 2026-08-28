@@ -55,6 +55,7 @@ const validPayment = {
   orderNumber: "VL-20260826-ABC123",
   receivedAt: "2026-08-26T03:00:00.000Z",
 };
+const idempotencyKey = "550e8400-e29b-41d4-a716-446655440000";
 
 const createJsonRequest = (body: unknown): Request => new Request(
   "http://localhost/api/guest-orders",
@@ -83,11 +84,15 @@ describe("POST /api/guest-orders", () => {
       address: "서울특별시 강남구 테헤란로",
     });
 
-    const response = await POST(createJsonRequest({ order: validCreateBody, payment: validPayment }));
+    const response = await POST(createJsonRequest({
+      order: validCreateBody,
+      payment: validPayment,
+      idempotencyKey,
+    }));
 
     expect(response.status).toBe(201);
     expect(mocks.processPayment).not.toHaveBeenCalled();
-    expect(mocks.create).toHaveBeenCalledWith(validCreateBody, validPayment);
+    expect(mocks.create).toHaveBeenCalledWith(validCreateBody, validPayment, idempotencyKey);
     const body = await response.json();
     expect(body).toEqual(paymentResult);
     expect(JSON.stringify(body)).not.toContain("01012345678");
@@ -109,29 +114,25 @@ describe("POST /api/guest-orders", () => {
     expect(mocks.create).not.toHaveBeenCalled();
   });
 
-  it("returns 400 when the real service boundary rejects a malformed wrapped payment", async () => {
-    const actualService = await vi.importActual<typeof import("../../../lib/guest-orders/service")>(
-      "../../../lib/guest-orders/service",
-    );
-    mocks.create.mockImplementation((order, payment) => actualService.createGuestOrderService({
-      lookupSecret: "test-secret",
-      repository: {
-        loadProducts: async () => [],
-        createOrder: async () => undefined,
-        getOrder: async () => null,
-        getAttempt: async () => null,
-        setAttempt: async () => ({ failureCount: 1, expiresAt: new Date() }),
-        deleteAttempt: async () => undefined,
-      },
-    }).create(order, payment));
+  it("passes tampered browser receipt values through only as an opaque payment seam", async () => {
+    const tamperedPayment = { orderNumber: "ATTACKER", receivedAt: "not-a-date" };
 
     const response = await POST(createJsonRequest({
       order: validCreateBody,
-      payment: { ...validPayment, receivedAt: "not-a-date" },
+      payment: tamperedPayment,
+      idempotencyKey,
     }));
 
+    expect(response.status).toBe(201);
+    expect(mocks.create).toHaveBeenCalledWith(validCreateBody, tamperedPayment, idempotencyKey);
+    expect(await response.json()).toEqual(paymentResult);
+  });
+
+  it("returns 400 when the checkout idempotency key is missing", async () => {
+    const response = await POST(createJsonRequest({ order: validCreateBody, payment: validPayment }));
+
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ message: "비회원 주문 정보를 다시 확인해 주세요." });
+    expect(mocks.create).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -143,7 +144,11 @@ describe("POST /api/guest-orders", () => {
   ])("maps %s to %i", async (error, expectedStatus, expectedMessage) => {
     mocks.create.mockRejectedValue(error);
 
-    const response = await POST(createJsonRequest({ order: validCreateBody, payment: validPayment }));
+    const response = await POST(createJsonRequest({
+      order: validCreateBody,
+      payment: validPayment,
+      idempotencyKey,
+    }));
 
     expect(response.status).toBe(expectedStatus);
     expect(await response.json()).toEqual({ message: expectedMessage });
@@ -154,7 +159,11 @@ describe("POST /api/guest-orders", () => {
     mocks.create.mockRejectedValue(new Error(privateErrorMessage));
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
-    const response = await POST(createJsonRequest({ order: validCreateBody, payment: validPayment }));
+    const response = await POST(createJsonRequest({
+      order: validCreateBody,
+      payment: validPayment,
+      idempotencyKey,
+    }));
 
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({

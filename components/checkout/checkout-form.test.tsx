@@ -472,6 +472,7 @@ it("persists a guest order before clearing and navigating", async () => {
   await waitFor(() => expect(createGuestOrderMock).toHaveBeenCalledWith(
     expect.objectContaining({ phone: "010-1234-5678" }),
     paymentResult,
+    expect.stringMatching(/^[0-9a-f-]{36}$/u),
   ));
   await waitFor(() => expect(JSON.parse(localStorage.getItem(storageKey) ?? "[]")).toEqual([unselectedLine]));
   expect(createGuestOrderMock.mock.invocationCallOrder[0]).toBeLessThan(pushMock.mock.invocationCallOrder[0]);
@@ -493,6 +494,47 @@ it("keeps the cart and checkout inputs when guest order persistence fails", asyn
   expect(screen.getByLabelText("받는 분")).toHaveValue("홍길동");
   expect(JSON.parse(localStorage.getItem(storageKey) ?? "[]")).toEqual([selectedLine, unselectedLine]);
   expect(pushMock).not.toHaveBeenCalled();
+});
+
+it("reuses one in-memory idempotency key when a failed guest submission is retried", async () => {
+  const user = userEvent.setup();
+  const retryPayment = {
+    orderNumber: "VL-20260810-RETRY1",
+    receivedAt: "2026-08-10T09:01:00.000Z",
+  };
+  processPaymentMock
+    .mockResolvedValueOnce(paymentResult)
+    .mockResolvedValueOnce(retryPayment);
+  createGuestOrderMock
+    .mockRejectedValueOnce(new Error("response lost"))
+    .mockResolvedValueOnce(paymentResult);
+  renderGuestCheckout();
+  await screen.findByRole("form", { name: "주문 및 결제" });
+  await fillValidOrder(user);
+
+  await user.click(screen.getByRole("button", { name: "결제하기" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("주문을 저장하지 못했습니다");
+  await user.click(screen.getByRole("button", { name: "결제하기" }));
+
+  await waitFor(() => expect(createGuestOrderMock).toHaveBeenCalledTimes(2));
+  const firstKey = createGuestOrderMock.mock.calls[0][2];
+  const retryKey = createGuestOrderMock.mock.calls[1][2];
+  expect(firstKey).toMatch(/^[0-9a-f-]{36}$/u);
+  expect(retryKey).toBe(firstKey);
+  expect(createGuestOrderMock).toHaveBeenNthCalledWith(
+    2,
+    expect.objectContaining({ phone: "010-1234-5678" }),
+    retryPayment,
+    firstKey,
+  );
+  await waitFor(() => expect(pushMock)
+    .toHaveBeenCalledWith("/order-complete?orderNumber=VL-20260810-ABC123&guest=1"));
+  const persistedKeys = Array.from(
+    { length: localStorage.length },
+    (_, index) => localStorage.key(index),
+  );
+  expect(persistedKeys).toEqual([storageKey]);
+  expect(localStorage.getItem(storageKey)).not.toContain(String(firstKey));
 });
 
 it("continues after optional default-address saving fails and marks the completion notice", async () => {

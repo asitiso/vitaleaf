@@ -2,6 +2,8 @@ import type { OrderDraft, PaymentResult } from "../payment/process-payment";
 import type { GuestOrderPublic } from "./types";
 
 const ORDER_NUMBER = /^VL-\d{8}-[A-Z0-9]{6}$/u;
+const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
+const MAX_MONEY = 1_000_000_000;
 
 export class GuestOrderClientError extends Error {
   constructor(message = "비회원 주문을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.") {
@@ -24,6 +26,12 @@ const text = (value: unknown, maximum: number): string => {
   return value;
 };
 
+const optionalText = (value: unknown, maximum: number): string => {
+  if (value === undefined) return "";
+  if (typeof value !== "string" || value.length > maximum) throw new GuestOrderClientError();
+  return value;
+};
+
 const number = (value: unknown): number => {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
     throw new GuestOrderClientError();
@@ -31,9 +39,11 @@ const number = (value: unknown): number => {
   return value;
 };
 
-const integer = (value: unknown): number => {
+const integer = (value: unknown, minimum = 0, maximum = MAX_MONEY): number => {
   const parsed = number(value);
-  if (!Number.isInteger(parsed)) throw new GuestOrderClientError();
+  if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw new GuestOrderClientError();
+  }
   return parsed;
 };
 
@@ -42,7 +52,14 @@ const parseReceipt = (value: unknown): PaymentResult => {
   const orderNumber = text(receipt.orderNumber, 32);
   if (!ORDER_NUMBER.test(orderNumber)) throw new GuestOrderClientError();
   const receivedAt = text(receipt.receivedAt, 64);
-  if (Number.isNaN(new Date(receivedAt).getTime())) throw new GuestOrderClientError();
+  const parsedReceivedAt = new Date(receivedAt);
+  if (
+    !ISO_TIMESTAMP.test(receivedAt)
+    || Number.isNaN(parsedReceivedAt.getTime())
+    || parsedReceivedAt.toISOString() !== receivedAt
+  ) {
+    throw new GuestOrderClientError();
+  }
   return { orderNumber, receivedAt };
 };
 
@@ -65,9 +82,9 @@ const parsePublicOrder = (value: unknown): GuestOrderPublic => {
       return {
         productId: text(line.productId, 128),
         name: text(line.name, 200),
-        thumbnailUrl: text(line.thumbnailUrl, 2_000),
+        thumbnailUrl: optionalText(line.thumbnailUrl, 2_000),
         unitPrice: integer(line.unitPrice),
-        quantity: integer(line.quantity),
+        quantity: integer(line.quantity, 1, 999),
       };
     }),
     subtotal: integer(order.subtotal),
@@ -99,8 +116,12 @@ const post = async (url: string, body: unknown): Promise<unknown> => {
   }
 };
 
-export async function createGuestOrder(order: OrderDraft, payment: PaymentResult): Promise<PaymentResult> {
-  return parseReceipt(await post("/api/guest-orders", { order, payment }));
+export async function createGuestOrder(
+  order: OrderDraft,
+  payment: PaymentResult,
+  idempotencyKey: string,
+): Promise<PaymentResult> {
+  return parseReceipt(await post("/api/guest-orders", { order, payment, idempotencyKey }));
 }
 
 export async function lookupGuestOrder(orderNumber: string, phone: string): Promise<GuestOrderPublic> {
