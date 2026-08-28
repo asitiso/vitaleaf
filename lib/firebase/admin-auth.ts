@@ -31,7 +31,7 @@ const defaultDependencies: FirebaseAdminAuthDependencies = {
 
 const bearerToken = (request: Request): string => {
   const authorization = request.headers.get("Authorization");
-  const match = authorization?.match(/^Bearer\s+([^\s]+)$/u);
+  const match = authorization?.match(/^Bearer +([^\s]+)$/u);
   if (!match) throw new ServerAuthenticationError(401);
   return match[1];
 };

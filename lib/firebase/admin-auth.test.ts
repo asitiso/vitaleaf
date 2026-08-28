@@ -37,6 +37,17 @@ describe("server bearer authentication", () => {
     },
   );
 
+  it("rejects a tab-delimited bearer header without calling token verification", async () => {
+    const verifyIdToken = vi.fn();
+
+    await expect(verifyBearerMember(requestWithAuthorization("Bearer\tmember-token"), {
+      verifyIdToken,
+      getAdminRecord: vi.fn(),
+    })).rejects.toMatchObject({ status: 401 });
+
+    expect(verifyIdToken).not.toHaveBeenCalled();
+  });
+
   it("maps Firebase token verification failures to 401 without exposing the bearer token", async () => {
     const bearerToken = "secret-member-token";
     const verifyIdToken = vi.fn().mockRejectedValue(new Error(`invalid ${bearerToken}`));
