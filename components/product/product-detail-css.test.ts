@@ -52,6 +52,20 @@ it("positions the desktop cart confirmation above the page edge", () => {
   expect(toastRule).toMatch(/right:\s*24px/);
 });
 
+it("keeps purchase options inside the mobile viewport without competing with the sticky bar", () => {
+  const selectorRule = css.match(/\.purchase-option-selector\s*\{([^}]*)\}/)?.[1] ?? "";
+  const optionRule = css.match(/\.purchase-option-selector__option\s*\{([^}]*)\}/)?.[1] ?? "";
+  const mobileStart = css.lastIndexOf("@media (max-width: 620px) {");
+  const mobileBlock = mobileStart === -1 ? "" : css.slice(mobileStart);
+  const mobileOptionRule = mobileBlock.match(/\.purchase-option-selector__option\s*\{([^}]*)\}/)?.[1] ?? "";
+  const mobilePriceRule = mobileBlock.match(/\.purchase-option-selector__price\s*\{([^}]*)\}/)?.[1] ?? "";
+
+  expect(selectorRule).toMatch(/min-width:\s*0/);
+  expect(optionRule).toMatch(/grid-template-columns:\s*auto minmax\(0, 1fr\) auto/);
+  expect(mobileOptionRule).toMatch(/grid-template-columns:\s*auto minmax\(0, 1fr\)/);
+  expect(mobilePriceRule).toMatch(/grid-column:\s*2/);
+});
+
 it.each([
   [".product-card__original-price", "#fffefb"],
   [".product-detail__price-row del", "#fffefb"],

@@ -7,9 +7,16 @@ import { useRouter } from "next/navigation";
 import { useCart } from "../../features/cart/cart-context";
 import { formatWon } from "../../lib/format";
 import { PRODUCT_CATEGORIES, taxonomyLabel } from "../../lib/catalog/taxonomy";
-import type { Product, Review } from "../../lib/products/types";
+import {
+  getDefaultPurchaseOption,
+  getPurchaseOptionPrice,
+  LEGACY_PURCHASE_OPTION_ID,
+  normalizePurchaseOptions,
+} from "../../lib/products/purchase-options";
+import type { Product, PurchaseOption, Review } from "../../lib/products/types";
 import { formatFreeShippingCondition, STORE_POLICIES } from "../../lib/site/policies";
 import { ProductInfo } from "./product-info";
+import { PurchaseOptionSelector } from "./purchase-option-selector";
 import { ReviewSection } from "./review-section";
 
 type ProductDetailProps = {
@@ -71,15 +78,46 @@ function getDiscountRate(product: Product): number | null {
   return Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100);
 }
 
+function hasOnlyImplicitLegacyOption(product: Product): boolean {
+  if (product.purchaseOptions === undefined || product.purchaseOptions.length === 0) {
+    return true;
+  }
+
+  const [option] = product.purchaseOptions;
+  return product.purchaseOptions.length === 1
+    && option.id === LEGACY_PURCHASE_OPTION_ID
+    && option.label === "기본 구성"
+    && option.durationMonths === null
+    && option.sku === ""
+    && option.priceAdjustment === 0
+    && option.active
+    && option.isDefault;
+}
+
 export function ProductDetail({ product, reviews, reviewLoadError = false }: ProductDetailProps) {
   const { add, prepareBuyNow } = useCart();
   const router = useRouter();
-  const [quantity, setQuantity] = useState(1);
+  const defaultOption = getDefaultPurchaseOption(product);
+  const purchaseOptions = normalizePurchaseOptions(product.purchaseOptions, product.price, product.stock);
+  const [purchaseState, setPurchaseState] = useState(() => ({
+    productId: product.id,
+    optionId: defaultOption.id,
+    quantity: 1,
+  }));
   const [cartToast, setCartToast] = useState<CartToastState | null>(null);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [failedImages, setFailedImages] = useState<Set<string>>(() => new Set());
-  const soldOut = product.stock < 1;
-  const discountRate = getDiscountRate(product);
+  const selectedOption = (
+    purchaseState.productId === product.id
+      ? purchaseOptions.find((option) => option.id === purchaseState.optionId && option.active)
+      : undefined
+  ) ?? defaultOption;
+  const quantity = Math.max(1, Math.min(purchaseState.quantity, selectedOption.stock));
+  const selectedPrice = getPurchaseOptionPrice(product.price, selectedOption);
+  const soldOut = selectedOption.stock < 1;
+  const canCompareOriginalPrice = selectedOption.isDefault && selectedOption.priceAdjustment === 0;
+  const discountRate = canCompareOriginalPrice ? getDiscountRate(product) : null;
+  const showOptionSelector = !hasOnlyImplicitLegacyOption(product);
   const gallery = buildProductGallery(product);
   const selectedImage = gallery[selectedImageIndex];
   const primaryIngredient = product.ingredients[0];
@@ -88,8 +126,20 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
     : "상세 정보 확인";
   const certificationText = product.certifications.slice(0, 2).join(" · ") || "상세 정보 확인";
 
-  const decreaseQuantity = () => setQuantity((current) => Math.max(1, current - 1));
-  const increaseQuantity = () => setQuantity((current) => Math.min(product.stock, current + 1));
+  const setSelectedQuantity = (nextQuantity: number) => setPurchaseState({
+    productId: product.id,
+    optionId: selectedOption.id,
+    quantity: Math.max(1, Math.min(nextQuantity, selectedOption.stock)),
+  });
+  const decreaseQuantity = () => setSelectedQuantity(quantity - 1);
+  const increaseQuantity = () => setSelectedQuantity(quantity + 1);
+  const selectPurchaseOption = (option: PurchaseOption) => {
+    setPurchaseState({
+      productId: product.id,
+      optionId: option.id,
+      quantity: Math.max(1, Math.min(quantity, option.stock)),
+    });
+  };
   const buyNow = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     prepareBuyNow(product, quantity);
@@ -156,11 +206,21 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
         {product.description ? <p className="product-detail__description">{product.description}</p> : null}
         <div className="product-detail__price-row">
           {discountRate === null ? null : <strong className="product-detail__discount">{discountRate}%</strong>}
-          <strong className="product-detail__price">{formatWon(product.price)}</strong>
+          <strong className="product-detail__price">{formatWon(selectedPrice)}</strong>
           {discountRate !== null && product.originalPrice !== null ? (
             <del>{formatWon(product.originalPrice)}</del>
           ) : null}
         </div>
+        {showOptionSelector ? (
+          <PurchaseOptionSelector
+            product={product}
+            selectedId={selectedOption.id}
+            onSelect={selectPurchaseOption}
+          />
+        ) : null}
+        {selectedOption.durationMonths === null ? null : (
+          <p className="product-detail__duration">예상 복용 기간 {selectedOption.durationMonths}개월</p>
+        )}
         <dl className="product-detail__facts" aria-label="구매 핵심 정보">
           <div>
             <dt>섭취</dt>
@@ -176,7 +236,10 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
           </div>
         </dl>
         <p className={`product-detail__stock${soldOut ? " product-detail__stock--sold-out" : ""}`}>
-          {soldOut ? "품절된 상품입니다" : product.stock <= 5 ? `재고 ${product.stock}개 남음` : "재고 있음"}
+          {soldOut
+            ? showOptionSelector ? "품절된 옵션입니다" : "품절된 상품입니다"
+            : showOptionSelector ? `재고 ${selectedOption.stock}개 남음`
+              : selectedOption.stock <= 5 ? `재고 ${selectedOption.stock}개 남음` : "재고 있음"}
         </p>
         <p className="product-detail__shipping"><strong>{formatFreeShippingCondition()}</strong> · {STORE_POLICIES.shipping.dispatch}</p>
       </section>
@@ -188,7 +251,7 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
           type="number"
           aria-label="수량"
           min={1}
-          max={Math.max(1, product.stock)}
+          max={Math.max(1, selectedOption.stock)}
           value={quantity}
           readOnly
           inputMode="numeric"
@@ -196,7 +259,7 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
         <button
           type="button"
           aria-label="수량 늘리기"
-          disabled={soldOut || quantity >= product.stock}
+          disabled={soldOut || quantity >= selectedOption.stock}
           onClick={increaseQuantity}
         >
           +
@@ -205,7 +268,7 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
       <form className="product-detail__actions" onSubmit={buyNow}>
         <div className="product-detail__mobile-purchase" aria-label="구매 요약" aria-live="polite">
           <span>수량 {quantity}개</span>
-          <strong>{formatWon(product.price * quantity)}</strong>
+          <strong>{formatWon(selectedPrice * quantity)}</strong>
         </div>
         <button type="button" disabled={soldOut} onClick={addToCart}>
           장바구니 담기

@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { formatWon } from "../../lib/format";
 import { PRODUCT_CATEGORIES, taxonomyLabel } from "../../lib/catalog/taxonomy";
+import { getProductDisplayPrice } from "../../lib/products/purchase-options";
 import type { Product } from "../../lib/products/types";
 
 const discountRate = (product: Product): number | null => {
@@ -12,7 +13,8 @@ const discountRate = (product: Product): number | null => {
 };
 
 export function ProductCard({ product, rank }: { product: Product; rank?: number }) {
-  const discount = discountRate(product);
+  const displayPrice = getProductDisplayPrice(product);
+  const discount = displayPrice.varies ? null : discountRate(product);
   const [imageFailed, setImageFailed] = useState(false);
 
   return (
@@ -45,7 +47,9 @@ export function ProductCard({ product, rank }: { product: Product; rank?: number
           ) : null}
           <div className="product-card__price-row">
             {discount ? <strong className="product-card__discount">{discount}%</strong> : null}
-            <strong className="product-card__price">{formatWon(product.price)}</strong>
+            <strong className="product-card__price">
+              {formatWon(displayPrice.price)}{displayPrice.varies ? "부터" : ""}
+            </strong>
           </div>
           {product.originalPrice && discount ? (
             <del className="product-card__original-price">{formatWon(product.originalPrice)}</del>

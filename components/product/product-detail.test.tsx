@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
@@ -181,6 +181,210 @@ it("keeps the selected quantity and total visible in the mobile purchase bar", a
 
   expect(within(purchaseSummary).getByText("수량 2개")).toBeVisible();
   expect(within(purchaseSummary).getByText("64,000원")).toBeVisible();
+});
+
+it("selects the default purchase option and updates price, stock, duration, and mobile total", async () => {
+  const optionedProduct: Product = {
+    ...product,
+    price: 80_000,
+    originalPrice: 100_000,
+    stock: 15,
+    purchaseOptions: [
+      {
+        id: "2-month",
+        label: "2개월분",
+        durationMonths: 2,
+        sku: "OMEGA-2M",
+        priceAdjustment: -35_000,
+        stock: 3,
+        active: true,
+        isDefault: false,
+      },
+      {
+        id: "4-month",
+        label: "4개월분",
+        durationMonths: 4,
+        sku: "OMEGA-4M",
+        priceAdjustment: 0,
+        stock: 12,
+        active: true,
+        isDefault: true,
+      },
+    ],
+  };
+  const user = userEvent.setup();
+  render(<ProductDetail product={optionedProduct} reviews={[]} />);
+
+  expect(screen.getByRole("radio", { name: /4개월분/ })).toBeChecked();
+  expect(screen.getByText("80,000원", { selector: ".product-detail__price" })).toBeVisible();
+  expect(screen.getByText("예상 복용 기간 4개월")).toBeVisible();
+
+  await user.click(screen.getByRole("radio", { name: /2개월분/ }));
+
+  expect(screen.getByText("45,000원", { selector: ".product-detail__price" })).toBeVisible();
+  expect(screen.getByText("재고 3개 남음")).toBeVisible();
+  expect(screen.getByText("예상 복용 기간 2개월")).toBeVisible();
+  expect(within(screen.getByLabelText("구매 요약")).getByText("45,000원")).toBeVisible();
+  expect(screen.queryByText("20%")).not.toBeInTheDocument();
+  expect(screen.queryByText("100,000원")).not.toBeInTheDocument();
+});
+
+it("caps the current quantity when changing to a lower-stock option", async () => {
+  const optionedProduct: Product = {
+    ...product,
+    price: 80_000,
+    originalPrice: null,
+    stock: 7,
+    purchaseOptions: [
+      {
+        id: "small",
+        label: "소량 구성",
+        durationMonths: 1,
+        sku: "OMEGA-S",
+        priceAdjustment: -50_000,
+        stock: 2,
+        active: true,
+        isDefault: false,
+      },
+      {
+        id: "large",
+        label: "대량 구성",
+        durationMonths: 4,
+        sku: "OMEGA-L",
+        priceAdjustment: 0,
+        stock: 5,
+        active: true,
+        isDefault: true,
+      },
+    ],
+  };
+  const user = userEvent.setup();
+  render(<ProductDetail product={optionedProduct} reviews={[]} />);
+
+  for (let count = 0; count < 3; count += 1) {
+    await user.click(screen.getByRole("button", { name: "수량 늘리기" }));
+  }
+  expect(screen.getByLabelText("수량")).toHaveValue(4);
+
+  await user.click(screen.getByRole("radio", { name: /소량 구성/ }));
+
+  expect(screen.getByLabelText("수량")).toHaveValue(2);
+  expect(within(screen.getByLabelText("구매 요약")).getByText("60,000원")).toBeVisible();
+  expect(screen.getByRole("button", { name: "수량 늘리기" })).toBeDisabled();
+});
+
+it("disables purchase controls for a selected sold-out option", () => {
+  render(<ProductDetail product={{
+    ...product,
+    stock: 3,
+    purchaseOptions: [
+      {
+        id: "sold-out-default",
+        label: "품절 구성",
+        durationMonths: 2,
+        sku: "OMEGA-SOLD",
+        priceAdjustment: 0,
+        stock: 0,
+        active: true,
+        isDefault: true,
+      },
+      {
+        id: "available",
+        label: "구매 가능 구성",
+        durationMonths: 4,
+        sku: "OMEGA-AVAILABLE",
+        priceAdjustment: 10_000,
+        stock: 3,
+        active: true,
+        isDefault: false,
+      },
+    ],
+  }} reviews={[]} />);
+
+  expect(screen.getByText("품절된 옵션입니다")).toBeVisible();
+  expect(screen.getByRole("button", { name: "장바구니 담기" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "바로 구매" })).toBeDisabled();
+  expect(screen.getByLabelText("수량")).toHaveValue(1);
+});
+
+it("keeps legacy products on the implicit default without a one-choice selector", () => {
+  render(<ProductDetail product={product} reviews={[]} />);
+
+  expect(screen.queryByRole("radiogroup", { name: "구매 옵션" })).not.toBeInTheDocument();
+  expect(screen.getByText("32,000원", { selector: ".product-detail__price" })).toBeVisible();
+  expect(screen.getByText("20%")).toBeVisible();
+});
+
+it("resets to the current default option and recaps quantity when product or option props change", async () => {
+  const firstProduct: Product = {
+    ...product,
+    id: "first-product",
+    price: 80_000,
+    originalPrice: null,
+    stock: 5,
+    purchaseOptions: [{
+      id: "first-default",
+      label: "첫 상품 기본 구성",
+      durationMonths: 4,
+      sku: "FIRST-4M",
+      priceAdjustment: 0,
+      stock: 5,
+      active: true,
+      isDefault: true,
+    }],
+  };
+  const nextProduct: Product = {
+    ...product,
+    id: "next-product",
+    name: "다음 상품",
+    price: 100_000,
+    originalPrice: null,
+    stock: 2,
+    purchaseOptions: [{
+      id: "next-default",
+      label: "다음 상품 기본 구성",
+      durationMonths: 2,
+      sku: "NEXT-2M",
+      priceAdjustment: -20_000,
+      stock: 2,
+      active: true,
+      isDefault: true,
+    }],
+  };
+  const user = userEvent.setup();
+  const view = render(<ProductDetail product={firstProduct} reviews={[]} />);
+
+  for (let count = 0; count < 3; count += 1) {
+    await user.click(screen.getByRole("button", { name: "수량 늘리기" }));
+  }
+  expect(screen.getByLabelText("수량")).toHaveValue(4);
+
+  view.rerender(<ProductDetail product={nextProduct} reviews={[]} />);
+
+  expect(screen.getByRole("radio", { name: /다음 상품 기본 구성/ })).toBeChecked();
+  expect(screen.getByText("80,000원", { selector: ".product-detail__price" })).toBeVisible();
+  await waitFor(() => expect(screen.getByLabelText("수량")).toHaveValue(2));
+  expect(within(screen.getByLabelText("구매 요약")).getByText("160,000원")).toBeVisible();
+
+  view.rerender(<ProductDetail product={{
+    ...nextProduct,
+    stock: 1,
+    purchaseOptions: [{
+      id: "replacement-default",
+      label: "교체된 기본 구성",
+      durationMonths: 1,
+      sku: "NEXT-1M",
+      priceAdjustment: 5_000,
+      stock: 1,
+      active: true,
+      isDefault: true,
+    }],
+  }} reviews={[]} />);
+
+  expect(screen.getByRole("radio", { name: /교체된 기본 구성/ })).toBeChecked();
+  expect(screen.getByText("105,000원", { selector: ".product-detail__price" })).toBeVisible();
+  expect(screen.getByLabelText("수량")).toHaveValue(1);
+  expect(within(screen.getByLabelText("구매 요약")).getByText("105,000원")).toBeVisible();
 });
 
 it("surfaces dosage, primary ingredient, and certifications before the accordions", () => {

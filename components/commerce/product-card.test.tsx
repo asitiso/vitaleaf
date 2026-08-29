@@ -97,3 +97,72 @@ it("replaces a broken non-empty thumbnail with the existing decorative brand fal
     "/products/omega-3",
   );
 });
+
+it("shows the lowest active option price and hides misleading product-level discounts when prices vary", () => {
+  render(<ProductCard product={{
+    ...product,
+    stock: 20,
+    price: 80_000,
+    originalPrice: 100_000,
+    purchaseOptions: [
+      {
+        id: "2-month",
+        label: "2개월분",
+        durationMonths: 2,
+        sku: "OMEGA-2M",
+        priceAdjustment: -35_000,
+        stock: 8,
+        active: true,
+        isDefault: false,
+      },
+      {
+        id: "4-month",
+        label: "4개월분",
+        durationMonths: 4,
+        sku: "OMEGA-4M",
+        priceAdjustment: 0,
+        stock: 12,
+        active: true,
+        isDefault: true,
+      },
+    ],
+  }} />);
+
+  expect(screen.getByText("45,000원부터")).toBeVisible();
+  expect(screen.queryByText("20%")).not.toBeInTheDocument();
+  expect(screen.queryByText("100,000원")).not.toBeInTheDocument();
+});
+
+it("preserves the current discount display when active option prices do not vary", () => {
+  render(<ProductCard product={{
+    ...product,
+    stock: 10,
+    purchaseOptions: [
+      {
+        id: "box-a",
+        label: "A 구성",
+        durationMonths: null,
+        sku: "OMEGA-A",
+        priceAdjustment: 0,
+        stock: 5,
+        active: true,
+        isDefault: true,
+      },
+      {
+        id: "box-b",
+        label: "B 구성",
+        durationMonths: null,
+        sku: "OMEGA-B",
+        priceAdjustment: 0,
+        stock: 5,
+        active: true,
+        isDefault: false,
+      },
+    ],
+  }} />);
+
+  expect(screen.getByText("32,000원")).toBeVisible();
+  expect(screen.queryByText("32,000원부터")).not.toBeInTheDocument();
+  expect(screen.getByText("20%")).toBeVisible();
+  expect(screen.getByText("40,000원")).toBeVisible();
+});
