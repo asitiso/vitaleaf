@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { normalizeProduct } from "./normalize";
+import { getProductAvailableStock } from "./purchase-options";
 
 describe("normalizeProduct", () => {
   it("normalizes missing arrays and timestamps without hiding invalid required fields", () => {
@@ -112,6 +113,7 @@ describe("normalizeProduct", () => {
     expect(product.purchaseOptions).toEqual([
       expect.objectContaining({ id: "default", stock: 8, active: true, isDefault: true }),
     ]);
+    expect(getProductAvailableStock(product)).toBe(8);
   });
 
   it("normalizes only supported age targets", () => {

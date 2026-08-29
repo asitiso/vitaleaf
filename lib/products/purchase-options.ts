@@ -13,7 +13,7 @@ const asRecord = (value: unknown): OptionRecord | null =>
 const requiredText = (value: unknown, field: "id" | "label" | "sku"): string => {
   if (typeof value !== "string") throw new Error(`Purchase option ${field} must be a string.`);
   const text = value.trim();
-  if (field !== "sku" && !text) throw new Error(`Purchase option ${field} is required.`);
+  if (!text) throw new Error(`Purchase option ${field} is required.`);
   return text;
 };
 
@@ -33,6 +33,20 @@ const implicitLegacyOption = (stock: number): PurchaseOption => ({
   active: true,
   isDefault: true,
 });
+
+const isImplicitLegacyOption = (rawOptions: unknown, legacyStock: number): boolean => {
+  if (!Array.isArray(rawOptions) || rawOptions.length !== 1) return false;
+  const option = asRecord(rawOptions[0]);
+  return option !== null
+    && option.id === LEGACY_PURCHASE_OPTION_ID
+    && option.label === "기본 구성"
+    && option.durationMonths == null
+    && option.sku === ""
+    && option.priceAdjustment === 0
+    && option.stock === legacyStock
+    && option.active === true
+    && option.isDefault === true;
+};
 
 const normalizeOption = (raw: unknown, basePrice: number): PurchaseOption => {
   const option = asRecord(raw);
@@ -87,6 +101,7 @@ export const normalizePurchaseOptions = (
     return [implicitLegacyOption(legacyStock)];
   }
   if (!Array.isArray(rawOptions)) throw new Error("Purchase options must be an array.");
+  if (isImplicitLegacyOption(rawOptions, legacyStock)) return [implicitLegacyOption(legacyStock)];
 
   const options = rawOptions.map((raw) => normalizeOption(raw, basePrice));
   const ids = new Set<string>();

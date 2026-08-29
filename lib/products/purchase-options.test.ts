@@ -78,6 +78,14 @@ describe("purchase options", () => {
     ], 80_000, 20)).toThrow(/SKU/i);
   });
 
+  it("rejects blank SKUs on explicit purchase options", () => {
+    expect(() => normalizePurchaseOptions([option({ sku: "" })], 80_000, 20)).toThrow(/SKU/i);
+    expect(() => normalizePurchaseOptions([
+      option({ id: "two-month", label: "2개월분", sku: "   ", isDefault: false }),
+      option(),
+    ], 80_000, 20)).toThrow(/SKU/i);
+  });
+
   it("rejects non-integer adjustments, negative stock, and invalid duration", () => {
     expect(() => normalizePurchaseOptions([option({ priceAdjustment: 0.5 })], 80_000, 20)).toThrow(/priceAdjustment/i);
     expect(() => normalizePurchaseOptions([option({ stock: -1 })], 80_000, 20)).toThrow(/stock/i);
