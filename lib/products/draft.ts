@@ -20,8 +20,9 @@ export const validatePublishableDraft = (draft: ProductDraft): DraftValidationEr
   if (!isNonEmptyText(draft.name)) addError(1, "name", "Enter a product name.");
   if (!isNonEmptyText(draft.category)) addError(1, "category", "Choose a product category.");
   if (!Number.isFinite(draft.price) || draft.price <= 0) addError(1, "price", "Enter a price greater than zero.");
-  if (!Number.isFinite(draft.stock) || draft.stock < 0) addError(1, "stock", "Enter stock as zero or more.");
-  if (Number.isFinite(draft.price) && draft.price > 0 && Number.isFinite(draft.stock) && draft.stock >= 0) {
+  const hasValidLegacyStock = Number.isInteger(draft.stock) && draft.stock >= 0;
+  if (!hasValidLegacyStock) addError(1, "stock", "Enter stock as a non-negative integer.");
+  if (Number.isFinite(draft.price) && draft.price > 0 && hasValidLegacyStock) {
     try {
       normalizePurchaseOptions(draft.purchaseOptions, draft.price, draft.stock);
     } catch {

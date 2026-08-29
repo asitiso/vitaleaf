@@ -42,7 +42,7 @@ const staffMessageFor = (error: DraftValidationError): string => ({
   name: "상품명을 입력해 주세요.",
   category: "상품 분류를 선택해 주세요.",
   price: "판매가를 0원보다 크게 입력해 주세요.",
-  stock: "재고 수량을 0개 이상으로 입력해 주세요.",
+  stock: "재고 수량을 0 이상의 정수로 입력해 주세요.",
   media: "상품 이미지를 한 장 이상 추가해 주세요.",
   dosage: "섭취 방법을 입력해 주세요.",
   ingredients: "이름이 있는 성분을 한 개 이상 추가해 주세요.",
@@ -132,7 +132,6 @@ export function ProductWizard({ draft, saveState, onChange, onSave, onPreview, o
     setBusy("publishing");
     setOperationError("");
     try {
-      await onSave();
       const nextErrors = validatePublishableDraft(workingDraft).map((error) => ({ ...error, message: staffMessageFor(error) }));
       setErrors(nextErrors);
       if (nextErrors.length) {
@@ -140,6 +139,7 @@ export function ProductWizard({ draft, saveState, onChange, onSave, onPreview, o
         goTo(firstVisibleStep);
         return;
       }
+      await onSave();
       await onPublish();
     } catch {
       setOperationError("판매 공개를 완료하지 못했습니다. 저장 상태를 확인한 뒤 다시 시도해 주세요.");

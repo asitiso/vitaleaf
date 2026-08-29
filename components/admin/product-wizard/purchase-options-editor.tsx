@@ -61,7 +61,8 @@ function NumericOptionInput({ id, label, value, min, onChange }: NumericOptionIn
 
 const canonicalValidationError = (basePrice: number, options: PurchaseOption[]): string | null => {
   try {
-    normalizePurchaseOptions(options, basePrice, 0);
+    const explicitLegacyStock = options.length === 1 && options[0]?.stock === 0 ? 1 : 0;
+    normalizePurchaseOptions(options, basePrice, explicitLegacyStock);
     return null;
   } catch (error) {
     return error instanceof Error ? error.message : "Purchase options are invalid.";

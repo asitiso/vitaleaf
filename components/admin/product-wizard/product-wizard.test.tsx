@@ -138,14 +138,14 @@ it("lets an administrator select a recommendation age", async () => {
   expect(props.onChange).toHaveBeenCalledWith(expect.objectContaining({ ageTargets: ["child"] }));
 });
 
-it("flushes the latest draft before validating a publish attempt", async () => {
+it("validates an incomplete draft before attempting to save it", async () => {
   const user = userEvent.setup();
   const props = propsFor();
   render(<ProductWizard {...props} />);
 
   await user.click(screen.getByRole("button", { name: "판매 공개" }));
 
-  expect(props.onSave).toHaveBeenCalledOnce();
+  expect(props.onSave).not.toHaveBeenCalled();
   expect(props.onPublish).not.toHaveBeenCalled();
   expect(screen.getByLabelText("상품명")).toHaveFocus();
 });
@@ -609,6 +609,25 @@ it("keeps the familiar single stock control for the implicit legacy default opti
   expect(screen.queryByRole("group", { name: "구매 옵션 관리" })).not.toBeInTheDocument();
 });
 
+it("routes fractional legacy stock to the visible stock control", async () => {
+  const user = userEvent.setup();
+  const props = propsFor(publishableSalesDraft({
+    stock: 1.5,
+    purchaseOptions: undefined,
+  }));
+  render(<ProductWizard {...props} />);
+
+  await user.click(screen.getByRole("button", { name: "판매 공개" }));
+
+  expect(props.onSave).not.toHaveBeenCalled();
+  expect(props.onPublish).not.toHaveBeenCalled();
+  const stockInput = document.getElementById("wizard-stock");
+  expect(stockInput).toBeInstanceOf(HTMLInputElement);
+  expect(stockInput).toHaveFocus();
+  expect(stockInput).toHaveAccessibleDescription("재고 수량을 0 이상의 정수로 입력해 주세요.");
+  expect(screen.queryByRole("group", { name: "구매 옵션 관리" })).not.toBeInTheDocument();
+});
+
 it("does not hide a default-shaped option whose stock disagrees with legacy stock", () => {
   render(<ProductWizard {...propsFor({
     currentStep: 4,
@@ -672,11 +691,12 @@ it("blocks publishing invalid explicit options and focuses their editor", async 
   const user = userEvent.setup();
   const options = explicitPurchaseOptions().map((option) => ({ ...option, sku: "DUPLICATE" }));
   const props = propsFor(publishableSalesDraft({ purchaseOptions: options }));
+  props.onSave.mockRejectedValue(new Error("saveDraft rejected invalid purchase options"));
   render(<ProductWizard {...props} />);
 
   await user.click(screen.getByRole("button", { name: "판매 공개" }));
 
-  expect(props.onSave).toHaveBeenCalledOnce();
+  expect(props.onSave).not.toHaveBeenCalled();
   expect(props.onPublish).not.toHaveBeenCalled();
   expect(screen.getByRole("group", { name: "구매 옵션 관리" })).toHaveFocus();
   expect(screen.getAllByText("구매 옵션의 기본 구성, SKU, 재고와 최종 가격을 확인해 주세요.")).toHaveLength(2);

@@ -108,6 +108,22 @@ describe("product drafts", () => {
     }))).toContainEqual(expect.objectContaining({ step: 3, field: "ingredients" }));
   });
 
+  it("routes fractional legacy stock to the stock field", () => {
+    expect(validatePublishableDraft(makeDraft({ stock: 1.5, purchaseOptions: undefined }))).toContainEqual({
+      step: 1,
+      field: "stock",
+      message: "Enter stock as a non-negative integer.",
+    });
+  });
+
+  it("keeps an explicit fractional option stock error on purchase options", () => {
+    const options = purchaseOptions.map((option, index) => index === 0 ? { ...option, stock: 1.5 } : option);
+    const errors = validatePublishableDraft(makeDraft({ purchaseOptions: options }));
+
+    expect(errors).toContainEqual(expect.objectContaining({ field: "purchaseOptions" }));
+    expect(errors).not.toContainEqual(expect.objectContaining({ field: "stock" }));
+  });
+
   it("publishes standard media while deriving legacy image fields", () => {
     const input = toPublishedProductInput(
       makeDraft({

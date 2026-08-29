@@ -172,4 +172,19 @@ describe("PurchaseOptionsEditor", () => {
 
     expect(screen.getByRole("alert")).toHaveTextContent("구매 옵션을 다시 확인해 주세요.");
   });
+
+  it("treats a displayed zero-stock default-shaped row as explicit and requires its SKU", () => {
+    render(<EditorHarness initialOptions={[{
+      id: "default",
+      label: "기본 구성",
+      durationMonths: null,
+      sku: "",
+      priceAdjustment: 0,
+      stock: 0,
+      active: true,
+      isDefault: true,
+    }]} />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Purchase option sku is required.");
+  });
 });
