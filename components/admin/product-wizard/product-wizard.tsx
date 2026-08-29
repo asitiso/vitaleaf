@@ -48,6 +48,7 @@ const staffMessageFor = (error: DraftValidationError): string => ({
   ingredients: "이름이 있는 성분을 한 개 이상 추가해 주세요.",
   origin: "원산지를 입력해 주세요.",
   cautions: "주의사항을 한 개 이상 추가해 주세요.",
+  purchaseOptions: "구매 옵션의 기본 구성, SKU, 재고와 최종 가격을 확인해 주세요.",
 }[error.field]);
 
 const focusIdFor = (field: DraftValidationError["field"]): string | null => ({
@@ -60,6 +61,7 @@ const focusIdFor = (field: DraftValidationError["field"]): string | null => ({
   ingredients: null,
   origin: "wizard-origin",
   cautions: null,
+  purchaseOptions: "wizard-purchase-options",
 }[field]);
 
 const asStep = (value: number): WizardStep => value === 2 || value === 3 || value === 4 ? value : 1;

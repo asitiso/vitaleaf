@@ -1052,6 +1052,30 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
 .product-wizard__rows button, .product-wizard__actions button { min-height: 44px; }
 .product-wizard__string-row > button, .product-wizard__ingredient-row > button { border: 1px solid #dfb9b2; border-radius: 4px; padding: 8px 11px; color: #993f30; background: #fff; font-weight: 700; cursor: pointer; }
 .product-wizard__rows > .admin-secondary-button { justify-self: start; }
+.purchase-options-editor { display: grid; max-width: 100%; min-width: 0; gap: 16px; padding: 18px; border: 1px solid #cbd9ce; border-radius: 6px; margin: 0; background: #f9fbf9; }
+.purchase-options-editor > legend { padding: 0 6px; color: var(--color-forest); font-size: 16px; font-weight: 800; }
+.purchase-options-editor > p { margin: 0; color: #64756c; font-size: 13px; line-height: 1.6; }
+.purchase-options-editor__base-price strong { color: var(--color-forest); }
+.purchase-options-editor__list { display: grid; min-width: 0; gap: 14px; }
+.purchase-options-editor__row { display: grid; min-width: 0; gap: 14px; padding: 16px; border: 1px solid #d5dfd7; border-radius: 6px; background: #fff; }
+.purchase-options-editor__row > header { display: flex; min-width: 0; gap: 12px; align-items: center; justify-content: space-between; }
+.purchase-options-editor__row > header > strong { color: var(--color-forest); }
+.purchase-options-editor__actions { display: flex; min-width: 0; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.purchase-options-editor__actions button { border: 1px solid #bdcec1; border-radius: 4px; padding: 7px 10px; color: #315544; background: #fff; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
+.purchase-options-editor__actions button:last-child { color: #993f30; border-color: #dfb9b2; }
+.purchase-options-editor__actions button:disabled { color: #8b9890; border-color: #e1e6e2; background: #f2f4f2; cursor: not-allowed; }
+.purchase-options-editor__fields { display: grid; min-width: 0; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.purchase-options-editor__fields label { display: grid; min-width: 0; gap: 6px; color: #30493e; font-size: 12px; font-weight: 800; }
+.purchase-options-editor__fields input, .purchase-options-editor__actions button, .purchase-options-editor > button { min-height: 44px; }
+.purchase-options-editor__fields input { width: 100%; min-width: 0; border: 1px solid #c8d6cb; border-radius: 4px; padding: 9px 10px; color: var(--color-ink); background: #fff; font: inherit; font-weight: 500; }
+.purchase-options-editor__toggles { display: flex; flex-wrap: wrap; gap: 10px 18px; }
+.purchase-options-editor__toggles label { display: flex; min-height: 44px; gap: 8px; align-items: center; color: #30493e; font-size: 13px; font-weight: 800; }
+.purchase-options-editor__toggles input { width: 18px; height: 18px; accent-color: var(--color-sage); }
+.purchase-options-editor__prices { display: flex; min-width: 0; flex-wrap: wrap; gap: 8px 16px; padding: 12px; border-radius: 5px; color: #52675a; background: #eff5f0; font-size: 13px; overflow-wrap: anywhere; }
+.purchase-options-editor__prices output { color: var(--color-forest); font-weight: 800; }
+.purchase-options-editor__errors { display: grid; gap: 5px; padding: 12px 14px; border: 1px solid #e3bbb2; border-radius: 5px; color: #7e3024; background: #fff4f1; overflow-wrap: anywhere; }
+.purchase-options-editor__errors p { margin: 0; font-size: 12px; font-weight: 700; }
+.purchase-options-editor > .admin-secondary-button { justify-self: start; }
 .product-wizard__media-slot { display: grid; min-height: 126px; place-items: center; padding: 22px; border: 2px dashed #bdd0c1; border-radius: 6px; color: #62736a; background: #f9fbf9; text-align: center; }
 .product-wizard__media-slot:focus { outline: 3px solid #bed6c6; outline-offset: 3px; }
 .product-wizard__media-slot p { margin: 0; }
@@ -1091,6 +1115,7 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
   .product-wizard__ingredient-row { grid-template-columns: 1fr 1fr; }
   .product-wizard__ingredient-row label:first-child { grid-column: 1 / -1; }
   .product-media-step__list { grid-template-columns: 1fr 1fr; }
+  .purchase-options-editor__fields { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 480px) {
@@ -1101,6 +1126,11 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
   .product-wizard__ingredient-row { grid-template-columns: 1fr; }
   .product-wizard__ingredient-row label:first-child { grid-column: auto; }
   .product-media-step__list { grid-template-columns: 1fr; }
+  .purchase-options-editor { padding: 14px; }
+  .purchase-options-editor__row { padding: 13px; }
+  .purchase-options-editor__row > header { align-items: flex-start; flex-direction: column; }
+  .purchase-options-editor__actions { width: 100%; justify-content: flex-start; }
+  .purchase-options-editor__actions button { flex: 1 1 calc(50% - 8px); }
   .product-wizard__actions { right: 0; bottom: 0; left: 0; padding: 10px 16px max(10px, env(safe-area-inset-bottom)); border-top: 1px solid #d6dfd8; box-shadow: 0 -8px 20px rgb(24 50 41 / 10%); }
   .product-wizard__actions button { flex: 1 1 calc(50% - 8px); }
 }

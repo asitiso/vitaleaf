@@ -173,4 +173,19 @@ describe("390px product wizard CSS contract", () => {
     expect(mediaRule("(max-width: 480px)", ".product-wizard__actions button").style.flex)
       .toBe("1 1 calc(50% - 8px)");
   });
+
+  it("keeps purchase option rows inside the viewport with touch-sized controls", () => {
+    expect(baseRule(".purchase-options-editor").style.maxWidth).toBe("100%");
+    expect(Number.parseFloat(baseRule(".purchase-options-editor__row").style.minWidth)).toBe(0);
+    expect(Number.parseFloat(baseRule(
+      ".purchase-options-editor__fields input, .purchase-options-editor__actions button, .purchase-options-editor > button",
+    ).style.minHeight)).toBeGreaterThanOrEqual(44);
+    expect(mediaRule("(max-width: 760px)", ".purchase-options-editor__fields").style.gridTemplateColumns).toBe("1fr");
+    expect(mediaRule("(max-width: 480px)", ".purchase-options-editor__actions button").style.flex)
+      .toBe("1 1 calc(50% - 8px)");
+  });
+
+  it("uses the shared visible keyboard focus ring for option controls", () => {
+    expect(baseRule(":focus-visible").style.boxShadow).toBe("var(--focus-ring)");
+  });
 });

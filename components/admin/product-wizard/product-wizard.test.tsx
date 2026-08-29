@@ -90,6 +90,44 @@ it("shows legacy Korean taxonomy values in the canonical wizard controls", () =>
   expect(screen.getByRole("checkbox", { name: "면역" })).toBeChecked();
 });
 
+const explicitPurchaseOptions = () => [
+  {
+    id: "two-month",
+    label: "2개월분",
+    durationMonths: 2,
+    sku: "OMEGA-2M",
+    priceAdjustment: -5_000,
+    stock: 4,
+    active: true,
+    isDefault: false,
+  },
+  {
+    id: "four-month",
+    label: "4개월분",
+    durationMonths: 4,
+    sku: "OMEGA-4M",
+    priceAdjustment: 0,
+    stock: 6,
+    active: true,
+    isDefault: true,
+  },
+];
+
+const publishableSalesDraft = (overrides: Partial<ProductDraft> = {}): Partial<ProductDraft> => ({
+  currentStep: 4,
+  name: "오메가",
+  category: "nutrition",
+  price: 20_000,
+  stock: 10,
+  purchaseOptions: explicitPurchaseOptions(),
+  media: [{ url: "omega.jpg", storagePath: null, alt: "오메가", order: 0 }],
+  dosage: "하루 한 번",
+  ingredients: [{ name: "EPA", amount: "600mg", dailyValue: "" }],
+  origin: "한국",
+  cautions: ["권장량을 지켜 주세요."],
+  ...overrides,
+});
+
 it("lets an administrator select a recommendation age", async () => {
   const user = userEvent.setup();
   const props = propsFor({ ageTargets: [] });
@@ -548,4 +586,99 @@ it("shows the same operation alert when preview throws synchronously", async () 
   await user.click(screen.getByRole("button", { name: "미리 보기" }));
 
   expect(screen.getByRole("alert")).toHaveTextContent("미리 보기를 완료하지 못했습니다.");
+});
+
+it("keeps the familiar single stock control for the implicit legacy default option", () => {
+  render(<ProductWizard {...propsFor({
+    currentStep: 4,
+    price: 20_000,
+    stock: 7,
+    purchaseOptions: [{
+      id: "default",
+      label: "기본 구성",
+      durationMonths: null,
+      sku: "",
+      priceAdjustment: 0,
+      stock: 7,
+      active: true,
+      isDefault: true,
+    }],
+  })} />);
+
+  expect(screen.getByLabelText("재고 수량")).toHaveValue(7);
+  expect(screen.queryByRole("group", { name: "구매 옵션 관리" })).not.toBeInTheDocument();
+});
+
+it("does not hide a default-shaped option whose stock disagrees with legacy stock", () => {
+  render(<ProductWizard {...propsFor({
+    currentStep: 4,
+    price: 20_000,
+    stock: 7,
+    purchaseOptions: [{
+      id: "default",
+      label: "기본 구성",
+      durationMonths: null,
+      sku: "",
+      priceAdjustment: 0,
+      stock: 5,
+      active: true,
+      isDefault: true,
+    }],
+  })} />);
+
+  expect(screen.queryByLabelText("재고 수량")).not.toBeInTheDocument();
+  expect(screen.getByRole("group", { name: "구매 옵션 관리" })).toBeVisible();
+});
+
+it("lets staff opt a legacy product into explicit options without re-entering its stock", async () => {
+  const user = userEvent.setup();
+  const props = propsFor({ currentStep: 4, price: 20_000, stock: 7, purchaseOptions: [] });
+  render(<ProductWizard {...props} />);
+
+  await user.click(screen.getByRole("button", { name: "구매 옵션 사용" }));
+
+  expect(screen.queryByLabelText("재고 수량")).not.toBeInTheDocument();
+  expect(screen.getByRole("group", { name: "구매 옵션 관리" })).toBeVisible();
+  expect(props.onChange).toHaveBeenLastCalledWith(expect.objectContaining({
+    stock: 7,
+    purchaseOptions: [expect.objectContaining({
+      id: expect.stringMatching(/^[0-9a-f-]{36}$/i),
+      label: "기본 구성",
+      sku: "OPTION-1",
+      stock: 7,
+      active: true,
+      isDefault: true,
+    })],
+  }));
+});
+
+it("uses option stock as authoritative and synchronizes the read-only active total", async () => {
+  const user = userEvent.setup();
+  const props = propsFor(publishableSalesDraft());
+  render(<ProductWizard {...props} />);
+
+  expect(screen.queryByLabelText("재고 수량")).not.toBeInTheDocument();
+  expect(screen.getByLabelText("활성 옵션 총 재고")).toHaveValue("10개");
+
+  const stock = screen.getByLabelText("옵션 1 재고");
+  await user.clear(stock);
+  await user.type(stock, "8");
+
+  expect(screen.getByLabelText("활성 옵션 총 재고")).toHaveValue("14개");
+  expect(props.onChange).toHaveBeenLastCalledWith(expect.objectContaining({ stock: 14 }));
+});
+
+it("blocks publishing invalid explicit options and focuses their editor", async () => {
+  const user = userEvent.setup();
+  const options = explicitPurchaseOptions().map((option) => ({ ...option, sku: "DUPLICATE" }));
+  const props = propsFor(publishableSalesDraft({ purchaseOptions: options }));
+  render(<ProductWizard {...props} />);
+
+  await user.click(screen.getByRole("button", { name: "판매 공개" }));
+
+  expect(props.onSave).toHaveBeenCalledOnce();
+  expect(props.onPublish).not.toHaveBeenCalled();
+  expect(screen.getByRole("group", { name: "구매 옵션 관리" })).toHaveFocus();
+  expect(screen.getAllByText("구매 옵션의 기본 구성, SKU, 재고와 최종 가격을 확인해 주세요.")).toHaveLength(2);
+  expect(screen.getByText("Purchase option SKU values must be unique.")).toBeVisible();
 });
