@@ -10,6 +10,7 @@ import {
 
 import { toPublishedProductInput, validatePublishableDraft, type DraftValidationError } from "../products/draft";
 import { normalizeMedia, normalizeProduct } from "../products/normalize";
+import { normalizePurchaseOptions } from "../products/purchase-options";
 import type {
   DraftMode,
   DraftStatus,
@@ -160,6 +161,8 @@ const asCurrentStep = (value: unknown): ProductDraft["currentStep"] => (
 const normalizeDraft = (id: string, value: unknown): ProductDraft => {
   const draft = asRecord(value);
   const media = normalizeMedia(draft.media, draft.thumbnailUrl, draft.images);
+  const price = asNonNegativeNumber(draft.price);
+  const stock = asNonNegativeNumber(draft.stock);
 
   return {
     id,
@@ -168,7 +171,7 @@ const normalizeDraft = (id: string, value: unknown): ProductDraft => {
     category: canonicalTaxonomyValue(PRODUCT_CATEGORIES, asString(draft.category)),
     concerns: canonicalTaxonomyValues(HEALTH_CONCERNS, asStringArray(draft.concerns)),
     ageTargets: canonicalAgeTargets(asStringArray(draft.ageTargets)),
-    price: asNonNegativeNumber(draft.price),
+    price,
     originalPrice: asNullableNonNegativeNumber(draft.originalPrice),
     thumbnailUrl: media[0]?.url ?? asString(draft.thumbnailUrl),
     images: media.length > 0 ? media.map((item) => item.url) : asStringArray(draft.images),
@@ -180,7 +183,8 @@ const normalizeDraft = (id: string, value: unknown): ProductDraft => {
     origin: asString(draft.origin),
     certifications: asStringArray(draft.certifications),
     cautions: asStringArray(draft.cautions),
-    stock: asNonNegativeNumber(draft.stock),
+    stock,
+    purchaseOptions: normalizePurchaseOptions(draft.purchaseOptions, price, stock),
     isBest: draft.isBest === true,
     isNew: draft.isNew === true,
     salesRank: asNullableNonNegativeNumber(draft.salesRank),
@@ -221,6 +225,9 @@ const draftContentFrom = (source: Product | ProductDraft): DraftContent => ({
   certifications: [...source.certifications],
   cautions: [...source.cautions],
   stock: source.stock,
+  ...(source.purchaseOptions === undefined
+    ? {}
+    : { purchaseOptions: source.purchaseOptions.map((option) => ({ ...option })) }),
   isBest: source.isBest,
   isNew: source.isNew,
   salesRank: source.salesRank,

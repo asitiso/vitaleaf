@@ -8,6 +8,7 @@ import {
   type ProductDraftRepositoryAdapter,
   type ProductDraftTransaction,
 } from "./product-drafts";
+import { createCsvDraft } from "../csv/products-csv";
 import type { Product, ProductDraft } from "../products/types";
 
 type StoredRecord = Record<string, unknown>;
@@ -181,6 +182,29 @@ const productFields = {
   reviewCount: 31,
 };
 
+const purchaseOptions = [
+  {
+    id: "2-month",
+    label: "2개월분",
+    durationMonths: 2,
+    sku: "OMEGA-2M",
+    priceAdjustment: -14_000,
+    stock: 4,
+    active: true,
+    isDefault: false,
+  },
+  {
+    id: "4-month",
+    label: "4개월분",
+    durationMonths: 4,
+    sku: "OMEGA-4M",
+    priceAdjustment: 0,
+    stock: 8,
+    active: true,
+    isDefault: true,
+  },
+];
+
 const makeProduct = (overrides: Partial<Product> = {}): Product => ({
   id: "product-1",
   ...productFields,
@@ -224,6 +248,42 @@ const productFromState = (state: SharedState, id: string): Product => {
 };
 
 describe("product draft lifecycle transactions", () => {
+  it("preserves CSV purchase options through draft save, reload, and publish", async () => {
+    const state = createState();
+    const repository = createProductDraftRepository(createSharedAdapter(state));
+    const csvDraft = repository.startDraftSession(createCsvDraft({
+      ...productFields,
+      purchaseOptions,
+    }, "csv-options"));
+
+    const saved = await repository.saveDraft(csvDraft);
+    const reloaded = await repository.getDraft(saved.id);
+    if (!reloaded) throw new Error("Expected the saved CSV draft.");
+
+    expect(state.drafts.get(saved.id)).toMatchObject({ purchaseOptions });
+    expect(reloaded.purchaseOptions).toEqual(purchaseOptions);
+    await repository.publishDraft(reloaded);
+    expect(state.products.get(saved.id)).toMatchObject({ purchaseOptions });
+  });
+
+  it("preserves purchase options for edit, duplicate, and unpublish drafts", async () => {
+    const state = createState();
+    const product = makeProduct({ purchaseOptions });
+    seedProduct(state, product);
+    const repository = createProductDraftRepository(createSharedAdapter(state));
+
+    const edit = await repository.saveDraft(repository.createProductEditDraft(product));
+    const duplicate = await repository.duplicateProductToDraft(product);
+    await repository.discardDraft(edit);
+    const restore = await repository.unpublishProduct(product);
+
+    expect(edit.purchaseOptions).toEqual(purchaseOptions);
+    expect(duplicate.purchaseOptions).toEqual(purchaseOptions);
+    expect(restore.purchaseOptions).toEqual(purchaseOptions);
+    expect(state.drafts.get(duplicate.id)).toMatchObject({ purchaseOptions });
+    expect(state.drafts.get(product.id)).toMatchObject({ purchaseOptions });
+  });
+
   it("reuses its committed local session for sequential saves of the original unsaved object", async () => {
     const state = createState();
     const repository = createProductDraftRepository(createSharedAdapter(state));

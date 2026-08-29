@@ -75,6 +75,16 @@ const product: Product = {
   updatedAt: null,
 };
 
+const optionedProduct: Product = {
+  ...product,
+  id: "omega-options",
+  stock: 5,
+  purchaseOptions: [
+    { id: "2-month", label: "2개월분", durationMonths: 2, sku: "OMEGA-2M", priceAdjustment: -14_000, stock: 2, active: true, isDefault: false },
+    { id: "4-month", label: "4개월분", durationMonths: 4, sku: "OMEGA-4M", priceAdjustment: 0, stock: 3, active: true, isDefault: true },
+  ],
+};
+
 const dependencies = (overrides: Partial<AdminDashboardDependencies> = {}): AdminDashboardDependencies => ({
   observeAdminSession: (next) => {
     next("signed-out");
@@ -997,6 +1007,74 @@ it("guards actual product links only while the active editor has unsaved work", 
   storeLink.dispatchEvent(afterClose);
   expect(guardPreventedNavigation).toBe(false);
   expect(confirm).not.toHaveBeenCalled();
+});
+
+it("sets every option stock to zero when the quick action sells out an optioned product", async () => {
+  const user = userEvent.setup();
+  const saveProduct = vi.fn().mockResolvedValue("omega-options");
+  const deps = dependencies({
+    subscribeProducts: (onData) => {
+      onData([optionedProduct]);
+      return vi.fn();
+    },
+    saveProduct,
+  });
+  render(<AdminDashboard dependencies={deps} />);
+
+  await user.type(screen.getByLabelText("이메일"), "admin@example.com");
+  await user.type(screen.getByLabelText("비밀번호"), "password");
+  await user.click(screen.getByRole("button", { name: "로그인" }));
+  await user.click(await screen.findByRole("button", { name: "데일리 오메가3 품절 처리" }));
+
+  await waitFor(() => expect(saveProduct).toHaveBeenCalledWith(
+    expect.objectContaining({
+      stock: 0,
+      purchaseOptions: expect.arrayContaining([
+        expect.objectContaining({ id: "2-month", stock: 0 }),
+        expect.objectContaining({ id: "4-month", stock: 0 }),
+      ]),
+    }),
+    { id: "omega-options", expectedRevision: 4 },
+  ));
+});
+
+it("restocks one unit per active option and leaves inactive options unavailable", async () => {
+  const user = userEvent.setup();
+  const saveProduct = vi.fn().mockResolvedValue("omega-options");
+  const soldOutProduct: Product = {
+    ...optionedProduct,
+    stock: 0,
+    purchaseOptions: [
+      { ...optionedProduct.purchaseOptions![0]!, stock: 0 },
+      { ...optionedProduct.purchaseOptions![1]!, stock: 0 },
+      { id: "retired", label: "판매 종료", durationMonths: null, sku: "OMEGA-OLD", priceAdjustment: 0, stock: 5, active: false, isDefault: false },
+    ],
+  };
+  const deps = dependencies({
+    subscribeProducts: (onData) => {
+      onData([soldOutProduct]);
+      return vi.fn();
+    },
+    saveProduct,
+  });
+  render(<AdminDashboard dependencies={deps} />);
+
+  await user.type(screen.getByLabelText("이메일"), "admin@example.com");
+  await user.type(screen.getByLabelText("비밀번호"), "password");
+  await user.click(screen.getByRole("button", { name: "로그인" }));
+  await user.click(await screen.findByRole("button", { name: "데일리 오메가3 판매 재개" }));
+
+  await waitFor(() => expect(saveProduct).toHaveBeenCalledWith(
+    expect.objectContaining({
+      stock: 2,
+      purchaseOptions: expect.arrayContaining([
+        expect.objectContaining({ id: "2-month", stock: 1 }),
+        expect.objectContaining({ id: "4-month", stock: 1 }),
+        expect.objectContaining({ id: "retired", stock: 0 }),
+      ]),
+    }),
+    { id: "omega-options", expectedRevision: 4 },
+  ));
 });
 
 it("replaces the sentinel with an accepted internal route and preserves the exact two-Back state sequence", async () => {

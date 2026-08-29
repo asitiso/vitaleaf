@@ -146,6 +146,33 @@ const toInput = (product: Product): ProductInput => ({
   reviewCount: product.reviewCount,
 });
 
+const quickStockInput = (product: Product): ProductInput => {
+  const input = toInput(product);
+  const isLegacyProduct = product.purchaseOptions === undefined || (
+    product.purchaseOptions.length === 1 && product.purchaseOptions[0]?.sku === ""
+  );
+  if (isLegacyProduct) {
+    const legacyInput = { ...input };
+    delete legacyInput.purchaseOptions;
+    return { ...legacyInput, stock: product.stock > 0 ? 0 : 1 };
+  }
+
+  const sellOut = product.stock > 0;
+  // This binary quick action zeroes every sealed package; resuming adds one unit
+  // to each active package. Detailed quantities remain an option-editor concern.
+  const purchaseOptions = product.purchaseOptions!.map((option) => ({
+    ...option,
+    stock: sellOut ? 0 : option.active ? 1 : 0,
+  }));
+  return {
+    ...input,
+    purchaseOptions,
+    stock: purchaseOptions
+      .filter((option) => option.active)
+      .reduce((total, option) => total + option.stock, 0),
+  };
+};
+
 function AdminLogin({
   message,
   onLogin,
@@ -668,7 +695,7 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
     void runDocumentMutation(
       product.id,
       () => dependencies.saveProduct(
-        { ...toInput(product), stock: product.stock > 0 ? 0 : 1 },
+        quickStockInput(product),
         { id: product.id, expectedRevision: product.revision ?? 0 },
       ),
       () => setToast("재고 상태를 변경했습니다."),
