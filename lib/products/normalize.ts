@@ -1,4 +1,5 @@
 import type { Ingredient, Product, ProductMedia } from "./types";
+import { getProductAvailableStock, normalizePurchaseOptions } from "./purchase-options";
 import { canonicalAgeTargets, canonicalTaxonomyValue, canonicalTaxonomyValues, HEALTH_CONCERNS, PRODUCT_CATEGORIES } from "../catalog/taxonomy";
 
 type ProductRecord = Record<string, unknown>;
@@ -102,7 +103,7 @@ export const normalizeMedia = (
   );
 };
 
-export const normalizeProduct = (id: string, raw: unknown): Product => {
+export const normalizeProduct = (id: string, raw: unknown): Product & { purchaseOptions: NonNullable<Product["purchaseOptions"]> } => {
   const product = asRecord(raw);
   const media = normalizeMedia(product.media, product.thumbnailUrl, product.images);
   const name = asString(product.name).trim();
@@ -115,6 +116,8 @@ export const normalizeProduct = (id: string, raw: unknown): Product => {
   if (typeof product.stock !== "number" || !Number.isFinite(product.stock) || product.stock < 0) {
     throw new Error("재고는 0 이상의 숫자여야 합니다");
   }
+
+  const purchaseOptions = normalizePurchaseOptions(product.purchaseOptions, product.price, product.stock);
 
   return {
     id,
@@ -135,7 +138,8 @@ export const normalizeProduct = (id: string, raw: unknown): Product => {
     origin: asString(product.origin),
     certifications: asStringArray(product.certifications),
     cautions: asStringArray(product.cautions),
-    stock: product.stock,
+    stock: getProductAvailableStock({ price: product.price, stock: product.stock, purchaseOptions }),
+    purchaseOptions,
     isBest: product.isBest === true,
     isNew: product.isNew === true,
     salesRank: asNullableNonNegativeNumber(product.salesRank),

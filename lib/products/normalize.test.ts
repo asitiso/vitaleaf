@@ -69,6 +69,51 @@ describe("normalizeProduct", () => {
     expect(product.updatedAt).toBe(updatedAt);
   });
 
+  it("normalizes product purchase options and synchronizes compatibility stock", () => {
+    const product = normalizeProduct("options", {
+      name: "옵션 상품",
+      price: 80_000,
+      stock: 999,
+      purchaseOptions: [
+        {
+          id: "two-month",
+          label: "2개월분",
+          durationMonths: 2,
+          sku: "VITA-2M",
+          priceAdjustment: -35_000,
+          stock: 12,
+          active: true,
+          isDefault: false,
+        },
+        {
+          id: "four-month",
+          label: "4개월분",
+          durationMonths: 4,
+          sku: "VITA-4M",
+          priceAdjustment: 0,
+          stock: 20,
+          active: true,
+          isDefault: true,
+        },
+      ],
+    });
+
+    expect(product.purchaseOptions).toHaveLength(2);
+    expect(product.stock).toBe(32);
+  });
+
+  it("gives option-less products the implicit default option", () => {
+    const product = normalizeProduct("legacy-optionless", {
+      name: "기존 상품",
+      price: 24_900,
+      stock: 8,
+    });
+
+    expect(product.purchaseOptions).toEqual([
+      expect.objectContaining({ id: "default", stock: 8, active: true, isDefault: true }),
+    ]);
+  });
+
   it("normalizes only supported age targets", () => {
     const product = normalizeProduct("p1", {
       name: "Age target product",

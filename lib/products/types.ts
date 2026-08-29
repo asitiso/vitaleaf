@@ -11,6 +11,17 @@ export type ProductMedia = {
   order: number;
 };
 
+export type PurchaseOption = {
+  id: string;
+  label: string;
+  durationMonths: number | null;
+  sku: string;
+  priceAdjustment: number;
+  stock: number;
+  active: boolean;
+  isDefault: boolean;
+};
+
 export type DraftStatus = "draft" | "publishing" | "published-copy";
 export type DraftMode = "create" | "edit" | "restore";
 
@@ -34,6 +45,7 @@ export type Product = {
   certifications: string[];
   cautions: string[];
   stock: number;
+  purchaseOptions?: PurchaseOption[];
   isBest: boolean;
   isNew: boolean;
   salesRank: number | null;
