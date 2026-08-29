@@ -3,6 +3,29 @@ import { describe, expect, it } from "vitest";
 import { toPublishedProductInput, validatePublishableDraft } from "./draft";
 import type { ProductDraft } from "./types";
 
+const purchaseOptions = [
+  {
+    id: "2-month",
+    label: "2개월분",
+    durationMonths: 2,
+    sku: "OMEGA-2M",
+    priceAdjustment: -10_000,
+    stock: 4,
+    active: true,
+    isDefault: false,
+  },
+  {
+    id: "4-month",
+    label: "4개월분",
+    durationMonths: 4,
+    sku: "OMEGA-4M",
+    priceAdjustment: 0,
+    stock: 6,
+    active: true,
+    isDefault: true,
+  },
+];
+
 const makeDraft = (overrides: Partial<ProductDraft> = {}): ProductDraft => ({
   id: "draft-1",
   name: "Omega 3",
@@ -116,6 +139,27 @@ describe("product drafts", () => {
     expect(input.category).toBe("probiotic");
     expect(input.concerns).toEqual(["gut", "immunity"]);
     expect(input.ageTargets).toEqual(["child", "20"]);
+  });
+
+  it("preserves purchase options in the published product input", () => {
+    const draft = makeDraft({ purchaseOptions });
+
+    expect(toPublishedProductInput(draft).purchaseOptions).toEqual(purchaseOptions);
+  });
+
+  it("routes invalid purchase options to the sales wizard step", () => {
+    const errors = validatePublishableDraft(makeDraft({
+      purchaseOptions: purchaseOptions.map((option) => ({
+        ...option,
+        isDefault: false,
+      })),
+    }));
+
+    expect(errors).toContainEqual(expect.objectContaining({
+      step: 4,
+      field: "purchaseOptions",
+      message: expect.stringMatching(/구매 옵션/),
+    }));
   });
 
 

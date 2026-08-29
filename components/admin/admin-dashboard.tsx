@@ -98,6 +98,7 @@ const blankDraft = (id: string): ProductDraft => ({
   certifications: [],
   cautions: [],
   stock: 0,
+  purchaseOptions: [],
   isBest: false,
   isNew: false,
   salesRank: null,
@@ -135,6 +136,9 @@ const toInput = (product: Product): ProductInput => ({
   certifications: product.certifications,
   cautions: product.cautions,
   stock: product.stock,
+  ...(product.purchaseOptions === undefined
+    ? {}
+    : { purchaseOptions: product.purchaseOptions.map((option) => ({ ...option })) }),
   isBest: product.isBest,
   isNew: product.isNew,
   salesRank: product.salesRank,

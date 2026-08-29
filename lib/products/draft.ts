@@ -1,10 +1,11 @@
 import { normalizeMedia } from "./normalize";
+import { normalizePurchaseOptions } from "./purchase-options";
 import { canonicalAgeTargets, canonicalTaxonomyValue, canonicalTaxonomyValues, HEALTH_CONCERNS, PRODUCT_CATEGORIES } from "../catalog/taxonomy";
 import type { ProductDraft, ProductInput } from "./types";
 
 export type DraftValidationError = {
   step: 1 | 2 | 3 | 4;
-  field: "name" | "category" | "price" | "stock" | "media" | "dosage" | "ingredients" | "origin" | "cautions";
+  field: "name" | "category" | "price" | "stock" | "media" | "dosage" | "ingredients" | "origin" | "cautions" | "purchaseOptions";
   message: string;
 };
 
@@ -20,6 +21,13 @@ export const validatePublishableDraft = (draft: ProductDraft): DraftValidationEr
   if (!isNonEmptyText(draft.category)) addError(1, "category", "Choose a product category.");
   if (!Number.isFinite(draft.price) || draft.price <= 0) addError(1, "price", "Enter a price greater than zero.");
   if (!Number.isFinite(draft.stock) || draft.stock < 0) addError(1, "stock", "Enter stock as zero or more.");
+  if (Number.isFinite(draft.price) && draft.price > 0 && Number.isFinite(draft.stock) && draft.stock >= 0) {
+    try {
+      normalizePurchaseOptions(draft.purchaseOptions, draft.price, draft.stock);
+    } catch {
+      addError(4, "purchaseOptions", "구매 옵션의 기본 구성, SKU, 재고와 최종 가격을 확인해 주세요.");
+    }
+  }
   if (normalizeMedia(draft.media, draft.thumbnailUrl, draft.images).length === 0) {
     addError(2, "media", "Add at least one product image.");
   }
@@ -54,6 +62,9 @@ export const toPublishedProductInput = (draft: ProductDraft): ProductInput & { m
     certifications: [...draft.certifications],
     cautions: [...draft.cautions],
     stock: draft.stock,
+    ...(draft.purchaseOptions === undefined
+      ? {}
+      : { purchaseOptions: draft.purchaseOptions.map((option) => ({ ...option })) }),
     isBest: draft.isBest,
     isNew: draft.isNew,
     salesRank: draft.salesRank,

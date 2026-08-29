@@ -32,6 +32,28 @@ const representativeProduct: Product = {
   certifications: ["GMP", "IFOS"],
   cautions: ["임산부는 상담 후 섭취", "알레르기 확인"],
   stock: 18,
+  purchaseOptions: [
+    {
+      id: "2-month",
+      label: "2개월분",
+      durationMonths: 2,
+      sku: "OMEGA-2M",
+      priceAdjustment: -17_500,
+      stock: 8,
+      active: true,
+      isDefault: false,
+    },
+    {
+      id: "4-month",
+      label: "4개월분",
+      durationMonths: 4,
+      sku: "OMEGA-4M",
+      priceAdjustment: 0,
+      stock: 10,
+      active: true,
+      isDefault: true,
+    },
+  ],
   isBest: true,
   isNew: false,
   salesRank: 3,
@@ -233,6 +255,7 @@ describe("serializeProducts", () => {
       certifications: ["GMP", "IFOS"],
       cautions: ["임산부는 상담 후 섭취", "알레르기 확인"],
       stock: 18,
+      purchaseOptions: representativeProduct.purchaseOptions,
       isBest: true,
       isNew: false,
       salesRank: 3,
@@ -241,6 +264,45 @@ describe("serializeProducts", () => {
     }]);
     expect(csv.slice(1).split(/\r?\n/, 1)[0].split(",")).not.toContain("id");
     expect(csv).not.toContain("2026-08-01");
+  });
+
+  it("reports malformed or invalid purchase option JSON without dropping the row", () => {
+    const malformed = parseProductCsv([
+      "name,category,price,stock,purchaseOptionsJson",
+      '오메가3,혈행,35000,10,"not json"',
+    ].join("\n"));
+    const invalid = parseProductCsv([
+      "name,category,price,stock,purchaseOptionsJson",
+      '오메가3,혈행,35000,10,"[{""id"":""2-month""}]"',
+    ].join("\n"));
+
+    expect(malformed).toEqual({
+      valid: [],
+      errors: [{ row: 2, field: "purchaseOptions", message: "구매 옵션 정보는 JSON 배열 형식이어야 합니다." }],
+    });
+    expect(invalid).toEqual({
+      valid: [],
+      errors: [{ row: 2, field: "purchaseOptions", message: "구매 옵션 정보가 올바르지 않습니다." }],
+    });
+  });
+
+  it("normalizes missing purchase option JSON as the legacy default option", () => {
+    const result = parseProductCsv([
+      "name,category,price,stock",
+      "레거시 상품,혈행,35000,10",
+    ].join("\n"));
+
+    expect(result.errors).toEqual([]);
+    expect(result.valid[0]?.purchaseOptions).toEqual([{
+      id: "default",
+      label: "기본 구성",
+      durationMonths: null,
+      sku: "",
+      priceAdjustment: 0,
+      stock: 10,
+      active: true,
+      isDefault: true,
+    }]);
   });
 
   it("starts with a UTF-8 BOM and neutralizes spreadsheet formulas in exported string cells", () => {
@@ -311,6 +373,15 @@ describe("serializeProducts", () => {
 it("ships the exact BOM-prefixed import template consumed by the parser", () => {
   const template = readFileSync(resolve(process.cwd(), "public/products-template.csv"), "utf8");
 
-  expect(template.replaceAll("\r\n", "\n")).toBe("\uFEFFname,slug,category,concerns,ageTargets,price,originalPrice,thumbnailUrl,images,description,benefits,ingredients,dosage,origin,certifications,cautions,stock,isBest,isNew,salesRank,ratingAverage,reviewCount\n");
-  expect(parseProductCsv(template)).toEqual({ valid: [], errors: [] });
+  expect(template.replaceAll("\r\n", "\n")).toMatch(/^\uFEFFname,slug,category,concerns,ageTargets,price,originalPrice,thumbnailUrl,images,description,benefits,ingredients,dosage,origin,certifications,cautions,stock,purchaseOptionsJson,isBest,isNew,salesRank,ratingAverage,reviewCount\n/);
+  expect(parseProductCsv(template)).toMatchObject({
+    errors: [],
+    valid: [{
+      name: "예시 상품",
+      purchaseOptions: [
+        expect.objectContaining({ id: "2-month", sku: "EXAMPLE-2M", priceAdjustment: -12_450 }),
+        expect.objectContaining({ id: "4-month", sku: "EXAMPLE-4M", isDefault: true }),
+      ],
+    }],
+  });
 });

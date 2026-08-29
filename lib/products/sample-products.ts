@@ -1,4 +1,4 @@
-import type { Product } from "./types";
+import type { Product, PurchaseOption } from "./types";
 
 const createdAt = (day: number) => new Date(`2026-08-${String(day).padStart(2, "0")}T00:00:00.000Z`);
 
@@ -236,7 +236,39 @@ export const SAMPLE_PRODUCTS: Product[] = [
     createdAt: createdAt(25),
     updatedAt: createdAt(25),
   },
-];
+].map((product, index): Product => {
+  const twoMonthPrice = index === 0
+    ? product.price / 2
+    : index === 1
+      ? Math.floor(product.price / 2) + 100
+      : Math.ceil(product.price / 2);
+  const twoMonthStock = Math.floor(product.stock / 2);
+  const skuPrefix = product.id.replace(/^sample-/, "SAMPLE-").toUpperCase();
+  const purchaseOptions: PurchaseOption[] = [
+    {
+      id: "2-month",
+      label: "2개월분",
+      durationMonths: 2,
+      sku: `${skuPrefix}-2M`,
+      priceAdjustment: twoMonthPrice - product.price,
+      stock: twoMonthStock,
+      active: true,
+      isDefault: false,
+    },
+    {
+      id: "4-month",
+      label: "4개월분",
+      durationMonths: 4,
+      sku: `${skuPrefix}-4M`,
+      priceAdjustment: 0,
+      stock: product.stock - twoMonthStock,
+      active: true,
+      isDefault: true,
+    },
+  ];
+
+  return { ...product, purchaseOptions };
+});
 
 export const findSampleProduct = (id: string): Product | null =>
   SAMPLE_PRODUCTS.find((product) => product.id === id) ?? null;

@@ -1,5 +1,6 @@
 import type { Ingredient, Product, ProductDraft, ProductInput } from "../products/types";
 import { canonicalAgeTargets } from "../catalog/taxonomy";
+import { normalizePurchaseOptions } from "../products/purchase-options";
 
 export type CsvRowError = {
   row: number;
@@ -25,12 +26,13 @@ export const PRODUCT_CSV_HEADERS = [
   "certifications",
   "cautions",
   "stock",
+  "purchaseOptionsJson",
   "isBest",
   "isNew",
   "salesRank",
   "ratingAverage",
   "reviewCount",
-] as const satisfies readonly (keyof ProductInput)[];
+] as const satisfies readonly (keyof ProductInput | "purchaseOptionsJson")[];
 
 type ProductCsvHeader = (typeof PRODUCT_CSV_HEADERS)[number];
 
@@ -338,6 +340,25 @@ export const parseProductCsv = (text: string): { valid: ProductInput[]; errors: 
     else if (!Number.isInteger(stock) || stock < 0) addError("stock", "재고는 0 이상의 정수여야 합니다.");
     else product.stock = stock;
 
+    if (Number.isFinite(product.price) && product.price >= 0 && Number.isInteger(product.stock) && product.stock >= 0) {
+      const purchaseOptionsJson = value("purchaseOptionsJson");
+      if (purchaseOptionsJson) {
+        try {
+          const rawPurchaseOptions: unknown = JSON.parse(purchaseOptionsJson);
+          product.purchaseOptions = normalizePurchaseOptions(rawPurchaseOptions, product.price, product.stock);
+        } catch (error) {
+          addError(
+            "purchaseOptions",
+            error instanceof SyntaxError
+              ? "구매 옵션 정보는 JSON 배열 형식이어야 합니다."
+              : "구매 옵션 정보가 올바르지 않습니다.",
+          );
+        }
+      } else {
+        product.purchaseOptions = normalizePurchaseOptions([], product.price, product.stock);
+      }
+    }
+
     product.isBest = boolean("isBest");
     product.isNew = boolean("isNew");
     product.salesRank = optionalNumber("salesRank", "판매 순위는 0 이상의 숫자여야 합니다.");
@@ -392,6 +413,11 @@ const productCells = (product: Product): Record<ProductCsvHeader, string> => ({
   certifications: encodeList(product.certifications),
   cautions: encodeList(product.cautions),
   stock: String(product.stock),
+  purchaseOptionsJson: JSON.stringify(normalizePurchaseOptions(
+    product.purchaseOptions,
+    product.price,
+    product.stock,
+  )),
   isBest: String(product.isBest),
   isNew: String(product.isNew),
   salesRank: product.salesRank === null ? "" : String(product.salesRank),
