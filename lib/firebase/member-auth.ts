@@ -157,6 +157,12 @@ const firebaseMemberAuth = createMemberAuth({
   },
   removeCurrent: () => deleteUser(auth.currentUser!),
   observe(next, fail) {
+    try {
+      assertFirebaseClientConfigured();
+    } catch (error) {
+      fail(error);
+      return () => undefined;
+    }
     return onAuthStateChanged(auth, (user) => next(user ? toMemberIdentity(user) : null), fail);
   },
 });

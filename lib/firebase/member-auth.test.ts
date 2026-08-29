@@ -203,4 +203,20 @@ describe("member authentication helpers", () => {
 
     expect(assertFirebaseClientConfiguredMock).toHaveBeenCalledTimes(4);
   });
+
+  it("reports missing Firebase client configuration through the default observer", () => {
+    const configurationError = { code: "firebase/client-config-missing" };
+    const states: Array<"checking" | { uid: string; email: string; emailVerified: boolean } | null> = [];
+    const fail = vi.fn();
+    assertFirebaseClientConfiguredMock.mockImplementationOnce(() => {
+      throw configurationError;
+    });
+
+    const stop = memberAuth.observe((state) => states.push(state), fail);
+
+    expect(states).toEqual(["checking"]);
+    expect(fail).toHaveBeenCalledWith(configurationError);
+    expect(onAuthStateChangedMock).not.toHaveBeenCalled();
+    expect(() => stop()).not.toThrow();
+  });
 });

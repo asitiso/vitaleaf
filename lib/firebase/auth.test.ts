@@ -3,17 +3,19 @@ import { describe, expect, it, vi } from "vitest";
 const {
   assertFirebaseClientConfiguredMock,
   getDocMock,
+  onAuthStateChangedMock,
   signInWithEmailAndPasswordMock,
   signOutMock,
 } = vi.hoisted(() => ({
   assertFirebaseClientConfiguredMock: vi.fn(),
   getDocMock: vi.fn(),
+  onAuthStateChangedMock: vi.fn(),
   signInWithEmailAndPasswordMock: vi.fn(),
   signOutMock: vi.fn(),
 }));
 
 vi.mock("firebase/auth", () => ({
-  onAuthStateChanged: vi.fn(),
+  onAuthStateChanged: onAuthStateChangedMock,
   signInWithEmailAndPassword: signInWithEmailAndPasswordMock,
   signOut: signOutMock,
 }));
@@ -29,7 +31,13 @@ vi.mock("./client", () => ({
   db: {},
 }));
 
-import { createAdminAuth, getAdminAuthErrorMessage, memberAuth, signInAdmin } from "./auth";
+import {
+  createAdminAuth,
+  getAdminAuthErrorMessage,
+  memberAuth,
+  observeAdminSession,
+  signInAdmin,
+} from "./auth";
 
 const stableSession = (uid: string | null) => () => ({ uid, generation: 1 });
 
@@ -278,6 +286,22 @@ describe("Firebase admin authentication adapter", () => {
 
     await expect(signInAdmin("admin@example.com", "password")).resolves.toBe("admin");
     expect(assertFirebaseClientConfiguredMock).toHaveBeenCalledOnce();
+  });
+
+  it("reports missing Firebase client configuration through the default observer", () => {
+    const configurationError = { code: "firebase/client-config-missing" };
+    const next = vi.fn();
+    const onError = vi.fn();
+    assertFirebaseClientConfiguredMock.mockImplementationOnce(() => {
+      throw configurationError;
+    });
+
+    const stop = observeAdminSession(next, onError);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(configurationError);
+    expect(onAuthStateChangedMock).not.toHaveBeenCalled();
+    expect(() => stop()).not.toThrow();
   });
 });
 

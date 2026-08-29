@@ -142,6 +142,12 @@ const firebaseAdminAuth = createAdminAuth({
   },
   signOut: () => signOut(auth),
   observe(next, onError) {
+    try {
+      assertFirebaseClientConfigured();
+    } catch (error) {
+      onError(error);
+      return () => undefined;
+    }
     return onAuthStateChanged(auth, (user: User | null) => {
       getFirebaseSession();
       next(user ? { uid: user.uid } : null);
