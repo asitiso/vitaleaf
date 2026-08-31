@@ -10,6 +10,7 @@ import type {
 import type { Product } from "../products/types";
 import { normalizeProduct } from "../products/normalize";
 import { LEGACY_PURCHASE_OPTION_ID } from "../products/purchase-options";
+import { OrderCatalogInvalidError } from "../orders/resolve-order-lines";
 import { getAdminFirestore } from "./admin";
 
 const LOOKUP_WINDOW_MILLISECONDS = 10 * 60 * 1000;
@@ -114,7 +115,13 @@ export const createFirestoreGuestOrderRepository = ({
     const firestore = getFirestore();
     return Promise.all(productIds.map(async (productId) => {
       const snapshot = await firestore.doc(`products/${productId}`).get();
-      return snapshot.exists ? normalizeProduct(productId, snapshot.data()) : null;
+      if (!snapshot.exists) return null;
+      const data = snapshot.data();
+      try {
+        return normalizeProduct(productId, data);
+      } catch {
+        throw new OrderCatalogInvalidError();
+      }
     }));
   },
 

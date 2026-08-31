@@ -1,7 +1,11 @@
 import { createHash, createHmac, randomInt, timingSafeEqual } from "node:crypto";
 
 import { calculateCart, cartLineId } from "../../features/cart/cart-utils";
-import { OrderLineUnavailableError, resolveOrderLines } from "../orders/resolve-order-lines";
+import {
+  OrderCatalogInvalidError,
+  OrderLineUnavailableError,
+  resolveOrderLines,
+} from "../orders/resolve-order-lines";
 import { findSampleProduct as findLegacySampleProduct } from "../products/sample-products";
 import type { PaymentResult } from "../payment/process-payment";
 import type { Product } from "../products/types";
@@ -125,15 +129,23 @@ export const createGuestOrderService = ({
       const existingOrder = await repository.getOrderByIdempotency(idempotencyFingerprint);
       if (existingOrder) return receiptFor(existingOrder);
 
-      const loadedProducts = await repository.loadProducts(input.lines.map((line) => line.productId));
-      const products = input.lines.map((line, index) =>
-        loadedProducts[index] ?? findSampleProduct(line.productId));
-
       let resolvedLines;
       try {
+        const productIds = [...new Set(input.lines.map((line) => line.productId))];
+        const loadedProducts = await repository.loadProducts(productIds);
+        const productsById = new Map(productIds.map((productId, index) => [
+          productId,
+          loadedProducts[index] ?? findSampleProduct(productId),
+        ]));
+        const products = input.lines.map((line) => productsById.get(line.productId) ?? null);
         resolvedLines = resolveOrderLines(input.lines, products);
       } catch (error) {
-        if (error instanceof OrderLineUnavailableError) throw new GuestOrderUnavailableError();
+        if (
+          error instanceof OrderLineUnavailableError
+          || error instanceof OrderCatalogInvalidError
+        ) {
+          throw new GuestOrderUnavailableError();
+        }
         throw error;
       }
       const cartLines = resolvedLines.map((line) => ({

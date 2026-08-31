@@ -105,6 +105,61 @@ it("parses a sample guest order lookup whose optional thumbnail URL is empty", a
   });
 });
 
+it("keeps a historical zero-priced guest order readable through lookup", async () => {
+  const legacyOrder: GuestOrderStored = {
+    orderNumber: payment.orderNumber,
+    status: "mock-received",
+    paymentMethod: "card",
+    customerName: "홍길동",
+    phoneNormalized: "01012345678",
+    postcode: "06236",
+    address: "서울특별시 강남구 테헤란로 123",
+    addressDetail: "",
+    deliveryNote: "",
+    lines: [{
+      productId: "legacy-free-sample",
+      purchaseOptionId: "default",
+      purchaseOptionLabel: "기본 구성",
+      sku: "",
+      name: "과거 무료 샘플",
+      thumbnailUrl: "",
+      basePrice: 0,
+      priceAdjustment: 0,
+      unitPrice: 0,
+      quantity: 1,
+      lineTotal: 0,
+    }],
+    subtotal: 0,
+    shippingFee: 0,
+    total: 0,
+    createdAt: new Date(payment.receivedAt),
+    receivedAt: new Date(payment.receivedAt),
+  };
+  const repository: GuestOrderRepository = {
+    loadProducts: async () => [],
+    createOrder: async (nextOrder) => nextOrder,
+    getOrderByIdempotency: async () => null,
+    getOrder: async () => legacyOrder,
+    getAttempt: async () => null,
+    setAttempt: async (_fingerprint, now) => ({
+      failureCount: 1,
+      expiresAt: new Date(now.getTime() + 600_000),
+    }),
+    deleteAttempt: async () => undefined,
+  };
+  const publicOrder = await createGuestOrderService({
+    repository,
+    lookupSecret: "test-only-secret",
+  }).lookup({ orderNumber: payment.orderNumber, phone: order.phone }, "client-zero");
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ order: publicOrder })));
+
+  await expect(lookupGuestOrder(payment.orderNumber, order.phone)).resolves.toMatchObject({
+    lines: [{ unitPrice: 0, lineTotal: 0 }],
+    subtotal: 0,
+    total: 0,
+  });
+});
+
 it.each([
   ["fractional quantity", { quantity: 1.5 }],
   ["zero quantity", { quantity: 0 }],

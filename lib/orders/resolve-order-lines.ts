@@ -32,6 +32,13 @@ export class OrderLineUnavailableError extends Error {
   }
 }
 
+export class OrderCatalogInvalidError extends Error {
+  constructor() {
+    super("The product catalog entry is invalid.");
+    this.name = "OrderCatalogInvalidError";
+  }
+}
+
 export const resolveOrderLines = (
   selections: readonly OrderLineSelection[],
   products: readonly (Product | null)[],

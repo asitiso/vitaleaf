@@ -99,9 +99,9 @@ const parsePublicOrder = (value: unknown): GuestOrderPublic => {
         thumbnailUrl: optionalText(line.thumbnailUrl, 2_000),
         basePrice: integer(line.basePrice),
         priceAdjustment: signedInteger(line.priceAdjustment),
-        unitPrice: integer(line.unitPrice, 1),
+        unitPrice: integer(line.unitPrice),
         quantity: integer(line.quantity, 1, 999),
-        lineTotal: integer(line.lineTotal, 1),
+        lineTotal: integer(line.lineTotal),
       };
     }),
     subtotal: integer(order.subtotal),

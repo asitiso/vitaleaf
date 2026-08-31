@@ -202,6 +202,41 @@ describe("Firestore guest-order repository", () => {
     expect(harness.references.get(path)?.get).toHaveBeenCalledTimes(2);
   });
 
+  it("types invalid Admin product snapshots without hiding Firestore failures", async () => {
+    const harness = firestoreHarness();
+    const path = "products/p1";
+    harness.snapshots.set(path, {
+      exists: true,
+      data: () => ({
+        name: "비타민 C",
+        price: 100,
+        stock: 5,
+        purchaseOptions: [{
+          id: "2-month",
+          label: "2개월분",
+          durationMonths: 2,
+          sku: "VITAMIN-C-2M",
+          priceAdjustment: -100,
+          stock: 5,
+          active: true,
+          isDefault: true,
+        }],
+      }),
+    });
+    const repository = createFirestoreGuestOrderRepository({
+      getFirestore: () => harness.firestore as never,
+    });
+
+    await expect(repository.loadProducts(["p1"])).rejects.toMatchObject({
+      name: "OrderCatalogInvalidError",
+    });
+
+    const infrastructureError = new Error("Firestore unavailable");
+    harness.references.get(path)?.get.mockRejectedValueOnce(infrastructureError);
+
+    await expect(repository.loadProducts(["p1"])).rejects.toBe(infrastructureError);
+  });
+
   it("atomically creates an order and its hashed idempotency mapping", async () => {
     const harness = firestoreHarness();
     const repository = createFirestoreGuestOrderRepository({

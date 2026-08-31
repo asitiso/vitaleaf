@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { PaymentResult } from "../payment/process-payment";
+import { OrderCatalogInvalidError } from "../orders/resolve-order-lines";
 import type { Product } from "../products/types";
 import {
   createGuestOrderService,
@@ -336,6 +337,28 @@ describe("guest order creation", () => {
     ]);
   });
 
+  it("loads one coherent product snapshot for multiple option selections", async () => {
+    const dependencies = inMemoryDependencies({
+      products: [product({
+        stock: 8,
+        purchaseOptions: [twoMonthOption, fourMonthOption],
+      })],
+    });
+    const loadProducts = vi.fn(dependencies.repository.loadProducts);
+    dependencies.repository.loadProducts = loadProducts;
+
+    await createGuestOrderService(dependencies).create(createInput({
+      lines: [
+        { productId: "p1", purchaseOptionId: "2-month", quantity: 1 },
+        { productId: "p1", purchaseOptionId: "4-month", quantity: 1 },
+      ],
+    }), paymentResult, IDEMPOTENCY_KEY);
+
+    expect(loadProducts).toHaveBeenCalledOnce();
+    expect(loadProducts).toHaveBeenCalledWith(["p1"]);
+    expect(dependencies.state.orders.get(serverReceipt.orderNumber)?.lines).toHaveLength(2);
+  });
+
   it("returns only the validated public payment fields", async () => {
     const dependencies = inMemoryDependencies();
     const paymentWithInjectedData = {
@@ -436,6 +459,30 @@ describe("guest order creation", () => {
     await expect(createGuestOrderService(dependencies).create(createInput({
       lines: [{ productId: "p1", purchaseOptionId: "2-month", quantity: 1 }],
     }), paymentResult, IDEMPOTENCY_KEY)).rejects.toThrow(GuestOrderUnavailableError);
+  });
+
+  it("maps only typed catalog-load validation failures to the safe unavailable error", async () => {
+    const dependencies = inMemoryDependencies();
+    dependencies.repository.loadProducts = async () => {
+      throw new OrderCatalogInvalidError();
+    };
+
+    await expect(createGuestOrderService(dependencies).create(
+      createInput(),
+      paymentResult,
+      IDEMPOTENCY_KEY,
+    )).rejects.toThrow(GuestOrderUnavailableError);
+
+    const infrastructureError = new Error("Firestore unavailable");
+    dependencies.repository.loadProducts = async () => {
+      throw infrastructureError;
+    };
+
+    await expect(createGuestOrderService(dependencies).create(
+      createInput(),
+      paymentResult,
+      IDEMPOTENCY_KEY,
+    )).rejects.toBe(infrastructureError);
   });
 
   it("rejects missing and insufficient-stock products", async () => {
