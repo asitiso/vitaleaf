@@ -30,6 +30,7 @@ const FIELD_LABELS: Record<CsvRowError["field"], string> = {
   certifications: "인증",
   cautions: "주의사항",
   stock: "재고",
+  purchaseOptions: "구매 옵션",
   isBest: "베스트 상품",
   isNew: "신상품",
   salesRank: "판매 순위",

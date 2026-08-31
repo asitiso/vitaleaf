@@ -92,6 +92,18 @@ it("blocks all writes when any row is invalid and shows every row-field error", 
   expect(onImport).not.toHaveBeenCalled();
 });
 
+it("labels purchase option CSV errors clearly for administrators", async () => {
+  const user = userEvent.setup();
+  render(<CsvTools products={[]} onImportDrafts={vi.fn()} />);
+
+  await user.upload(screen.getByLabelText("상품 CSV 파일"), csvFile([
+    "name,category,price,stock,purchaseOptionsJson",
+    '오메가3,혈행,35000,10,"not json"',
+  ].join("\n")));
+
+  expect(await screen.findByText("2행 구매 옵션: 구매 옵션 정보는 JSON 배열 형식이어야 합니다.")).toBeVisible();
+});
+
 it.each([
   ['"오메가3"x,혈행,35000,10', "닫는 큰따옴표 뒤에는 쉼표 또는 줄바꿈만 사용할 수 있습니다."],
   ['오"메가3,혈행,35000,10', "큰따옴표는 셀의 시작에서만 사용할 수 있습니다."],
