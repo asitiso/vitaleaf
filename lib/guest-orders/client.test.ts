@@ -1,12 +1,12 @@
 import { afterEach, expect, it, vi } from "vitest";
 
-import type { OrderDraft, PaymentResult } from "../payment/process-payment";
+import type { PaymentResult } from "../payment/process-payment";
 
 import { GuestOrderClientError, createGuestOrder, lookupGuestOrder } from "./client";
 import { createGuestOrderService } from "./service";
-import type { GuestOrderRepository, GuestOrderStored } from "./types";
+import type { GuestOrderCreateInput, GuestOrderRepository, GuestOrderStored } from "./types";
 
-const order: OrderDraft = {
+const order: GuestOrderCreateInput = {
   customerName: "홍길동",
   phone: "010-1234-5678",
   postcode: "06236",
@@ -16,16 +16,9 @@ const order: OrderDraft = {
   paymentMethod: "card",
   lines: [{
     productId: "omega-3",
-    name: "데일리 오메가3",
-    thumbnailUrl: "/omega-3.jpg",
-    unitPrice: 16_000,
-    stock: 3,
+    purchaseOptionId: "default",
     quantity: 2,
-    selected: true,
   }],
-  subtotal: 32_000,
-  shippingFee: 0,
-  total: 32_000,
 };
 
 const payment: PaymentResult = {
@@ -38,7 +31,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it("sends the checkout idempotency key and returns only the server receipt", async () => {
+it("sends only minimal product-option line identity with the checkout idempotency key", async () => {
   const fetchMock = vi.fn().mockResolvedValue(Response.json({
     ...payment,
     privatePhone: "01012345678",
@@ -87,7 +80,11 @@ it("parses a sample guest order lookup whose optional thumbnail URL is empty", a
   });
   const receipt = await service.create({
     ...order,
-    lines: [{ productId: "sample-daily-multivitamin", quantity: 1 }],
+    lines: [{
+      productId: "sample-daily-multivitamin",
+      purchaseOptionId: "4-month",
+      quantity: 1,
+    }],
   }, payment, idempotencyKey);
   const publicOrder = await service.lookup({
     orderNumber: receipt.orderNumber,
@@ -124,10 +121,16 @@ it.each([
     addressMasked: "06236 서울특별시 강남구 ***",
     lines: [{
       productId: "omega-3",
+      purchaseOptionId: "default",
+      purchaseOptionLabel: "기본 구성",
+      sku: "",
       name: "데일리 오메가3",
       thumbnailUrl: "/omega-3.jpg",
+      basePrice: 16_000,
+      priceAdjustment: 0,
       unitPrice: 16_000,
       quantity: 2,
+      lineTotal: 32_000,
       ...override,
     }],
     subtotal: 32_000,
@@ -156,10 +159,16 @@ it.each([
       addressMasked: "06236 서울특별시 강남구 ***",
       lines: [{
         productId: "omega-3",
+        purchaseOptionId: "default",
+        purchaseOptionLabel: "기본 구성",
+        sku: "",
         name: "데일리 오메가3",
         thumbnailUrl: "/omega-3.jpg",
+        basePrice: 16_000,
+        priceAdjustment: 0,
         unitPrice: 16_000,
         quantity: 2,
+        lineTotal: 32_000,
       }],
       subtotal: 32_000,
       shippingFee: 0,

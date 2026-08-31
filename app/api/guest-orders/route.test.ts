@@ -48,7 +48,7 @@ const validCreateBody = {
   addressDetail: "4층 401호",
   deliveryNote: "문 앞에 놓아 주세요.",
   paymentMethod: "card",
-  lines: [{ productId: "p1", quantity: 2 }],
+  lines: [{ productId: "p1", purchaseOptionId: "2-month", quantity: 2 }],
 };
 
 const validPayment = {

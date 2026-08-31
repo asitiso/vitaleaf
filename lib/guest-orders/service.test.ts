@@ -27,6 +27,28 @@ const serverReceipt: PaymentResult = {
 };
 const IDEMPOTENCY_KEY = "550e8400-e29b-41d4-a716-446655440000";
 
+const twoMonthOption = {
+  id: "2-month",
+  label: "2개월분",
+  durationMonths: 2,
+  sku: "VITAMIN-C-2M",
+  priceAdjustment: -2_000,
+  stock: 5,
+  active: true,
+  isDefault: true,
+};
+
+const fourMonthOption = {
+  id: "4-month",
+  label: "4개월분",
+  durationMonths: 4,
+  sku: "VITAMIN-C-4M",
+  priceAdjustment: 3_000,
+  stock: 3,
+  active: true,
+  isDefault: false,
+};
+
 const savedLookupSecret = process.env.GUEST_ORDER_LOOKUP_SECRET;
 
 afterEach(() => {
@@ -75,7 +97,18 @@ const createInput = (overrides: Record<string, unknown> = {}) => ({
   addressDetail: "4층 401호",
   deliveryNote: "문 앞에 놓아 주세요.",
   paymentMethod: "card",
-  lines: [{ productId: "p1", quantity: 2, unitPrice: 1 }],
+  lines: [{
+    productId: "p1",
+    purchaseOptionId: "default",
+    quantity: 2,
+    purchaseOptionLabel: "공격자 옵션명",
+    sku: "ATTACKER-SKU",
+    basePrice: 1,
+    priceAdjustment: -99_999,
+    unitPrice: 1,
+    stock: 999,
+    lineTotal: 2,
+  }],
   ...overrides,
 });
 
@@ -91,10 +124,16 @@ const storedOrder: GuestOrderStored = {
   deliveryNote: "문 앞에 놓아 주세요.",
   lines: [{
     productId: "p1",
+    purchaseOptionId: "default",
+    purchaseOptionLabel: "기본 구성",
+    sku: "",
     name: "비타민 C",
     thumbnailUrl: "/products/vitamin-c.jpg",
+    basePrice: 12_000,
+    priceAdjustment: 0,
     unitPrice: 12_000,
     quantity: 2,
+    lineTotal: 24_000,
   }],
   subtotal: 24_000,
   shippingFee: 3_000,
@@ -192,12 +231,16 @@ describe("guest order creation", () => {
     ["more than twenty lines", createInput({
       lines: Array.from({ length: 21 }, (_, index) => ({ productId: `p${index}`, quantity: 1 })),
     })],
-    ["duplicate product IDs", createInput({
-      lines: [{ productId: "p1", quantity: 1 }, { productId: "p1", quantity: 2 }],
+    ["duplicate product and option pairs", createInput({
+      lines: [
+        { productId: "p1", purchaseOptionId: "default", quantity: 1 },
+        { productId: "p1", purchaseOptionId: "default", quantity: 2 },
+      ],
     })],
-    ["zero quantity", createInput({ lines: [{ productId: "p1", quantity: 0 }] })],
-    ["quantity above 999", createInput({ lines: [{ productId: "p1", quantity: 1000 }] })],
-    ["fractional quantity", createInput({ lines: [{ productId: "p1", quantity: 1.5 }] })],
+    ["missing purchase option ID", createInput({ lines: [{ productId: "p1", quantity: 1 }] })],
+    ["zero quantity", createInput({ lines: [{ productId: "p1", purchaseOptionId: "default", quantity: 0 }] })],
+    ["quantity above 999", createInput({ lines: [{ productId: "p1", purchaseOptionId: "default", quantity: 1000 }] })],
+    ["fractional quantity", createInput({ lines: [{ productId: "p1", purchaseOptionId: "default", quantity: 1.5 }] })],
   ])("rejects %s", async (_label, input) => {
     const service = createGuestOrderService(inMemoryDependencies());
     await expect(service.create(input, paymentResult, IDEMPOTENCY_KEY))
@@ -221,28 +264,76 @@ describe("guest order creation", () => {
     expect(dependencies.state.orders.has("ATTACKER-CONTROLLED")).toBe(false);
   });
 
-  it("recalculates totals and stored line details from server products", async () => {
+  it("ignores browser snapshots and stores canonical option details and totals", async () => {
     const dependencies = inMemoryDependencies({
-      products: [product({ price: 12_000, stock: 5, name: "서버 상품명" })],
+      products: [product({
+        price: 12_000,
+        stock: 8,
+        name: "서버 상품명",
+        purchaseOptions: [twoMonthOption, fourMonthOption],
+      })],
     });
 
     const result = await createGuestOrderService(dependencies)
-      .create(createInput(), paymentResult, IDEMPOTENCY_KEY);
+      .create(createInput({
+        lines: [{
+          productId: "p1",
+          purchaseOptionId: "2-month",
+          quantity: 2,
+          purchaseOptionLabel: "조작된 이름",
+          sku: "ATTACKER-SKU",
+          basePrice: 1,
+          priceAdjustment: 0,
+          unitPrice: 1,
+          stock: 999,
+          lineTotal: 2,
+        }],
+        subtotal: 2,
+        shippingFee: 0,
+        total: 2,
+      }), paymentResult, IDEMPOTENCY_KEY);
 
     expect(result).toEqual(serverReceipt);
     expect(dependencies.state.orders.get(serverReceipt.orderNumber)).toMatchObject({
       phoneNormalized: "01012345678",
-      subtotal: 24_000,
+      subtotal: 20_000,
       shippingFee: 3_000,
-      total: 27_000,
+      total: 23_000,
       lines: [{
         productId: "p1",
+        purchaseOptionId: "2-month",
+        purchaseOptionLabel: "2개월분",
+        sku: "VITAMIN-C-2M",
         name: "서버 상품명",
         thumbnailUrl: "/products/vitamin-c.jpg",
-        unitPrice: 12_000,
+        basePrice: 12_000,
+        priceAdjustment: -2_000,
+        unitPrice: 10_000,
         quantity: 2,
+        lineTotal: 20_000,
       }],
     });
+  });
+
+  it("allows two options of one product and keeps their pair identities distinct", async () => {
+    const dependencies = inMemoryDependencies({
+      products: [product({
+        stock: 8,
+        purchaseOptions: [twoMonthOption, fourMonthOption],
+      })],
+    });
+
+    await createGuestOrderService(dependencies).create(createInput({
+      lines: [
+        { productId: "p1", purchaseOptionId: "2-month", quantity: 1 },
+        { productId: "p1", purchaseOptionId: "4-month", quantity: 1 },
+      ],
+    }), paymentResult, IDEMPOTENCY_KEY);
+
+    expect(dependencies.state.orders.get(serverReceipt.orderNumber)?.lines).toEqual([
+      expect.objectContaining({ productId: "p1", purchaseOptionId: "2-month", unitPrice: 10_000 }),
+      expect.objectContaining({ productId: "p1", purchaseOptionId: "4-month", unitPrice: 15_000 }),
+    ]);
   });
 
   it("returns only the validated public payment fields", async () => {
@@ -258,13 +349,17 @@ describe("guest order creation", () => {
     ).resolves.toEqual(serverReceipt);
   });
 
-  it("uses a legacy sample only when the server product read returns null", async () => {
+  it("uses a sample product's canonical option only when the server product read returns null", async () => {
     const dependencies = inMemoryDependencies({
       products: [],
     });
 
     await createGuestOrderService(dependencies).create(createInput({
-      lines: [{ productId: "sample-daily-multivitamin", quantity: 1 }],
+      lines: [{
+        productId: "sample-daily-multivitamin",
+        purchaseOptionId: "4-month",
+        quantity: 1,
+      }],
     }), paymentResult, IDEMPOTENCY_KEY);
 
     expect(dependencies.state.orders.get(serverReceipt.orderNumber)).toMatchObject({
@@ -273,10 +368,74 @@ describe("guest order creation", () => {
       total: 27_900,
       lines: [{
         productId: "sample-daily-multivitamin",
+        purchaseOptionId: "4-month",
+        purchaseOptionLabel: "4개월분",
+        sku: "SAMPLE-DAILY-MULTIVITAMIN-4M",
         name: "[샘플] 데일리 멀티비타민",
+        basePrice: 24_900,
+        priceAdjustment: 0,
         unitPrice: 24_900,
+        lineTotal: 24_900,
       }],
     });
+  });
+
+  it("normalizes an option-less legacy product to the implicit default snapshot", async () => {
+    const dependencies = inMemoryDependencies({ products: [product()] });
+
+    await createGuestOrderService(dependencies).create(createInput(), paymentResult, IDEMPOTENCY_KEY);
+
+    expect(dependencies.state.orders.get(serverReceipt.orderNumber)?.lines).toEqual([{
+      productId: "p1",
+      purchaseOptionId: "default",
+      purchaseOptionLabel: "기본 구성",
+      sku: "",
+      name: "비타민 C",
+      thumbnailUrl: "/products/vitamin-c.jpg",
+      basePrice: 12_000,
+      priceAdjustment: 0,
+      unitPrice: 12_000,
+      quantity: 2,
+      lineTotal: 24_000,
+    }]);
+  });
+
+  it.each([
+    ["unknown", "missing", 1],
+    ["inactive", "inactive", 1],
+    ["insufficient-stock", "2-month", 6],
+  ])("rejects an %s purchase option without exposing catalog details", async (_label, optionId, quantity) => {
+    const dependencies = inMemoryDependencies({
+      products: [product({
+        stock: 5,
+        purchaseOptions: [
+          twoMonthOption,
+          { ...fourMonthOption, id: "inactive", active: false, stock: 4 },
+        ],
+      })],
+    });
+
+    await expect(createGuestOrderService(dependencies).create(createInput({
+      lines: [{ productId: "p1", purchaseOptionId: optionId, quantity }],
+    }), paymentResult, IDEMPOTENCY_KEY)).rejects.toThrow(GuestOrderUnavailableError);
+  });
+
+  it("maps a below-1 canonical option price to the same safe unavailable error", async () => {
+    const dependencies = inMemoryDependencies({
+      products: [product({
+        price: 100,
+        stock: 1,
+        purchaseOptions: [{
+          ...twoMonthOption,
+          priceAdjustment: -100,
+          stock: 1,
+        }],
+      })],
+    });
+
+    await expect(createGuestOrderService(dependencies).create(createInput({
+      lines: [{ productId: "p1", purchaseOptionId: "2-month", quantity: 1 }],
+    }), paymentResult, IDEMPOTENCY_KEY)).rejects.toThrow(GuestOrderUnavailableError);
   });
 
   it("rejects missing and insufficient-stock products", async () => {

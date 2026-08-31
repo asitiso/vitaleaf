@@ -5,6 +5,7 @@ export type GuestOrderStatus = "mock-received";
 
 export type GuestOrderCreateLineInput = {
   productId: string;
+  purchaseOptionId: string;
   quantity: number;
 };
 
@@ -21,10 +22,16 @@ export type GuestOrderCreateInput = {
 
 export type GuestOrderLine = {
   productId: string;
+  purchaseOptionId: string;
+  purchaseOptionLabel: string;
+  sku: string;
   name: string;
   thumbnailUrl: string;
+  basePrice: number;
+  priceAdjustment: number;
   unitPrice: number;
   quantity: number;
+  lineTotal: number;
 };
 
 export type GuestOrderStored = {

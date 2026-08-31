@@ -1,5 +1,5 @@
-import type { OrderDraft, PaymentResult } from "../payment/process-payment";
-import type { GuestOrderPublic } from "./types";
+import type { PaymentResult } from "../payment/process-payment";
+import type { GuestOrderCreateInput, GuestOrderPublic } from "./types";
 
 const ORDER_NUMBER = /^VL-\d{8}-[A-Z0-9]{6}$/u;
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
@@ -47,6 +47,17 @@ const integer = (value: unknown, minimum = 0, maximum = MAX_MONEY): number => {
   return parsed;
 };
 
+const signedInteger = (value: unknown): number => {
+  if (
+    typeof value !== "number"
+    || !Number.isSafeInteger(value)
+    || Math.abs(value) > MAX_MONEY
+  ) {
+    throw new GuestOrderClientError();
+  }
+  return value;
+};
+
 const parseReceipt = (value: unknown): PaymentResult => {
   const receipt = asRecord(value);
   const orderNumber = text(receipt.orderNumber, 32);
@@ -81,10 +92,16 @@ const parsePublicOrder = (value: unknown): GuestOrderPublic => {
       const line = asRecord(value);
       return {
         productId: text(line.productId, 128),
+        purchaseOptionId: text(line.purchaseOptionId, 128),
+        purchaseOptionLabel: text(line.purchaseOptionLabel, 200),
+        sku: optionalText(line.sku, 200),
         name: text(line.name, 200),
         thumbnailUrl: optionalText(line.thumbnailUrl, 2_000),
-        unitPrice: integer(line.unitPrice),
+        basePrice: integer(line.basePrice),
+        priceAdjustment: signedInteger(line.priceAdjustment),
+        unitPrice: integer(line.unitPrice, 1),
         quantity: integer(line.quantity, 1, 999),
+        lineTotal: integer(line.lineTotal, 1),
       };
     }),
     subtotal: integer(order.subtotal),
@@ -117,7 +134,7 @@ const post = async (url: string, body: unknown): Promise<unknown> => {
 };
 
 export async function createGuestOrder(
-  order: OrderDraft,
+  order: GuestOrderCreateInput,
   payment: PaymentResult,
   idempotencyKey: string,
 ): Promise<PaymentResult> {

@@ -34,14 +34,20 @@ const order: GuestOrderStored = {
   deliveryNote: "문 앞에 놓아 주세요.",
   lines: [{
     productId: "p1",
+    purchaseOptionId: "2-month",
+    purchaseOptionLabel: "2개월분",
+    sku: "VITAMIN-C-2M",
     name: "비타민 C",
     thumbnailUrl: "/products/vitamin-c.jpg",
-    unitPrice: 12_000,
+    basePrice: 12_000,
+    priceAdjustment: -2_000,
+    unitPrice: 10_000,
     quantity: 2,
+    lineTotal: 20_000,
   }],
-  subtotal: 24_000,
+  subtotal: 20_000,
   shippingFee: 3_000,
-  total: 27_000,
+  total: 23_000,
   createdAt: NOW,
   receivedAt: new Date("2026-08-26T02:59:00.000Z"),
 };
@@ -298,6 +304,44 @@ describe("Firestore guest-order repository", () => {
     await expect(repository.getAttempt("fingerprint")).resolves.toEqual({
       failureCount: 4,
       expiresAt,
+    });
+  });
+
+  it("backfills immutable default-option fields when reading an older guest order", async () => {
+    const harness = firestoreHarness();
+    const legacyOrderNumber = "VL-20260826-LEGACY";
+    harness.snapshots.set(`guestOrders/${legacyOrderNumber}`, {
+      exists: true,
+      data: () => ({
+        ...order,
+        lines: [{
+          productId: "p1",
+          name: "과거 비타민 C",
+          thumbnailUrl: "/legacy.jpg",
+          unitPrice: 12_000,
+          quantity: 2,
+        }],
+      }),
+    });
+    const repository = createFirestoreGuestOrderRepository({
+      getFirestore: () => harness.firestore as never,
+      loadProduct: vi.fn(),
+    });
+
+    await expect(repository.getOrder(legacyOrderNumber)).resolves.toMatchObject({
+      lines: [{
+        productId: "p1",
+        purchaseOptionId: "default",
+        purchaseOptionLabel: "기본 구성",
+        sku: "",
+        name: "과거 비타민 C",
+        thumbnailUrl: "/legacy.jpg",
+        basePrice: 12_000,
+        priceAdjustment: 0,
+        unitPrice: 12_000,
+        quantity: 2,
+        lineTotal: 24_000,
+      }],
     });
   });
 

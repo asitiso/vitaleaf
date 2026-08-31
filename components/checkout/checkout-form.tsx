@@ -11,6 +11,7 @@ import { calculateCart } from "../../features/cart/cart-utils";
 import type { MemberIdentity } from "../../lib/firebase/member-auth";
 import { createMemberOrder } from "../../lib/firebase/member-orders";
 import { createGuestOrder } from "../../lib/guest-orders/client";
+import type { GuestOrderCreateInput } from "../../lib/guest-orders/types";
 import { getUserProfile, type UserProfile, updateUserProfile } from "../../lib/firebase/user-profile";
 import { processPayment, type OrderDraft } from "../../lib/payment/process-payment";
 
@@ -304,6 +305,16 @@ function CheckoutFormContents({
       shippingFee,
       total,
     };
+    const guestOrderInput: GuestOrderCreateInput = {
+      ...values,
+      deliveryNote: orderDraft.deliveryNote,
+      paymentMethod,
+      lines: submittedLines.map(({ productId, purchaseOptionId, quantity }) => ({
+        productId,
+        purchaseOptionId,
+        quantity,
+      })),
+    };
 
     try {
       const result = await processPayment(orderDraft);
@@ -319,7 +330,7 @@ function CheckoutFormContents({
         try {
           const idempotencyKey = guestIdempotencyKeyRef.current ?? globalThis.crypto.randomUUID();
           guestIdempotencyKeyRef.current = idempotencyKey;
-          completionResult = await createGuestOrder(orderDraft, result, idempotencyKey);
+          completionResult = await createGuestOrder(guestOrderInput, result, idempotencyKey);
         } catch {
           setSubmitError("주문을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
           return;

@@ -377,6 +377,13 @@ it("clears the buy-now request after payment while preserving the existing cart"
     shippingFee: 0,
     total: 42_000,
   }));
+  expect(createGuestOrderMock).toHaveBeenCalledWith(
+    expect.objectContaining({
+      lines: [{ productId: "probiotic", purchaseOptionId: "2-month", quantity: 2 }],
+    }),
+    paymentResult,
+    expect.stringMatching(/^[0-9a-f-]{36}$/u),
+  );
 });
 
 it("stops buy-now checkout when its temporary product information is missing", async () => {
@@ -484,7 +491,16 @@ it("persists a guest order before clearing and navigating", async () => {
   await user.click(screen.getByRole("button", { name: "결제하기" }));
 
   await waitFor(() => expect(createGuestOrderMock).toHaveBeenCalledWith(
-    expect.objectContaining({ phone: "010-1234-5678" }),
+    {
+      customerName: "홍길동",
+      phone: "010-1234-5678",
+      postcode: "06236",
+      address: "서울특별시 강남구 테헤란로 123",
+      addressDetail: "4층",
+      deliveryNote: "문 앞에 놓아 주세요.",
+      paymentMethod: "card",
+      lines: [{ productId: "omega-3", purchaseOptionId: "default", quantity: 2 }],
+    },
     paymentResult,
     expect.stringMatching(/^[0-9a-f-]{36}$/u),
   ));

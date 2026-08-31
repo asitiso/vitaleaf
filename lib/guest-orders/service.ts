@@ -1,6 +1,7 @@
 import { createHash, createHmac, randomInt, timingSafeEqual } from "node:crypto";
 
-import { calculateCart } from "../../features/cart/cart-utils";
+import { calculateCart, cartLineId } from "../../features/cart/cart-utils";
+import { OrderLineUnavailableError, resolveOrderLines } from "../orders/resolve-order-lines";
 import { findSampleProduct as findLegacySampleProduct } from "../products/sample-products";
 import type { PaymentResult } from "../payment/process-payment";
 import type { Product } from "../products/types";
@@ -80,14 +81,6 @@ const receiptFor = (order: GuestOrderStored): PaymentResult => ({
   receivedAt: order.receivedAt.toISOString(),
 });
 
-const usableProduct = (product: Product | null, quantity: number): product is Product => Boolean(
-  product
-  && Number.isInteger(product.price)
-  && product.price >= 0
-  && Number.isInteger(product.stock)
-  && product.stock >= quantity,
-);
-
 const safePhoneEqual = (left: string, right: string): boolean => {
   const leftDigest = createHash("sha256").update(left).digest();
   const rightDigest = createHash("sha256").update(right).digest();
@@ -136,23 +129,18 @@ export const createGuestOrderService = ({
       const products = input.lines.map((line, index) =>
         loadedProducts[index] ?? findSampleProduct(line.productId));
 
-      if (products.some((candidate, index) => !usableProduct(candidate, input.lines[index].quantity))) {
-        throw new GuestOrderUnavailableError();
+      let resolvedLines;
+      try {
+        resolvedLines = resolveOrderLines(input.lines, products);
+      } catch (error) {
+        if (error instanceof OrderLineUnavailableError) throw new GuestOrderUnavailableError();
+        throw error;
       }
-
-      const cartLines = input.lines.map((line, index) => {
-        const candidate = products[index];
-        if (!usableProduct(candidate, line.quantity)) throw new GuestOrderUnavailableError();
-        return {
-          productId: candidate.id,
-          name: candidate.name,
-          thumbnailUrl: candidate.thumbnailUrl,
-          unitPrice: candidate.price,
-          stock: candidate.stock,
-          quantity: line.quantity,
-          selected: true,
-        };
-      });
+      const cartLines = resolvedLines.map((line) => ({
+        ...line,
+        lineId: cartLineId(line.productId, line.purchaseOptionId),
+        selected: true,
+      }));
       const totals = calculateCart(cartLines);
       const receivedAt = now();
       const order: GuestOrderStored = {
@@ -165,12 +153,30 @@ export const createGuestOrderService = ({
         address: input.address,
         addressDetail: input.addressDetail,
         deliveryNote: input.deliveryNote,
-        lines: cartLines.map(({ productId, name, thumbnailUrl, unitPrice, quantity }) => ({
+        lines: resolvedLines.map(({
           productId,
+          purchaseOptionId,
+          purchaseOptionLabel,
+          sku,
           name,
           thumbnailUrl,
+          basePrice,
+          priceAdjustment,
           unitPrice,
           quantity,
+          lineTotal,
+        }) => ({
+          productId,
+          purchaseOptionId,
+          purchaseOptionLabel,
+          sku,
+          name,
+          thumbnailUrl,
+          basePrice,
+          priceAdjustment,
+          unitPrice,
+          quantity,
+          lineTotal,
         })),
         subtotal: totals.subtotal,
         shippingFee: totals.shippingFee,

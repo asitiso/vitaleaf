@@ -9,6 +9,7 @@ import type {
 } from "../guest-orders/types";
 import type { Product } from "../products/types";
 import { normalizeProduct } from "../products/normalize";
+import { LEGACY_PURCHASE_OPTION_ID } from "../products/purchase-options";
 import { getAdminFirestore } from "./admin";
 
 const LOOKUP_WINDOW_MILLISECONDS = 10 * 60 * 1000;
@@ -26,6 +27,8 @@ const asRecord = (value: unknown): Record<string, unknown> =>
 const asString = (value: unknown): string => typeof value === "string" ? value : "";
 const asFiniteNumber = (value: unknown): number =>
   typeof value === "number" && Number.isFinite(value) ? value : 0;
+const finiteNumberOr = (value: unknown, fallback: number): number =>
+  typeof value === "number" && Number.isFinite(value) ? value : fallback;
 
 const asDate = (value: unknown, field: string): Date => {
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
@@ -42,12 +45,23 @@ const asDate = (value: unknown, field: string): Date => {
 const normalizeLines = (value: unknown): GuestOrderLine[] => Array.isArray(value)
   ? value.map((rawLine) => {
       const line = asRecord(rawLine);
+      const unitPrice = asFiniteNumber(line.unitPrice);
+      const quantity = asFiniteNumber(line.quantity);
+      const purchaseOptionId = asString(line.purchaseOptionId) || LEGACY_PURCHASE_OPTION_ID;
+      const priceAdjustment = asFiniteNumber(line.priceAdjustment);
       return {
         productId: asString(line.productId),
+        purchaseOptionId,
+        purchaseOptionLabel: asString(line.purchaseOptionLabel)
+          || (purchaseOptionId === LEGACY_PURCHASE_OPTION_ID ? "기본 구성" : ""),
+        sku: asString(line.sku),
         name: asString(line.name),
         thumbnailUrl: asString(line.thumbnailUrl),
-        unitPrice: asFiniteNumber(line.unitPrice),
-        quantity: asFiniteNumber(line.quantity),
+        basePrice: finiteNumberOr(line.basePrice, unitPrice - priceAdjustment),
+        priceAdjustment,
+        unitPrice,
+        quantity,
+        lineTotal: finiteNumberOr(line.lineTotal, unitPrice * quantity),
       };
     })
   : [];

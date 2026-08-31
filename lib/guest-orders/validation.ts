@@ -58,8 +58,10 @@ const parseLines = (value: unknown): GuestOrderCreateInput["lines"] => {
   return value.map((rawLine) => {
     const line = asRecord(rawLine);
     const productId = boundedText(line.productId, 128);
-    if (seen.has(productId)) throw new GuestOrderValidationError();
-    seen.add(productId);
+    const purchaseOptionId = boundedText(line.purchaseOptionId, 128);
+    const identity = JSON.stringify([productId, purchaseOptionId]);
+    if (seen.has(identity)) throw new GuestOrderValidationError();
+    seen.add(identity);
     if (
       typeof line.quantity !== "number"
       || !Number.isInteger(line.quantity)
@@ -68,7 +70,7 @@ const parseLines = (value: unknown): GuestOrderCreateInput["lines"] => {
     ) {
       throw new GuestOrderValidationError();
     }
-    return { productId, quantity: line.quantity };
+    return { productId, purchaseOptionId, quantity: line.quantity };
   });
 };
 
