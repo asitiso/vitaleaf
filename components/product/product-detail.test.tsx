@@ -3,17 +3,19 @@ import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
 import type { Product, Review } from "@/lib/products/types";
+import type { CartLine } from "../../features/cart/cart-types";
 import { STORE_POLICIES } from "../../lib/site/policies";
 
-const { add, getApprovedReviewsMock, prepareBuyNow, push } = vi.hoisted(() => ({
+const { add, cartLines, getApprovedReviewsMock, prepareBuyNow, push } = vi.hoisted(() => ({
   add: vi.fn(),
+  cartLines: [] as CartLine[],
   getApprovedReviewsMock: vi.fn(),
   prepareBuyNow: vi.fn(),
   push: vi.fn(),
 }));
 
 vi.mock("../../features/cart/cart-context", () => ({
-  useCart: () => ({ add, prepareBuyNow }),
+  useCart: () => ({ add, lines: cartLines, prepareBuyNow }),
 }));
 
 vi.mock("../../lib/firebase/reviews", () => ({
@@ -57,6 +59,52 @@ const product: Product = {
   updatedAt: null,
 };
 
+const duplicateOptionedProduct: Product = {
+  ...product,
+  price: 80_000,
+  originalPrice: null,
+  stock: 7,
+  purchaseOptions: [
+    {
+      id: "2-month",
+      label: "2개월분",
+      durationMonths: 2,
+      sku: "OMEGA-2M",
+      priceAdjustment: -35_000,
+      stock: 3,
+      active: true,
+      isDefault: false,
+    },
+    {
+      id: "4-month",
+      label: "4개월분",
+      durationMonths: 4,
+      sku: "OMEGA-4M",
+      priceAdjustment: 0,
+      stock: 4,
+      active: true,
+      isDefault: true,
+    },
+  ],
+};
+
+function storedOptionLine(optionIndex: 0 | 1, quantity: number): CartLine {
+  const option = duplicateOptionedProduct.purchaseOptions![optionIndex];
+  return {
+    lineId: JSON.stringify([duplicateOptionedProduct.id, option.id]),
+    productId: duplicateOptionedProduct.id,
+    purchaseOptionId: option.id,
+    purchaseOptionLabel: option.label,
+    sku: option.sku,
+    name: duplicateOptionedProduct.name,
+    thumbnailUrl: duplicateOptionedProduct.thumbnailUrl,
+    unitPrice: duplicateOptionedProduct.price + option.priceAdjustment,
+    stock: option.stock,
+    quantity,
+    selected: true,
+  };
+}
+
 const reviews: Review[] = [
   {
     id: "review-5",
@@ -89,6 +137,7 @@ const reviews: Review[] = [
 
 beforeEach(() => {
   add.mockClear();
+  cartLines.splice(0);
   getApprovedReviewsMock.mockReset();
   prepareBuyNow.mockClear();
   push.mockClear();
@@ -104,7 +153,11 @@ it("caps quantity at stock and sends the selected quantity to cart", async () =>
   expect(screen.getByLabelText("수량")).toHaveValue(2);
 
   await userEvent.click(screen.getByRole("button", { name: "장바구니 담기" }));
-  expect(add).toHaveBeenCalledWith(stockedProduct, 2);
+  expect(add).toHaveBeenCalledWith(
+    stockedProduct,
+    expect.objectContaining({ id: "default", label: "기본 구성", stock: 2 }),
+    2,
+  );
 });
 
 it("prepares only the current product before routing to buy-now checkout", async () => {
@@ -114,7 +167,11 @@ it("prepares only the current product before routing to buy-now checkout", async
   await userEvent.click(screen.getByRole("button", { name: "수량 늘리기" }));
   await userEvent.click(screen.getByRole("button", { name: "바로 구매" }));
 
-  expect(prepareBuyNow).toHaveBeenCalledWith(product, 3);
+  expect(prepareBuyNow).toHaveBeenCalledWith(
+    product,
+    expect.objectContaining({ id: "default", label: "기본 구성", stock: 6 }),
+    3,
+  );
   expect(add).not.toHaveBeenCalled();
   expect(push).toHaveBeenCalledWith("/checkout?mode=buy-now");
   expect(prepareBuyNow.mock.invocationCallOrder[0]).toBeLessThan(push.mock.invocationCallOrder[0]);
@@ -130,7 +187,99 @@ it("shows a desktop cart confirmation with a cart action", async () => {
   expect(status).toHaveTextContent(`${product.name} 1개`);
   expect(status).toHaveAttribute("aria-live", "polite");
   expect(screen.getByRole("link", { name: "장바구니 보기" })).toHaveAttribute("href", "/cart");
-  expect(add).toHaveBeenCalledWith(product, 1);
+  expect(add).toHaveBeenCalledWith(
+    product,
+    expect.objectContaining({ id: "default", label: "기본 구성" }),
+    1,
+  );
+});
+
+it("adds a different option immediately as a distinct cart line", async () => {
+  cartLines.push(storedOptionLine(1, 2));
+  const user = userEvent.setup();
+  render(<ProductDetail product={duplicateOptionedProduct} reviews={[]} />);
+
+  await user.click(screen.getByRole("radio", { name: /2개월분/ }));
+  await user.click(screen.getByRole("button", { name: "장바구니 담기" }));
+
+  expect(screen.queryByRole("dialog", { name: "장바구니 수량 선택" })).not.toBeInTheDocument();
+  expect(add).toHaveBeenCalledWith(
+    duplicateOptionedProduct,
+    duplicateOptionedProduct.purchaseOptions![0],
+    1,
+  );
+  expect(screen.getByRole("status")).toHaveTextContent(`${duplicateOptionedProduct.name} 1개`);
+});
+
+it("asks whether to keep or increment only when the exact option already exists", async () => {
+  cartLines.push(storedOptionLine(1, 2));
+  const user = userEvent.setup();
+  render(<ProductDetail product={duplicateOptionedProduct} reviews={[]} />);
+
+  const trigger = screen.getByRole("button", { name: "장바구니 담기" });
+  await user.click(trigger);
+
+  const dialog = screen.getByRole("dialog", { name: "장바구니 수량 선택" });
+  expect(dialog).toHaveAccessibleDescription(/같은 상품과 구매 옵션/);
+  const quantities = dialog.querySelector(".product-detail__duplicate-quantities");
+  expect(quantities).toHaveTextContent("현재 장바구니: 2개");
+  expect(quantities).toHaveTextContent("이번 선택 수량: 1개");
+  expect(add).not.toHaveBeenCalled();
+
+  await user.click(within(dialog).getByRole("button", { name: "기존 수량 유지" }));
+  expect(screen.queryByRole("dialog", { name: "장바구니 수량 선택" })).not.toBeInTheDocument();
+  expect(add).not.toHaveBeenCalled();
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  await waitFor(() => expect(trigger).toHaveFocus());
+});
+
+it("increments the exact option and reports the stock-capped maximum before mutation", async () => {
+  cartLines.push(storedOptionLine(0, 2));
+  const user = userEvent.setup();
+  render(<ProductDetail product={duplicateOptionedProduct} reviews={[]} />);
+  await user.click(screen.getByRole("radio", { name: /2개월분/ }));
+  await user.click(screen.getByRole("button", { name: "수량 늘리기" }));
+  await user.click(screen.getByRole("button", { name: "장바구니 담기" }));
+
+  const dialog = screen.getByRole("dialog", { name: "장바구니 수량 선택" });
+  expect(dialog.querySelector(".product-detail__duplicate-quantities")).toHaveTextContent("이번 선택 수량: 2개");
+  expect(dialog.querySelector(".product-detail__duplicate-stock")).toHaveTextContent("재고가 3개라 최대 3개까지 담을 수 있어요.");
+  await user.click(within(dialog).getByRole("button", { name: "1개 추가하여 3개로 변경" }));
+
+  expect(add).toHaveBeenCalledWith(
+    duplicateOptionedProduct,
+    duplicateOptionedProduct.purchaseOptions![0],
+    2,
+    "increment",
+  );
+  expect(screen.getByRole("status")).toHaveTextContent(`${duplicateOptionedProduct.name} 1개`);
+});
+
+it("traps focus and treats Escape, the close button, and the backdrop as safe keep", async () => {
+  cartLines.push(storedOptionLine(1, 2));
+  const user = userEvent.setup();
+  render(<ProductDetail product={duplicateOptionedProduct} reviews={[]} />);
+  const trigger = screen.getByRole("button", { name: "장바구니 담기" });
+
+  await user.click(trigger);
+  const keepButton = screen.getByRole("button", { name: "기존 수량 유지" });
+  const incrementButton = screen.getByRole("button", { name: "1개 추가하여 3개로 변경" });
+  expect(keepButton).toHaveFocus();
+  await user.tab({ shift: true });
+  expect(incrementButton).toHaveFocus();
+  await user.tab();
+  expect(keepButton).toHaveFocus();
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(trigger).toHaveFocus());
+
+  await user.click(trigger);
+  await user.click(screen.getByRole("button", { name: "수량 선택 닫기" }));
+  await waitFor(() => expect(trigger).toHaveFocus());
+
+  await user.click(trigger);
+  fireEvent.click(screen.getByRole("button", { name: "수량 선택 바깥 영역 닫기" }));
+  expect(screen.queryByRole("dialog", { name: "장바구니 수량 선택" })).not.toBeInTheDocument();
+  expect(add).not.toHaveBeenCalled();
 });
 
 it("resets the three-second dismissal when a product is added again", async () => {

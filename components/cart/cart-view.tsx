@@ -22,6 +22,7 @@ function getFocusableElements(container: HTMLElement) {
 function CartQuantity({ line }: { line: CartLine }) {
   const { setQuantity } = useCart();
   const isUnavailable = line.stock < 1;
+  const lineLabel = `${line.name} ${line.purchaseOptionLabel}`;
   const [draftQuantity, setDraftQuantity] = useState(String(line.quantity));
   const [announcement, setAnnouncement] = useState("");
 
@@ -44,7 +45,7 @@ function CartQuantity({ line }: { line: CartLine }) {
 
     const next = Math.min(requested, availableStock);
     setDraftQuantity(String(next));
-    setQuantity(line.productId, next);
+    setQuantity(line.lineId, next);
     setAnnouncement(
       requested > availableStock ? `재고가 ${availableStock}개라 ${availableStock}개로 조정했어요.` : "",
     );
@@ -60,12 +61,12 @@ function CartQuantity({ line }: { line: CartLine }) {
 
   return (
     <div className="cart-view__quantity-wrap">
-      <div className="cart-view__quantity" role="group" aria-label={`${line.name} 수량 선택`}>
+      <div className="cart-view__quantity" role="group" aria-label={`${lineLabel} 수량 선택`}>
         <button
           type="button"
-          aria-label="수량 줄이기"
+          aria-label={`${lineLabel} 수량 줄이기`}
           disabled={isUnavailable || line.quantity <= 1}
-          onClick={() => setQuantity(line.productId, line.quantity - 1)}
+          onClick={() => setQuantity(line.lineId, line.quantity - 1)}
         >
           −
         </button>
@@ -75,7 +76,7 @@ function CartQuantity({ line }: { line: CartLine }) {
           max={line.stock}
           step={1}
           inputMode="numeric"
-          aria-label={`${line.name} 수량`}
+          aria-label={`${lineLabel} 수량`}
           value={draftQuantity}
           disabled={isUnavailable}
           onChange={(event) => {
@@ -101,9 +102,9 @@ function CartQuantity({ line }: { line: CartLine }) {
         />
         <button
           type="button"
-          aria-label="수량 늘리기"
+          aria-label={`${lineLabel} 수량 늘리기`}
           disabled={isUnavailable || line.quantity >= line.stock}
-          onClick={() => setQuantity(line.productId, line.quantity + 1)}
+          onClick={() => setQuantity(line.lineId, line.quantity + 1)}
         >
           +
         </button>
@@ -167,7 +168,7 @@ export function CartView() {
 
   const confirmDeletion = () => {
     if (pendingDeletion?.type === "line") {
-      remove(pendingDeletion.line.productId);
+      remove(pendingDeletion.line.lineId);
     }
     if (pendingDeletion?.type === "selected") {
       clearSelected();
@@ -259,18 +260,19 @@ export function CartView() {
 
           <ul className="cart-view__list">
             {lines.map((line) => (
-              <li key={line.productId} className={line.stock < 1 ? "cart-view__line cart-view__line--unavailable" : "cart-view__line"}>
+              <li key={line.lineId} className={line.stock < 1 ? "cart-view__line cart-view__line--unavailable" : "cart-view__line"}>
                 <label className="cart-view__select-line">
                   <input
                     type="checkbox"
-                    aria-label={`${line.name} 선택`}
+                    aria-label={`${line.name} ${line.purchaseOptionLabel} 선택`}
                     checked={line.selected}
-                    onChange={(event) => setSelected(line.productId, event.target.checked)}
+                    onChange={(event) => setSelected(line.lineId, event.target.checked)}
                   />
                 </label>
                 <CartThumbnail line={line} />
                 <div className="cart-view__product">
                   <h3>{line.name}</h3>
+                  <p className="cart-view__option">{line.purchaseOptionLabel}</p>
                   <p>{formatWon(line.unitPrice)} / 개</p>
                   {line.stock < 1 ? <p className="cart-view__stock-warning">현재 재고가 없어 주문할 수 없어요.</p> : null}
                 </div>
@@ -279,7 +281,7 @@ export function CartView() {
                 <button
                   className="cart-view__remove"
                   type="button"
-                  aria-label={`${line.name} 삭제`}
+                  aria-label={`${line.name} ${line.purchaseOptionLabel} 삭제`}
                   onClick={(event) => openDeletion({ type: "line", line }, event.currentTarget)}
                 >
                   삭제
@@ -332,7 +334,7 @@ export function CartView() {
         <div className="cart-view__dialog-backdrop">
           <section ref={dialogRef} className="cart-view__dialog" role="dialog" aria-modal="true" aria-labelledby="cart-delete-heading">
             <h2 id="cart-delete-heading">상품 삭제 확인</h2>
-            <p>{pendingDeletion.type === "line" ? `${pendingDeletion.line.name}을(를) 장바구니에서 삭제할까요?` : "선택한 상품을 장바구니에서 삭제할까요?"}</p>
+            <p>{pendingDeletion.type === "line" ? `${pendingDeletion.line.name} ${pendingDeletion.line.purchaseOptionLabel}을(를) 장바구니에서 삭제할까요?` : "선택한 상품을 장바구니에서 삭제할까요?"}</p>
             <div>
               <button ref={cancelButtonRef} type="button" onClick={closeDeletion}>취소</button>
               <button type="button" onClick={confirmDeletion}>삭제하기</button>

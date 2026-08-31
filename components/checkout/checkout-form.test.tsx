@@ -63,7 +63,11 @@ vi.mock("../../lib/guest-orders/client", () => ({
 const storageKey = "vitaleaf-cart-v1";
 const buyNowStorageKey = "vitaleaf-buy-now-v1";
 const selectedLine: CartLine = {
+  lineId: '["omega-3","default"]',
   productId: "omega-3",
+  purchaseOptionId: "default",
+  purchaseOptionLabel: "기본 구성",
+  sku: "",
   name: "데일리 오메가3",
   thumbnailUrl: "/omega-3.jpg",
   unitPrice: 16_000,
@@ -72,7 +76,11 @@ const selectedLine: CartLine = {
   selected: true,
 };
 const unselectedLine: CartLine = {
+  lineId: '["vitamin-d","default"]',
   productId: "vitamin-d",
+  purchaseOptionId: "default",
+  purchaseOptionLabel: "기본 구성",
+  sku: "",
   name: "비타민D",
   thumbnailUrl: "/vitamin-d.jpg",
   unitPrice: 12_000,
@@ -82,7 +90,11 @@ const unselectedLine: CartLine = {
 };
 
 const buyNowLine: CartLine = {
+  lineId: '["probiotic","2-month"]',
   productId: "probiotic",
+  purchaseOptionId: "2-month",
+  purchaseOptionLabel: "2개월분",
+  sku: "PROBIOTIC-2M",
   name: "장편한 유산균",
   thumbnailUrl: "/probiotic.jpg",
   unitPrice: 21_000,
@@ -270,6 +282,7 @@ it("rejects a near-valid 010 number with only seven subscriber digits", async ()
 it("blocks a persisted selected line that is sold out", async () => {
   const soldOutLine: CartLine = {
     ...selectedLine,
+    lineId: '["sold-out","default"]',
     productId: "sold-out",
     name: "품절 상품",
     stock: 0,
@@ -340,6 +353,7 @@ it("shows only the prepared product in buy-now mode without changing the cart", 
   expect(buyNowItem).toBeVisible();
   expect(screen.queryByText(/^데일리 오메가3/)).not.toBeInTheDocument();
   expect(within(buyNowItem.closest("li")!).getByText("42,000원")).toBeVisible();
+  expect(buyNowItem).toHaveTextContent("2개월분");
   expect(within(screen.getByText("총 결제 금액").closest("div")!).getByText("42,000원")).toBeVisible();
   expect(JSON.parse(localStorage.getItem(storageKey) ?? "[]")).toEqual(existingCart);
 });
@@ -711,6 +725,7 @@ it("removes only the submitted cart snapshot after a cross-tab cart update durin
   const payment = deferredPayment();
   const newlySelectedLine: CartLine = {
     ...selectedLine,
+    lineId: '["new-probiotic","default"]',
     productId: "new-probiotic",
     name: "새로 선택한 유산균",
     quantity: 1,

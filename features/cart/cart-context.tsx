@@ -11,10 +11,11 @@ import {
   useState,
 } from "react";
 
-import type { Product } from "@/lib/products/types";
+import { getPurchaseOptionPrice } from "../../lib/products/purchase-options";
+import type { Product, PurchaseOption } from "@/lib/products/types";
 
-import { calculateCart, clampQuantity } from "./cart-utils";
-import type { CartContextValue, CartLine } from "./cart-types";
+import { calculateCart, cartLineId, clampQuantity, normalizeStoredCart } from "./cart-utils";
+import type { CartContextValue, CartLine, DuplicateCartStrategy } from "./cart-types";
 
 const STORAGE_KEY = "vitaleaf-cart-v1";
 const BUY_NOW_STORAGE_KEY = "vitaleaf-buy-now-v1";
@@ -23,48 +24,6 @@ type CartSummary = ReturnType<typeof calculateCart>;
 type CartContextState = CartContextValue & CartSummary;
 
 const CartContext = createContext<CartContextState | null>(null);
-
-function isStoredCartLine(value: unknown): value is Omit<CartLine, "quantity"> & { quantity: number } {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-
-  const line = value as Record<string, unknown>;
-  return (
-    typeof line.productId === "string" &&
-    typeof line.name === "string" &&
-    typeof line.thumbnailUrl === "string" &&
-    typeof line.unitPrice === "number" &&
-    Number.isFinite(line.unitPrice) &&
-    line.unitPrice >= 0 &&
-    typeof line.stock === "number" &&
-    Number.isFinite(line.stock) &&
-    line.stock >= 0 &&
-    typeof line.quantity === "number" &&
-    Number.isFinite(line.quantity) &&
-    typeof line.selected === "boolean"
-  );
-}
-
-function normalizeStoredCart(value: unknown): CartLine[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.flatMap((entry) => {
-    if (!isStoredCartLine(entry)) {
-      return [];
-    }
-
-    const stock = Math.trunc(entry.stock);
-    if (stock < 0) {
-      return [];
-    }
-
-    const line: CartLine = { ...entry, stock };
-    return [{ ...line, quantity: clampQuantity(line, entry.quantity) }];
-  });
-}
 
 function readStoredCart(): CartLine[] {
   if (typeof window === "undefined") {
@@ -79,13 +38,17 @@ function readStoredCart(): CartLine[] {
   }
 }
 
-function toCartLine(product: Product, quantity: number, selected = true): CartLine {
+function toCartLine(product: Product, option: PurchaseOption, quantity: number, selected = true): CartLine {
   const line: CartLine = {
+    lineId: cartLineId(product.id, option.id),
     productId: product.id,
+    purchaseOptionId: option.id,
+    purchaseOptionLabel: option.label,
+    sku: option.sku,
     name: product.name,
     thumbnailUrl: product.thumbnailUrl,
-    unitPrice: product.price,
-    stock: product.stock,
+    unitPrice: getPurchaseOptionPrice(product.price, option),
+    stock: option.stock,
     quantity: 1,
     selected,
   };
@@ -108,7 +71,11 @@ function readStoredBuyNowLine(): CartLine | null {
 }
 
 function isSameCartLineSnapshot(current: CartLine, snapshot: CartLine) {
-  return current.productId === snapshot.productId
+  return current.lineId === snapshot.lineId
+    && current.productId === snapshot.productId
+    && current.purchaseOptionId === snapshot.purchaseOptionId
+    && current.purchaseOptionLabel === snapshot.purchaseOptionLabel
+    && current.sku === snapshot.sku
     && current.name === snapshot.name
     && current.thumbnailUrl === snapshot.thumbnailUrl
     && current.unitPrice === snapshot.unitPrice
@@ -177,37 +144,47 @@ export function CartProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("storage", syncCart);
   }, []);
 
-  const add = useCallback((product: Product, quantity: number) => {
-    if (product.stock < 1 || !Number.isFinite(quantity)) {
+  const add = useCallback((
+    product: Product,
+    option: PurchaseOption,
+    quantity: number,
+    strategy?: DuplicateCartStrategy,
+  ) => {
+    if (!option.active || option.stock < 1 || !Number.isFinite(quantity)) {
       return;
     }
 
     setLines((currentLines) => {
-      const existing = currentLines.find((line) => line.productId === product.id);
+      const nextLineId = cartLineId(product.id, option.id);
+      const existing = currentLines.find((line) => line.lineId === nextLineId);
       if (!existing) {
-        return [...currentLines, toCartLine(product, quantity)];
+        return [...currentLines, toCartLine(product, option, quantity)];
       }
 
-      const updatedLine = toCartLine(product, existing.quantity + quantity, existing.selected);
-      return currentLines.map((line) => (line.productId === product.id ? updatedLine : line));
+      if (strategy !== "increment") {
+        return currentLines;
+      }
+
+      const updatedLine = toCartLine(product, option, existing.quantity + quantity, existing.selected);
+      return currentLines.map((line) => (line.lineId === nextLineId ? updatedLine : line));
     });
   }, []);
 
-  const remove = useCallback((productId: string) => {
-    setLines((currentLines) => currentLines.filter((line) => line.productId !== productId));
+  const remove = useCallback((lineId: string) => {
+    setLines((currentLines) => currentLines.filter((line) => line.lineId !== lineId));
   }, []);
 
-  const setQuantity = useCallback((productId: string, quantity: number) => {
+  const setQuantity = useCallback((lineId: string, quantity: number) => {
     setLines((currentLines) =>
       currentLines.map((line) =>
-        line.productId === productId ? { ...line, quantity: clampQuantity(line, quantity) } : line,
+        line.lineId === lineId ? { ...line, quantity: clampQuantity(line, quantity) } : line,
       ),
     );
   }, []);
 
-  const setSelected = useCallback((productId: string, selected: boolean) => {
+  const setSelected = useCallback((lineId: string, selected: boolean) => {
     setLines((currentLines) =>
-      currentLines.map((line) => (line.productId === productId ? { ...line, selected } : line)),
+      currentLines.map((line) => (line.lineId === lineId ? { ...line, selected } : line)),
     );
   }, []);
 
@@ -219,19 +196,19 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setLines((currentLines) => currentLines.filter((line) => !line.selected));
   }, []);
 
-  const prepareBuyNow = useCallback((product: Product, quantity: number) => {
-    if (product.stock < 1 || !Number.isFinite(quantity)) {
+  const prepareBuyNow = useCallback((product: Product, option: PurchaseOption, quantity: number) => {
+    if (!option.active || option.stock < 1 || !Number.isFinite(quantity)) {
       return;
     }
-    setBuyNowLine(toCartLine(product, quantity));
+    setBuyNowLine(toCartLine(product, option, quantity));
   }, []);
 
   const clearBuyNow = useCallback(() => setBuyNowLine(null), []);
 
   const clearSubmitted = useCallback((submittedLines: readonly CartLine[]) => {
-    const submittedByProductId = new Map(submittedLines.map((line) => [line.productId, line]));
+    const submittedByLineId = new Map(submittedLines.map((line) => [line.lineId, line]));
     setLines((currentLines) => currentLines.filter((line) => {
-      const submittedLine = submittedByProductId.get(line.productId);
+      const submittedLine = submittedByLineId.get(line.lineId);
       return !submittedLine || !isSameCartLineSnapshot(line, submittedLine);
     }));
   }, []);

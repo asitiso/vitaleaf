@@ -507,8 +507,8 @@ function CheckoutFormContents({
           <h2 id="checkout-summary-heading">주문 요약</h2>
           <ul>
             {selectedLines.map((line) => (
-              <li key={line.productId}>
-                <span>{line.name} × {line.quantity}</span>
+              <li key={line.lineId}>
+                <span>{line.name} · {line.purchaseOptionLabel} × {line.quantity}</span>
                 <strong>{formatWon(line.unitPrice * line.quantity)}</strong>
               </li>
             ))}

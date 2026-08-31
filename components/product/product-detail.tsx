@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { useCart } from "../../features/cart/cart-context";
+import { cartLineId } from "../../features/cart/cart-utils";
+import type { CartLine } from "../../features/cart/cart-types";
 import { formatWon } from "../../lib/format";
 import { PRODUCT_CATEGORIES, taxonomyLabel } from "../../lib/catalog/taxonomy";
 import {
@@ -34,6 +36,17 @@ type CartToastState = {
   productName: string;
   quantity: number;
 };
+
+type DuplicateCartDecision = {
+  line: CartLine;
+  requestedQuantity: number;
+};
+
+function getFocusableElements(container: HTMLElement) {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>('button:not([disabled]):not([tabindex="-1"]), a[href], input:not([disabled])'),
+  );
+}
 
 function fallbackGalleryAlt(productName: string, index: number): string {
   return index === 0 ? `${productName} 대표 이미지` : `${productName} 상세 이미지 ${index + 1}`;
@@ -95,7 +108,7 @@ function hasOnlyImplicitLegacyOption(product: Product): boolean {
 }
 
 export function ProductDetail({ product, reviews, reviewLoadError = false }: ProductDetailProps) {
-  const { add, prepareBuyNow } = useCart();
+  const { add, lines, prepareBuyNow } = useCart();
   const router = useRouter();
   const defaultOption = getDefaultPurchaseOption(product);
   const purchaseOptions = normalizePurchaseOptions(product.purchaseOptions, product.price, product.stock);
@@ -105,8 +118,12 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
     quantity: 1,
   }));
   const [cartToast, setCartToast] = useState<CartToastState | null>(null);
+  const [duplicateDecision, setDuplicateDecision] = useState<DuplicateCartDecision | null>(null);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [failedImages, setFailedImages] = useState<Set<string>>(() => new Set());
+  const addButtonRef = useRef<HTMLButtonElement>(null);
+  const duplicateDialogRef = useRef<HTMLElement>(null);
+  const keepQuantityButtonRef = useRef<HTMLButtonElement>(null);
   const selectedOption = (
     purchaseState.productId === product.id
       ? purchaseOptions.find((option) => option.id === purchaseState.optionId && option.active)
@@ -142,7 +159,7 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
   };
   const buyNow = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    prepareBuyNow(product, quantity);
+    prepareBuyNow(product, selectedOption, quantity);
     router.push("/checkout?mode=buy-now");
   };
   const addToCart = () => {
@@ -150,9 +167,70 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
       return;
     }
 
-    add(product, quantity);
+    const existingLine = lines.find((line) => line.lineId === cartLineId(product.id, selectedOption.id));
+    if (existingLine) {
+      setDuplicateDecision({ line: existingLine, requestedQuantity: quantity });
+      return;
+    }
+
+    add(product, selectedOption, quantity);
     setCartToast({ productName: product.name, quantity });
   };
+
+  const closeDuplicateDecision = useCallback(() => {
+    setDuplicateDecision(null);
+    requestAnimationFrame(() => addButtonRef.current?.focus());
+  }, [setDuplicateDecision]);
+
+  const incrementDuplicate = () => {
+    if (!duplicateDecision) {
+      return;
+    }
+
+    const availableAddition = Math.max(selectedOption.stock - duplicateDecision.line.quantity, 0);
+    const addedQuantity = Math.min(duplicateDecision.requestedQuantity, availableAddition);
+    if (addedQuantity > 0) {
+      add(product, selectedOption, duplicateDecision.requestedQuantity, "increment");
+      setCartToast({ productName: product.name, quantity: addedQuantity });
+    }
+    closeDuplicateDecision();
+  };
+
+  useEffect(() => {
+    if (!duplicateDecision) {
+      return;
+    }
+
+    keepQuantityButtonRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeDuplicateDecision();
+        return;
+      }
+      if (event.key !== "Tab" || !duplicateDialogRef.current) {
+        return;
+      }
+
+      const focusableElements = getFocusableElements(duplicateDialogRef.current);
+      const first = focusableElements.at(0);
+      const last = focusableElements.at(-1);
+      if (!first || !last) {
+        return;
+      }
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [closeDuplicateDecision, duplicateDecision]);
 
   useEffect(() => {
     if (cartToast === null) {
@@ -270,11 +348,70 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
           <span>수량 {quantity}개</span>
           <strong>{formatWon(selectedPrice * quantity)}</strong>
         </div>
-        <button type="button" disabled={soldOut} onClick={addToCart}>
+        <button ref={addButtonRef} type="button" disabled={soldOut} onClick={addToCart}>
           장바구니 담기
         </button>
         <button type="submit" disabled={soldOut}>바로 구매</button>
       </form>
+      {duplicateDecision ? (() => {
+        const availableAddition = Math.max(selectedOption.stock - duplicateDecision.line.quantity, 0);
+        const addedQuantity = Math.min(duplicateDecision.requestedQuantity, availableAddition);
+        const nextQuantity = duplicateDecision.line.quantity + addedQuantity;
+        const isStockCapped = addedQuantity < duplicateDecision.requestedQuantity;
+        const describedBy = isStockCapped
+          ? "duplicate-cart-description duplicate-cart-quantities duplicate-cart-stock"
+          : "duplicate-cart-description duplicate-cart-quantities";
+
+        return (
+          <div className="product-detail__duplicate-backdrop">
+            <button
+              type="button"
+              tabIndex={-1}
+              className="product-detail__duplicate-backdrop-dismiss"
+              aria-label="수량 선택 바깥 영역 닫기"
+              onClick={closeDuplicateDecision}
+            />
+            <section
+              ref={duplicateDialogRef}
+              className="product-detail__duplicate-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="duplicate-cart-heading"
+              aria-describedby={describedBy}
+            >
+              <h2 id="duplicate-cart-heading">장바구니 수량 선택</h2>
+              <p id="duplicate-cart-description">같은 상품과 구매 옵션이 장바구니에 있습니다.</p>
+              <div id="duplicate-cart-quantities" className="product-detail__duplicate-quantities">
+                <p>현재 장바구니: <strong>{duplicateDecision.line.quantity}개</strong></p>
+                <p>이번 선택 수량: <strong>{duplicateDecision.requestedQuantity}개</strong></p>
+              </div>
+              {isStockCapped ? (
+                <p id="duplicate-cart-stock" className="product-detail__duplicate-stock">
+                  재고가 {selectedOption.stock}개라 최대 {nextQuantity}개까지 담을 수 있어요.
+                </p>
+              ) : null}
+              <div className="product-detail__duplicate-actions">
+                <button ref={keepQuantityButtonRef} type="button" onClick={closeDuplicateDecision}>
+                  기존 수량 유지
+                </button>
+                <button
+                  className="product-detail__duplicate-close"
+                  type="button"
+                  aria-label="수량 선택 닫기"
+                  onClick={closeDuplicateDecision}
+                >
+                  ×
+                </button>
+                <button type="button" disabled={addedQuantity < 1} onClick={incrementDuplicate}>
+                  {addedQuantity < 1
+                    ? `이미 최대 수량 ${nextQuantity}개입니다`
+                    : `${addedQuantity}개 추가하여 ${nextQuantity}개로 변경`}
+                </button>
+              </div>
+            </section>
+          </div>
+        );
+      })() : null}
       {cartToast ? (
         <aside className="product-detail__cart-toast" role="status" aria-live="polite">
           <p><strong>{cartToast.productName}</strong> {cartToast.quantity}개를 장바구니에 담았습니다.</p>

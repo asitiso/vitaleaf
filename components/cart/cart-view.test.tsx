@@ -10,7 +10,11 @@ import { CartView } from "./cart-view";
 const storageKey = "vitaleaf-cart-v1";
 
 const line: CartLine = {
+  lineId: '["omega-3","default"]',
   productId: "omega-3",
+  purchaseOptionId: "default",
+  purchaseOptionLabel: "기본 구성",
+  sku: "",
   name: "데일리 오메가3",
   thumbnailUrl: "/omega-3.jpg",
   unitPrice: 16_000,
@@ -43,11 +47,11 @@ it("updates selection, quantity, free-shipping progress, and total", async () =>
   expect(await screen.findByText("무료배송까지 14,000원 남았어요")).toBeVisible();
   expect(screen.getByText("3,000원")).toBeVisible();
 
-  await user.click(screen.getByRole("button", { name: "수량 늘리기" }));
+  await user.click(screen.getByRole("button", { name: /수량 늘리기/ }));
 
   expect(screen.getByText("0원")).toBeVisible();
   expect(screen.getByText("무료배송 혜택을 받고 있어요")).toBeVisible();
-  expect(screen.getByRole("button", { name: "수량 늘리기" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: /수량 늘리기/ })).toBeDisabled();
 
   await user.click(screen.getByRole("checkbox", { name: "전체 선택" }));
 
@@ -94,8 +98,43 @@ it("keeps the current payment total beside the mobile checkout action", async ()
   expect(checkoutBar).not.toBeNull();
   expect(within(checkoutBar as HTMLElement).getByText("19,000원")).toBeVisible();
 
-  await user.click(screen.getByRole("button", { name: "수량 늘리기" }));
+  await user.click(screen.getByRole("button", { name: /수량 늘리기/ }));
   expect(within(checkoutBar as HTMLElement).getByText("32,000원")).toBeVisible();
+});
+
+it("renders same-product options as distinct labelled lines and mutates only the chosen line", async () => {
+  const user = userEvent.setup();
+  const twoMonth = makeLine({
+    lineId: '["omega-3","2-month"]',
+    purchaseOptionId: "2-month",
+    purchaseOptionLabel: "2개월분",
+    sku: "OMEGA-2M",
+    unitPrice: 10_000,
+    stock: 5,
+    quantity: 1,
+  });
+  const fourMonth = makeLine({
+    lineId: '["omega-3","4-month"]',
+    purchaseOptionId: "4-month",
+    purchaseOptionLabel: "4개월분",
+    sku: "OMEGA-4M",
+    unitPrice: 18_000,
+    stock: 5,
+    quantity: 2,
+  });
+  renderCart([twoMonth, fourMonth]);
+
+  expect(await screen.findByText("2개월분")).toBeVisible();
+  expect(screen.getByText("4개월분")).toBeVisible();
+  expect(screen.getAllByText("46,000원").at(-1)).toBeVisible();
+
+  await user.click(screen.getByRole("checkbox", { name: "데일리 오메가3 2개월분 선택" }));
+  expect(screen.getAllByText("36,000원").at(-1)).toBeVisible();
+
+  await user.click(screen.getByRole("button", { name: "데일리 오메가3 2개월분 삭제" }));
+  await user.click(screen.getByRole("button", { name: "삭제하기" }));
+  expect(screen.queryByText("2개월분")).not.toBeInTheDocument();
+  expect(screen.getByText("4개월분")).toBeVisible();
 });
 
 it("confirms before deleting selected products and shows an empty-cart guide", async () => {
@@ -103,7 +142,7 @@ it("confirms before deleting selected products and shows an empty-cart guide", a
   renderCart();
 
   await screen.findByRole("heading", { name: "장바구니" });
-  await user.click(screen.getByRole("button", { name: "데일리 오메가3 삭제" }));
+  await user.click(screen.getByRole("button", { name: "데일리 오메가3 기본 구성 삭제" }));
 
   expect(screen.getByRole("dialog", { name: "상품 삭제 확인" })).toBeVisible();
   await user.click(screen.getByRole("button", { name: "삭제하기" }));
@@ -115,7 +154,7 @@ it("confirms before deleting selected products and shows an empty-cart guide", a
 it("keeps focus inside the delete dialog and restores it after cancellation", async () => {
   const user = userEvent.setup();
   renderCart();
-  const deleteTrigger = await screen.findByRole("button", { name: "데일리 오메가3 삭제" });
+  const deleteTrigger = await screen.findByRole("button", { name: "데일리 오메가3 기본 구성 삭제" });
 
   await user.click(deleteTrigger);
 
@@ -138,8 +177,8 @@ it("keeps a selected out-of-stock line visible but prevents checkout", async () 
 
   expect(await screen.findByRole("alert")).toHaveTextContent("재고가 없는 선택 상품을 해제한 뒤 주문해 주세요.");
   expect(screen.getByRole("link", { name: "선택 상품 주문하기" })).toHaveAttribute("aria-disabled", "true");
-  expect(screen.getByRole("button", { name: "수량 줄이기" })).toBeDisabled();
-  expect(screen.getByRole("button", { name: "수량 늘리기" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: /수량 줄이기/ })).toBeDisabled();
+  expect(screen.getByRole("button", { name: /수량 늘리기/ })).toBeDisabled();
 });
 
 it("replaces a broken cart thumbnail without changing persisted cart data", async () => {
