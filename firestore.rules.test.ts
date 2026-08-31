@@ -497,7 +497,7 @@ describeRules("member profiles and orders", () => {
     await assertFails(setDoc(doc(publicDatabase, "users/user-1/orders/order-1"), validOrder("user-1")));
   });
 
-  it("allows an owner profile and order but denies another user", async () => {
+  it("allows an owner to read orders but denies every direct browser write", async () => {
     const owner = testEnvironment.authenticatedContext("user-1").firestore();
     const stranger = testEnvironment.authenticatedContext("user-2").firestore();
 
@@ -505,11 +505,12 @@ describeRules("member profiles and orders", () => {
     await assertSucceeds(getDoc(doc(owner, "users/user-1")));
     await assertFails(getDoc(doc(stranger, "users/user-1")));
     await assertFails(setDoc(doc(stranger, "users/user-1"), validProfile("user-1")));
-    await assertSucceeds(setDoc(doc(owner, "users/user-1/orders/order-1"), validOrder("user-1")));
+    await seed({ "users/user-1/orders/order-1": validOrder("user-1") });
     await assertSucceeds(getDoc(doc(owner, "users/user-1/orders/order-1")));
     const ownOrders = await assertSucceeds(getDocs(collection(owner, "users/user-1/orders")));
     expect(ownOrders.docs.map((entry) => entry.id)).toEqual(["order-1"]);
     await assertFails(getDoc(doc(stranger, "users/user-1/orders/order-1")));
+    await assertFails(setDoc(doc(owner, "users/user-1/orders/owner-order"), validOrder("user-1")));
     await assertFails(setDoc(doc(stranger, "users/user-1/orders/stranger-order"), validOrder("user-1")));
     await assertFails(updateDoc(doc(owner, "users/user-1/orders/order-1"), { total: 1 }));
     await assertFails(deleteDoc(doc(owner, "users/user-1/orders/order-1")));

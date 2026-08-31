@@ -9,7 +9,7 @@ import { type AuthStatus, useAuth } from "../../features/auth/auth-context";
 import { useCart } from "../../features/cart/cart-context";
 import { calculateCart } from "../../features/cart/cart-utils";
 import type { MemberIdentity } from "../../lib/firebase/member-auth";
-import { createMemberOrder } from "../../lib/firebase/member-orders";
+import { createMemberOrder } from "../../lib/member-orders/client";
 import { createGuestOrder } from "../../lib/guest-orders/client";
 import type { GuestOrderCreateInput } from "../../lib/guest-orders/types";
 import { getUserProfile, type UserProfile, updateUserProfile } from "../../lib/firebase/user-profile";
@@ -179,6 +179,7 @@ function CheckoutFormContents({
   const [addressLookupError, setAddressLookupError] = useState("");
   const submittingRef = useRef(false);
   const guestIdempotencyKeyRef = useRef<string | null>(null);
+  const memberIdempotencyKeyRef = useRef<string | null>(null);
   const editedDeliveryFieldsRef = useRef<Set<RequiredField>>(new Set());
   const profileRef = useRef<UserProfile | null>(null);
   const fieldRefs = useRef<Partial<Record<RequiredField, HTMLInputElement>>>({});
@@ -321,7 +322,9 @@ function CheckoutFormContents({
       let completionResult = result;
       if (member) {
         try {
-          await createMemberOrder(member.uid, orderDraft, result);
+          const idempotencyKey = memberIdempotencyKeyRef.current ?? globalThis.crypto.randomUUID();
+          memberIdempotencyKeyRef.current = idempotencyKey;
+          completionResult = await createMemberOrder(orderDraft, result, idempotencyKey);
         } catch {
           setSubmitError("주문 정보를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
           return;

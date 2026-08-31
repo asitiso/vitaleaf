@@ -52,7 +52,7 @@ vi.mock("../../lib/firebase/user-profile", () => ({
   updateUserProfile: updateUserProfileMock,
 }));
 
-vi.mock("../../lib/firebase/member-orders", () => ({
+vi.mock("../../lib/member-orders/client", () => ({
   createMemberOrder: createMemberOrderMock,
 }));
 
@@ -197,7 +197,7 @@ beforeEach(() => {
   authState.status = "signed-out";
   authState.user = null;
   createGuestOrderMock.mockReset().mockResolvedValue(paymentResult);
-  createMemberOrderMock.mockReset().mockResolvedValue("member-order-1");
+  createMemberOrderMock.mockReset().mockResolvedValue(paymentResult);
   getUserProfileMock.mockReset().mockResolvedValue(null);
   processPaymentMock.mockReset();
   pushMock.mockReset();
@@ -449,7 +449,7 @@ it("prefills a signed-in member address without overwriting typing", async () =>
   expect(screen.getByRole("checkbox", { name: "이 배송지를 기본 배송지로 저장" })).toBeVisible();
 });
 
-it("stores a member order before clearing selected cart lines", async () => {
+it("clears selected member cart lines only after the authenticated member API succeeds", async () => {
   const user = userEvent.setup();
   processPaymentMock.mockResolvedValue(paymentResult);
   renderMemberCheckout();
@@ -459,9 +459,15 @@ it("stores a member order before clearing selected cart lines", async () => {
   await user.click(screen.getByRole("button", { name: "결제하기" }));
 
   await waitFor(() => expect(createMemberOrderMock).toHaveBeenCalledWith(
-    "user-1",
-    expect.objectContaining({ lines: [selectedLine] }),
+    expect.objectContaining({
+      lines: [expect.objectContaining({
+        productId: "omega-3",
+        purchaseOptionId: "default",
+        quantity: 2,
+      })],
+    }),
     paymentResult,
+    expect.stringMatching(/^[0-9a-f-]{36}$/u),
   ));
   await waitFor(() => expect(JSON.parse(localStorage.getItem(storageKey) ?? "[]")).toEqual([unselectedLine]));
 });
@@ -609,9 +615,9 @@ it("preserves delivery typing while authentication is checking, then persists a 
   payment.resolve(paymentResult);
 
   await waitFor(() => expect(createMemberOrderMock).toHaveBeenCalledWith(
-    "user-1",
     expect.anything(),
     paymentResult,
+    expect.any(String),
   ));
 });
 
@@ -679,7 +685,11 @@ it("retries an auth error, resets guest override, and persists when retry signs 
   await fillValidOrder(user);
   await user.click(screen.getByRole("button", { name: "결제하기" }));
 
-  await waitFor(() => expect(createMemberOrderMock).toHaveBeenCalledWith("user-1", expect.anything(), paymentResult));
+  await waitFor(() => expect(createMemberOrderMock).toHaveBeenCalledWith(
+    expect.anything(),
+    paymentResult,
+    expect.any(String),
+  ));
 });
 
 it("keeps delivery text typed during initial authentication checking when it resolves signed out", async () => {

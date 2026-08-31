@@ -1,14 +1,24 @@
-import { addDoc, collection, getDocs, orderBy, query } from "firebase/firestore";
+import { collection, getDocs, orderBy, query } from "firebase/firestore";
 
-import type { OrderDraft, PaymentResult } from "../payment/process-payment";
+import type { OrderDraft } from "../payment/process-payment";
+import { LEGACY_PURCHASE_OPTION_ID } from "../products/purchase-options";
 import { db } from "./client";
 
 export type MemberOrderLine = {
   productId: string;
+  purchaseOptionId?: string;
+  purchaseOptionLabel?: string;
+  sku?: string;
   name: string;
+  thumbnailUrl?: string;
+  basePrice?: number;
+  priceAdjustment?: number;
   quantity: number;
   unitPrice: number;
+  lineTotal?: number;
 };
+
+export type MemberOrderSnapshotLine = Required<MemberOrderLine>;
 
 export type MemberOrder = {
   id: string;
@@ -29,17 +39,22 @@ export type MemberOrder = {
   shippingFee: number;
   total: number;
   createdAt: Date | null;
+  receivedAt?: Date | null;
 };
 
-export type MemberOrderWrite = Omit<MemberOrder, "id"> & { createdAt: Date };
+export type MemberOrderStored = Omit<MemberOrder, "id" | "createdAt" | "receivedAt" | "lines">
+  & {
+    lines: MemberOrderSnapshotLine[];
+    createdAt: Date;
+    receivedAt: Date;
+  };
 
 export type MemberOrderDocument = {
   id: string;
   data(): unknown;
 };
 
-export type MemberOrderAdapter = {
-  add: (uid: string, order: MemberOrderWrite) => Promise<string>;
+export type MemberOrderReadAdapter = {
   list: (uid: string) => Promise<MemberOrderDocument[]>;
 };
 
@@ -52,6 +67,9 @@ const asString = (value: unknown): string => typeof value === "string" ? value :
 
 const asNumber = (value: unknown): number =>
   typeof value === "number" && Number.isFinite(value) ? value : 0;
+
+const numberOr = (value: unknown, fallback: number): number =>
+  typeof value === "number" && Number.isFinite(value) ? value : fallback;
 
 const asDate = (value: unknown): Date | null => {
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
@@ -81,47 +99,30 @@ const asShippingAddress = (value: unknown): MemberOrder["shippingAddress"] => {
 
 const asLines = (value: unknown): MemberOrderLine[] =>
   Array.isArray(value)
-    ? value.map((line) => {
-      const item = asRecord(line);
+    ? value.map((rawLine) => {
+      const line = asRecord(rawLine);
+      const unitPrice = asNumber(line.unitPrice);
+      const quantity = asNumber(line.quantity);
+      const purchaseOptionId = asString(line.purchaseOptionId) || LEGACY_PURCHASE_OPTION_ID;
+      const priceAdjustment = asNumber(line.priceAdjustment);
       return {
-        productId: asString(item.productId),
-        name: asString(item.name),
-        quantity: asNumber(item.quantity),
-        unitPrice: asNumber(item.unitPrice),
+        productId: asString(line.productId),
+        purchaseOptionId,
+        purchaseOptionLabel: asString(line.purchaseOptionLabel)
+          || (purchaseOptionId === LEGACY_PURCHASE_OPTION_ID ? "기본 구성" : ""),
+        sku: asString(line.sku),
+        name: asString(line.name),
+        thumbnailUrl: asString(line.thumbnailUrl),
+        basePrice: numberOr(line.basePrice, unitPrice - priceAdjustment),
+        priceAdjustment,
+        quantity,
+        unitPrice,
+        lineTotal: numberOr(line.lineTotal, unitPrice * quantity),
       };
     })
     : [];
 
-const isValidOrderLine = (value: unknown): value is MemberOrderLine => {
-  if (
-    typeof value !== "object"
-    || value === null
-    || Array.isArray(value)
-    || Object.getPrototypeOf(value) !== Object.prototype
-  ) {
-    return false;
-  }
-
-  const line = value as Record<string, unknown>;
-  return typeof line.productId === "string"
-    && line.productId.trim().length > 0
-    && typeof line.name === "string"
-    && line.name.trim().length > 0
-    && typeof line.quantity === "number"
-    && Number.isInteger(line.quantity)
-    && line.quantity >= 1
-    && typeof line.unitPrice === "number"
-    && Number.isFinite(line.unitPrice)
-    && line.unitPrice >= 0;
-};
-
-const assertValidOrderLines: (lines: unknown) => asserts lines is MemberOrderLine[] = (lines) => {
-  if (!Array.isArray(lines) || lines.length === 0 || !lines.every(isValidOrderLine)) {
-    throw new Error("Member orders require valid product lines.");
-  }
-};
-
-const normalizeMemberOrder = (uid: string, id: string, raw: unknown): MemberOrder => {
+export const normalizeMemberOrder = (uid: string, id: string, raw: unknown): MemberOrder => {
   const order = asRecord(raw);
   return {
     id,
@@ -138,50 +139,14 @@ const normalizeMemberOrder = (uid: string, id: string, raw: unknown): MemberOrde
     shippingFee: asNumber(order.shippingFee),
     total: asNumber(order.total),
     createdAt: asDate(order.createdAt),
-  };
-};
-
-const toMemberOrderWrite = (
-  uid: string,
-  draft: OrderDraft,
-  payment: PaymentResult,
-): MemberOrderWrite => {
-  assertValidOrderLines(draft.lines);
-
-  return {
-    userId: uid,
-    orderNumber: payment.orderNumber,
-    status: "mock-received",
-    paymentMethod: draft.paymentMethod,
-    customerName: draft.customerName,
-    phone: draft.phone,
-    shippingAddress: {
-      postcode: draft.postcode,
-      address: draft.address,
-      addressDetail: draft.addressDetail,
-    },
-    deliveryNote: draft.deliveryNote,
-    lines: draft.lines.map(({ productId, name, quantity, unitPrice }) => ({
-      productId,
-      name,
-      quantity,
-      unitPrice,
-    })),
-    subtotal: draft.subtotal,
-    shippingFee: draft.shippingFee,
-    total: draft.total,
-    createdAt: new Date(payment.receivedAt),
+    receivedAt: asDate(order.receivedAt) ?? asDate(order.createdAt),
   };
 };
 
 const newestFirst = (left: MemberOrder, right: MemberOrder): number =>
   (right.createdAt?.getTime() ?? 0) - (left.createdAt?.getTime() ?? 0);
 
-export const createMemberOrderRepository = (adapter: MemberOrderAdapter) => ({
-  async create(uid: string, draft: OrderDraft, payment: PaymentResult): Promise<string> {
-    return adapter.add(uid, toMemberOrderWrite(uid, draft, payment));
-  },
-
+export const createMemberOrderReadRepository = (adapter: MemberOrderReadAdapter) => ({
   async list(uid: string): Promise<MemberOrder[]> {
     const documents = await adapter.list(uid);
     return documents
@@ -190,11 +155,7 @@ export const createMemberOrderRepository = (adapter: MemberOrderAdapter) => ({
   },
 });
 
-const firebaseMemberOrderAdapter: MemberOrderAdapter = {
-  async add(uid, order) {
-    const reference = await addDoc(collection(db, "users", uid, "orders"), order);
-    return reference.id;
-  },
+const firebaseMemberOrderReadAdapter: MemberOrderReadAdapter = {
   async list(uid) {
     const snapshot = await getDocs(query(
       collection(db, "users", uid, "orders"),
@@ -204,7 +165,6 @@ const firebaseMemberOrderAdapter: MemberOrderAdapter = {
   },
 };
 
-const memberOrderRepository = createMemberOrderRepository(firebaseMemberOrderAdapter);
+const memberOrderReadRepository = createMemberOrderReadRepository(firebaseMemberOrderReadAdapter);
 
-export const createMemberOrder = memberOrderRepository.create;
-export const listMemberOrders = memberOrderRepository.list;
+export const listMemberOrders = memberOrderReadRepository.list;

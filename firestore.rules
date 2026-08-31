@@ -201,10 +201,7 @@ service cloud.firestore {
 
       match /orders/{orderId} {
         allow read: if request.auth != null && request.auth.uid == uid;
-        allow create: if request.auth != null
-          && request.auth.uid == uid
-          && hasValidMemberOrder(request.resource.data, uid);
-        allow update, delete: if false;
+        allow create, update, delete: if false;
       }
     }
 
