@@ -255,6 +255,46 @@ it("increments the exact option and reports the stock-capped maximum before muta
   expect(screen.getByRole("status")).toHaveTextContent(`${duplicateOptionedProduct.name} 1개`);
 });
 
+it("refreshes an open duplicate decision from the latest cross-tab cart quantity", async () => {
+  cartLines.push(storedOptionLine(1, 2));
+  const user = userEvent.setup();
+  const view = render(<ProductDetail product={duplicateOptionedProduct} reviews={[]} />);
+  await user.click(screen.getByRole("button", { name: "수량 늘리기" }));
+  await user.click(screen.getByRole("button", { name: "장바구니 담기" }));
+
+  expect(screen.getByRole("dialog", { name: "장바구니 수량 선택" }))
+    .toHaveTextContent("현재 장바구니: 2개");
+
+  cartLines.splice(0, 1, storedOptionLine(1, 3));
+  view.rerender(<ProductDetail product={duplicateOptionedProduct} reviews={[]} />);
+
+  const refreshedDialog = screen.getByRole("dialog", { name: "장바구니 수량 선택" });
+  expect(refreshedDialog).toHaveTextContent("현재 장바구니: 3개");
+  await user.click(within(refreshedDialog).getByRole("button", { name: "1개 추가하여 4개로 변경" }));
+
+  expect(add).toHaveBeenCalledWith(
+    duplicateOptionedProduct,
+    duplicateOptionedProduct.purchaseOptions![1],
+    2,
+    "increment",
+  );
+  expect(screen.getByRole("status")).toHaveTextContent(`${duplicateOptionedProduct.name} 1개`);
+});
+
+it("does not claim an addition when the stored quantity already meets or exceeds current option stock", async () => {
+  cartLines.push(storedOptionLine(0, 5));
+  const user = userEvent.setup();
+  render(<ProductDetail product={duplicateOptionedProduct} reviews={[]} />);
+  await user.click(screen.getByRole("radio", { name: /2개월분/ }));
+  await user.click(screen.getByRole("button", { name: "장바구니 담기" }));
+
+  const dialog = screen.getByRole("dialog", { name: "장바구니 수량 선택" });
+  expect(dialog).toHaveTextContent("현재 장바구니 5개가 최신 재고 3개를 초과해 추가할 수 없어요.");
+  expect(within(dialog).getByRole("button", { name: "추가할 수 없습니다" })).toBeDisabled();
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  expect(add).not.toHaveBeenCalled();
+});
+
 it("traps focus and treats Escape, the close button, and the backdrop as safe keep", async () => {
   cartLines.push(storedOptionLine(1, 2));
   const user = userEvent.setup();

@@ -74,7 +74,7 @@ export function normalizeStoredCart(value: unknown): CartLine[] {
     return [];
   }
 
-  return value.flatMap((entry) => {
+  const normalizedLines = value.flatMap((entry) => {
     if (!isRecord(entry)) {
       return [];
     }
@@ -113,4 +113,10 @@ export function normalizeStoredCart(value: unknown): CartLine[] {
 
     return [{ ...line, quantity: clampQuantity(line, entry.quantity) }];
   });
+
+  const linesByIdentity = new Map<string, CartLine>();
+  for (const line of normalizedLines) {
+    linesByIdentity.set(line.lineId, line);
+  }
+  return [...linesByIdentity.values()];
 }

@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 
 import { useCart } from "../../features/cart/cart-context";
 import { cartLineId } from "../../features/cart/cart-utils";
-import type { CartLine } from "../../features/cart/cart-types";
 import { formatWon } from "../../lib/format";
 import { PRODUCT_CATEGORIES, taxonomyLabel } from "../../lib/catalog/taxonomy";
 import {
@@ -38,7 +37,7 @@ type CartToastState = {
 };
 
 type DuplicateCartDecision = {
-  line: CartLine;
+  lineId: string;
   requestedQuantity: number;
 };
 
@@ -130,6 +129,12 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
       : undefined
   ) ?? defaultOption;
   const quantity = Math.max(1, Math.min(purchaseState.quantity, selectedOption.stock));
+  const duplicateLine = duplicateDecision
+    ? lines.find((line) => line.lineId === duplicateDecision.lineId) ?? null
+    : null;
+  const duplicateOption = duplicateLine
+    ? purchaseOptions.find((option) => option.id === duplicateLine.purchaseOptionId && option.active) ?? null
+    : null;
   const selectedPrice = getPurchaseOptionPrice(product.price, selectedOption);
   const soldOut = selectedOption.stock < 1;
   const canCompareOriginalPrice = selectedOption.isDefault && selectedOption.priceAdjustment === 0;
@@ -169,7 +174,7 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
 
     const existingLine = lines.find((line) => line.lineId === cartLineId(product.id, selectedOption.id));
     if (existingLine) {
-      setDuplicateDecision({ line: existingLine, requestedQuantity: quantity });
+      setDuplicateDecision({ lineId: existingLine.lineId, requestedQuantity: quantity });
       return;
     }
 
@@ -183,14 +188,14 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
   }, [setDuplicateDecision]);
 
   const incrementDuplicate = () => {
-    if (!duplicateDecision) {
+    if (!duplicateDecision || !duplicateLine || !duplicateOption) {
       return;
     }
 
-    const availableAddition = Math.max(selectedOption.stock - duplicateDecision.line.quantity, 0);
+    const availableAddition = Math.max(duplicateOption.stock - duplicateLine.quantity, 0);
     const addedQuantity = Math.min(duplicateDecision.requestedQuantity, availableAddition);
     if (addedQuantity > 0) {
-      add(product, selectedOption, duplicateDecision.requestedQuantity, "increment");
+      add(product, duplicateOption, duplicateDecision.requestedQuantity, "increment");
       setCartToast({ productName: product.name, quantity: addedQuantity });
     }
     closeDuplicateDecision();
@@ -231,6 +236,14 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [closeDuplicateDecision, duplicateDecision]);
+
+  useEffect(() => {
+    if (duplicateDecision && (!duplicateLine || !duplicateOption)) {
+      const closeFrame = requestAnimationFrame(closeDuplicateDecision);
+      return () => cancelAnimationFrame(closeFrame);
+    }
+    return undefined;
+  }, [closeDuplicateDecision, duplicateDecision, duplicateLine, duplicateOption]);
 
   useEffect(() => {
     if (cartToast === null) {
@@ -353,11 +366,12 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
         </button>
         <button type="submit" disabled={soldOut}>바로 구매</button>
       </form>
-      {duplicateDecision ? (() => {
-        const availableAddition = Math.max(selectedOption.stock - duplicateDecision.line.quantity, 0);
+      {duplicateDecision && duplicateLine && duplicateOption ? (() => {
+        const availableAddition = Math.max(duplicateOption.stock - duplicateLine.quantity, 0);
         const addedQuantity = Math.min(duplicateDecision.requestedQuantity, availableAddition);
-        const nextQuantity = duplicateDecision.line.quantity + addedQuantity;
+        const nextQuantity = duplicateLine.quantity + addedQuantity;
         const isStockCapped = addedQuantity < duplicateDecision.requestedQuantity;
+        const existingStockConflict = duplicateLine.quantity >= duplicateOption.stock;
         const describedBy = isStockCapped
           ? "duplicate-cart-description duplicate-cart-quantities duplicate-cart-stock"
           : "duplicate-cart-description duplicate-cart-quantities";
@@ -382,12 +396,16 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
               <h2 id="duplicate-cart-heading">장바구니 수량 선택</h2>
               <p id="duplicate-cart-description">같은 상품과 구매 옵션이 장바구니에 있습니다.</p>
               <div id="duplicate-cart-quantities" className="product-detail__duplicate-quantities">
-                <p>현재 장바구니: <strong>{duplicateDecision.line.quantity}개</strong></p>
+                <p>현재 장바구니: <strong>{duplicateLine.quantity}개</strong></p>
                 <p>이번 선택 수량: <strong>{duplicateDecision.requestedQuantity}개</strong></p>
               </div>
               {isStockCapped ? (
                 <p id="duplicate-cart-stock" className="product-detail__duplicate-stock">
-                  재고가 {selectedOption.stock}개라 최대 {nextQuantity}개까지 담을 수 있어요.
+                  {duplicateLine.quantity > duplicateOption.stock
+                    ? `현재 장바구니 ${duplicateLine.quantity}개가 최신 재고 ${duplicateOption.stock}개를 초과해 추가할 수 없어요.`
+                    : existingStockConflict
+                      ? `이미 최신 재고 ${duplicateOption.stock}개를 모두 담아 추가할 수 없어요.`
+                      : `재고가 ${duplicateOption.stock}개라 최대 ${nextQuantity}개까지 담을 수 있어요.`}
                 </p>
               ) : null}
               <div className="product-detail__duplicate-actions">
@@ -404,7 +422,7 @@ export function ProductDetail({ product, reviews, reviewLoadError = false }: Pro
                 </button>
                 <button type="button" disabled={addedQuantity < 1} onClick={incrementDuplicate}>
                   {addedQuantity < 1
-                    ? `이미 최대 수량 ${nextQuantity}개입니다`
+                    ? "추가할 수 없습니다"
                     : `${addedQuantity}개 추가하여 ${nextQuantity}개로 변경`}
                 </button>
               </div>

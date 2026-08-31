@@ -66,6 +66,13 @@ describe("normalizeStoredCart", () => {
       line,
     ])).toEqual([line]);
   });
+
+  it("keeps only the last valid snapshot for a duplicated product and option identity", () => {
+    expect(normalizeStoredCart([
+      line,
+      { ...line, lineId: "untrusted-first-id", quantity: 2, unitPrice: 17_000 },
+    ])).toEqual([{ ...line, quantity: 2, unitPrice: 17_000 }]);
+  });
 });
 
 describe("calculateCart", () => {
