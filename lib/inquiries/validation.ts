@@ -89,12 +89,17 @@ const parseStatus = (value: unknown): InquiryStatus => {
   throw new InquiryValidationError();
 };
 
+export const parseInquiryOrderNumber = (value: unknown): string => {
+  const orderNumber = normalizeText(value, 32);
+  if (!ORDER_NUMBER.test(orderNumber)) throw new InquiryValidationError();
+  return orderNumber;
+};
+
 const parseOptionalOrderNumber = (value: unknown): string | null => {
   if (value === undefined || value === null) return null;
   const orderNumber = normalizeText(value, 32, { required: false });
   if (orderNumber.length === 0) return null;
-  if (!ORDER_NUMBER.test(orderNumber)) throw new InquiryValidationError();
-  return orderNumber;
+  return parseInquiryOrderNumber(orderNumber);
 };
 
 const parseUploadReceipts = (value: unknown): string[] => {
