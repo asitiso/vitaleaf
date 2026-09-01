@@ -671,6 +671,9 @@ export const createProductDraftRepository = (adapter: ProductDraftRepositoryAdap
         ...draft,
         name: `${product.name} (복사본)`,
         stock: 0,
+        ...(draft.purchaseOptions === undefined
+          ? {}
+          : { purchaseOptions: draft.purchaseOptions.map((option) => ({ ...option, stock: 0 })) }),
         salesRank: null,
         ratingAverage: 0,
         reviewCount: 0,

@@ -266,22 +266,95 @@ describe("product draft lifecycle transactions", () => {
     expect(state.products.get(saved.id)).toMatchObject({ purchaseOptions });
   });
 
-  it("preserves purchase options for edit, duplicate, and unpublish drafts", async () => {
+  it("resets every copied explicit purchase-option stock while preserving option data", async () => {
+    const state = createState();
+    const product = makeProduct({
+      purchaseOptions: [
+        ...purchaseOptions,
+        {
+          id: "retired",
+          label: "판매 종료 구성",
+          durationMonths: 6,
+          sku: "OMEGA-RETIRED",
+          priceAdjustment: 7_000,
+          stock: 21,
+          active: false,
+          isDefault: false,
+        },
+      ],
+    });
+    seedProduct(state, product);
+    const repository = createProductDraftRepository(createSharedAdapter(state));
+
+    const duplicate = await repository.duplicateProductToDraft(product);
+
+    expect(duplicate.purchaseOptions).toEqual([
+      {
+        id: "2-month",
+        label: "2개월분",
+        durationMonths: 2,
+        sku: "OMEGA-2M",
+        priceAdjustment: -14_000,
+        stock: 0,
+        active: true,
+        isDefault: false,
+      },
+      {
+        id: "4-month",
+        label: "4개월분",
+        durationMonths: 4,
+        sku: "OMEGA-4M",
+        priceAdjustment: 0,
+        stock: 0,
+        active: true,
+        isDefault: true,
+      },
+      {
+        id: "retired",
+        label: "판매 종료 구성",
+        durationMonths: 6,
+        sku: "OMEGA-RETIRED",
+        priceAdjustment: 7_000,
+        stock: 0,
+        active: false,
+        isDefault: false,
+      },
+    ]);
+    expect(duplicate.media).toEqual(product.media);
+    expect(state.drafts.get(duplicate.id)).toMatchObject({ purchaseOptions: duplicate.purchaseOptions });
+  });
+
+  it("preserves purchase option inventory for edit and unpublish drafts", async () => {
     const state = createState();
     const product = makeProduct({ purchaseOptions });
     seedProduct(state, product);
     const repository = createProductDraftRepository(createSharedAdapter(state));
 
     const edit = await repository.saveDraft(repository.createProductEditDraft(product));
-    const duplicate = await repository.duplicateProductToDraft(product);
     await repository.discardDraft(edit);
     const restore = await repository.unpublishProduct(product);
 
     expect(edit.purchaseOptions).toEqual(purchaseOptions);
-    expect(duplicate.purchaseOptions).toEqual(purchaseOptions);
     expect(restore.purchaseOptions).toEqual(purchaseOptions);
-    expect(state.drafts.get(duplicate.id)).toMatchObject({ purchaseOptions });
     expect(state.drafts.get(product.id)).toMatchObject({ purchaseOptions });
+  });
+
+  it("publishes an optioned duplicate with zero compatibility and option stock", async () => {
+    const state = createState();
+    const product = makeProduct({ purchaseOptions });
+    seedProduct(state, product);
+    const repository = createProductDraftRepository(createSharedAdapter(state));
+
+    const duplicate = await repository.duplicateProductToDraft(product);
+    await repository.publishDraft(duplicate);
+
+    expect(state.products.get(duplicate.id)).toMatchObject({
+      stock: 0,
+      purchaseOptions: [
+        expect.objectContaining({ id: "2-month", stock: 0 }),
+        expect.objectContaining({ id: "4-month", stock: 0 }),
+      ],
+    });
   });
 
   it("reuses its committed local session for sequential saves of the original unsaved object", async () => {
