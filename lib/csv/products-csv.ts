@@ -1,6 +1,6 @@
 import type { Ingredient, Product, ProductDraft, ProductInput } from "../products/types";
 import { canonicalAgeTargets } from "../catalog/taxonomy";
-import { normalizePurchaseOptions } from "../products/purchase-options";
+import { getProductAvailableStock, normalizePurchaseOptions } from "../products/purchase-options";
 
 export type CsvRowError = {
   row: number;
@@ -357,6 +357,7 @@ export const parseProductCsv = (text: string): { valid: ProductInput[]; errors: 
       } else {
         product.purchaseOptions = normalizePurchaseOptions([], product.price, product.stock);
       }
+      product.stock = getProductAvailableStock(product);
     }
 
     product.isBest = boolean("isBest");

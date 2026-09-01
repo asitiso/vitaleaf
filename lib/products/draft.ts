@@ -1,5 +1,5 @@
 import { normalizeMedia } from "./normalize";
-import { normalizePurchaseOptions } from "./purchase-options";
+import { getProductAvailableStock, normalizePurchaseOptions } from "./purchase-options";
 import { canonicalAgeTargets, canonicalTaxonomyValue, canonicalTaxonomyValues, HEALTH_CONCERNS, PRODUCT_CATEGORIES } from "../catalog/taxonomy";
 import type { ProductDraft, ProductInput } from "./types";
 
@@ -62,7 +62,7 @@ export const toPublishedProductInput = (draft: ProductDraft): ProductInput & { m
     origin: draft.origin,
     certifications: [...draft.certifications],
     cautions: [...draft.cautions],
-    stock: draft.stock,
+    stock: getProductAvailableStock(draft),
     ...(draft.purchaseOptions === undefined
       ? {}
       : { purchaseOptions: draft.purchaseOptions.map((option) => ({ ...option })) }),

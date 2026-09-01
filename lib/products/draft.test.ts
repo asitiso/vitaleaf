@@ -163,6 +163,28 @@ describe("product drafts", () => {
     expect(toPublishedProductInput(draft).purchaseOptions).toEqual(purchaseOptions);
   });
 
+  it("synchronizes published compatibility stock from active explicit purchase options", () => {
+    const input = toPublishedProductInput(makeDraft({
+      stock: 1,
+      purchaseOptions: [
+        { ...purchaseOptions[0]!, stock: 8 },
+        { ...purchaseOptions[1]!, stock: 10 },
+        {
+          id: "retired",
+          label: "판매 종료",
+          durationMonths: null,
+          sku: "OMEGA-OLD",
+          priceAdjustment: 0,
+          stock: 7,
+          active: false,
+          isDefault: false,
+        },
+      ],
+    }));
+
+    expect(input.stock).toBe(18);
+  });
+
   it("routes invalid purchase options to the sales wizard step", () => {
     const errors = validatePublishableDraft(makeDraft({
       purchaseOptions: purchaseOptions.map((option) => ({

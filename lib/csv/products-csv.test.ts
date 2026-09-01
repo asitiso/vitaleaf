@@ -305,6 +305,48 @@ describe("serializeProducts", () => {
     }]);
   });
 
+  it("synchronizes CSV compatibility stock from active explicit purchase options", () => {
+    const purchaseOptionsJson = JSON.stringify([
+      {
+        id: "2-month",
+        label: "2개월분",
+        durationMonths: 2,
+        sku: "OMEGA-2M",
+        priceAdjustment: -10_000,
+        stock: 8,
+        active: true,
+        isDefault: false,
+      },
+      {
+        id: "4-month",
+        label: "4개월분",
+        durationMonths: 4,
+        sku: "OMEGA-4M",
+        priceAdjustment: 0,
+        stock: 10,
+        active: true,
+        isDefault: true,
+      },
+      {
+        id: "retired",
+        label: "판매 종료",
+        durationMonths: null,
+        sku: "OMEGA-OLD",
+        priceAdjustment: 0,
+        stock: 7,
+        active: false,
+        isDefault: false,
+      },
+    ]);
+    const result = parseProductCsv([
+      "name,category,price,stock,purchaseOptionsJson",
+      `옵션 상품,혈행,35000,1,"${purchaseOptionsJson.replaceAll('"', '""')}"`,
+    ].join("\n"));
+
+    expect(result.errors).toEqual([]);
+    expect(result.valid[0]?.stock).toBe(18);
+  });
+
   it("starts with a UTF-8 BOM and neutralizes spreadsheet formulas in exported string cells", () => {
     const csv = serializeProducts([{
       ...representativeProduct,
