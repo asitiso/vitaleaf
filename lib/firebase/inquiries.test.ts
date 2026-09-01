@@ -48,13 +48,14 @@ const createFirestoreHarness = (initial: InquiryRecord[] = []) => {
   const queryCalls: Array<{ constraints: Constraint[]; limit: number | null }> = [];
   let failRead: Error | null = null;
   let failTransaction: Error | null = null;
+  let forcedQueryDocuments: Array<[string, StoredDocument]> | null = null;
   let documentReads = 0;
   let countReads = 0;
 
-  const snapshot = (id: string) => ({
+  const snapshot = (id: string, document = documents.get(id)) => ({
     id,
     exists: documents.has(id),
-    data: () => clone(documents.get(id)),
+    data: () => clone(document),
   });
 
   const query = (
@@ -77,17 +78,19 @@ const createFirestoreHarness = (initial: InquiryRecord[] = []) => {
     async get() {
       if (failRead) throw failRead;
       queryCalls.push({ constraints: clone(constraints), limit: limitValue });
-      const matching = [...documents.entries()]
-        .filter(([, document]) => constraints.every(({ field, value }) => document[field] === value))
+      const queriedEntries = (forcedQueryDocuments ?? [...documents.entries()])
+        .filter(([, document]) => forcedQueryDocuments !== null || constraints.every(({ field, value }) => document[field] === value))
         .sort(([, left], [, right]) => {
           const leftTime = (left.createdAt as Date).getTime();
           const rightTime = (right.createdAt as Date).getTime();
           return rightTime - leftTime;
-        })
-        .map(([id]) => id)
-        .filter((id, index, ids) => cursorId === null || index > ids.indexOf(cursorId))
-        .slice(0, limitValue ?? undefined)
-        .map((id) => snapshot(id));
+        });
+      const start = cursorId === null
+        ? 0
+        : Math.max(0, queriedEntries.findIndex(([entryId]) => entryId === cursorId) + 1);
+      const matching = queriedEntries
+        .slice(start, limitValue === null ? undefined : start + limitValue)
+        .map(([id, document]) => snapshot(id, document));
       return { docs: matching };
     },
     count() {
@@ -158,6 +161,9 @@ const createFirestoreHarness = (initial: InquiryRecord[] = []) => {
     queryCalls,
     setReadFailure(error: Error | null) { failRead = error; },
     setTransactionFailure(error: Error | null) { failTransaction = error; },
+    setQueryDocuments(documentsForQuery: Array<[string, StoredDocument]> | null) {
+      forcedQueryDocuments = documentsForQuery;
+    },
     get documentReads() { return documentReads; },
     get countReads() { return countReads; },
   };
@@ -203,6 +209,48 @@ describe("createFirestoreInquiryRepository", () => {
       { constraints: [{ field: "ownerType", value: "member" }, { field: "memberUid", value: "member-1" }], limit: 20 },
       { constraints: [{ field: "ownerType", value: "guest" }, { field: "guestOrderNumber", value: "VL-20260828-ABC123" }], limit: 20 },
     ]);
+  });
+
+  it("rejects a valid but mismatched owner row from a member query", async () => {
+    const requestedUid = "member-1";
+    const mismatchedRecords = [
+      guestRecord(),
+      memberRecord({ id: "inquiry-member-2", memberUid: "member-2" }),
+    ];
+
+    for (const record of mismatchedRecords) {
+      const harness = createFirestoreHarness();
+      harness.setQueryDocuments([[record.id, record as StoredDocument]]);
+      const repository = createFirestoreInquiryRepository({ getFirestore: () => harness.firestore as never });
+
+      await expect(repository.listForMember(requestedUid, {
+        category: null,
+        status: null,
+        pageSize: 20,
+        cursor: null,
+      })).rejects.toThrow(InquiryRepositoryError);
+    }
+  });
+
+  it("rejects a valid but mismatched owner row from a guest query", async () => {
+    const requestedOrderNumber = "VL-20260828-ABC123";
+    const mismatchedRecords = [
+      memberRecord(),
+      guestRecord({ id: "inquiry-guest-2", guestOrderNumber: "VL-20260828-DEF456", orderNumber: "VL-20260828-DEF456" }),
+    ];
+
+    for (const record of mismatchedRecords) {
+      const harness = createFirestoreHarness();
+      harness.setQueryDocuments([[record.id, record as StoredDocument]]);
+      const repository = createFirestoreInquiryRepository({ getFirestore: () => harness.firestore as never });
+
+      await expect(repository.listForGuestOrder(requestedOrderNumber, {
+        category: null,
+        status: null,
+        pageSize: 20,
+        cursor: null,
+      })).rejects.toThrow(InquiryRepositoryError);
+    }
   });
 
   it("applies newest-first category and status filters with the validated maximum list limit", async () => {

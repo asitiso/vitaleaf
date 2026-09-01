@@ -74,6 +74,7 @@ const readList = async (
   query: Query,
   filters: InquiryListFilters,
   cursorSnapshot: { exists: boolean } | null,
+  matchesOwner?: (record: InquiryRecord) => boolean,
 ): Promise<InquiryRecord[]> => {
   let filtered = queryWithFilters(query, filters);
   if (filters.cursor) {
@@ -81,7 +82,11 @@ const readList = async (
     filtered = filtered.startAfter(cursorSnapshot as never);
   }
   const snapshot = await filtered.get();
-  return snapshot.docs.map((document) => readRecord(document.id, document.data()));
+  const records = snapshot.docs.map((document) => readRecord(document.id, document.data()));
+  if (matchesOwner && records.some((record) => !matchesOwner(record))) {
+    throw new InquiryRepositoryError();
+  }
+  return records;
 };
 
 export const createFirestoreInquiryRepository = ({
@@ -105,27 +110,31 @@ export const createFirestoreInquiryRepository = ({
 
   async listForMember(uid, filters) {
     const firestore = getFirestore();
+    const memberUid = requiredId(uid);
     const parsedFilters = parseInquiryListFilters(filters);
     const collection = firestore.collection(COLLECTION);
     return readList(
       collection
         .where("ownerType", "==", "member")
-        .where("memberUid", "==", requiredId(uid)),
+        .where("memberUid", "==", memberUid),
       parsedFilters,
       parsedFilters.cursor ? await collection.doc(parsedFilters.cursor).get() : null,
+      (record) => record.ownerType === "member" && record.memberUid === memberUid,
     );
   },
 
   async listForGuestOrder(orderNumber, filters) {
     const firestore = getFirestore();
+    const guestOrderNumber = requiredId(orderNumber);
     const parsedFilters = parseInquiryListFilters(filters);
     const collection = firestore.collection(COLLECTION);
     return readList(
       collection
         .where("ownerType", "==", "guest")
-        .where("guestOrderNumber", "==", requiredId(orderNumber)),
+        .where("guestOrderNumber", "==", guestOrderNumber),
       parsedFilters,
       parsedFilters.cursor ? await collection.doc(parsedFilters.cursor).get() : null,
+      (record) => record.ownerType === "guest" && record.guestOrderNumber === guestOrderNumber,
     );
   },
 
