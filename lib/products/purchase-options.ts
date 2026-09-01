@@ -1,4 +1,5 @@
 import type { Product, PurchaseOption } from "./types";
+import { isSafeIntegerKrw } from "./price";
 
 export const LEGACY_PURCHASE_OPTION_ID = "default";
 
@@ -61,6 +62,9 @@ const normalizeOption = (raw: unknown, basePrice: number): PurchaseOption => {
   if (typeof priceAdjustment !== "number" || !Number.isInteger(priceAdjustment)) {
     throw new Error("Purchase option priceAdjustment must be an integer.");
   }
+  if (!isSafeIntegerKrw(priceAdjustment, Number.MIN_SAFE_INTEGER)) {
+    throw new Error("Purchase option priceAdjustment must be a safe integer.");
+  }
   const stock = option.stock;
   if (typeof stock !== "number") throw new Error("Purchase option stock must be a non-negative integer.");
   validateLegacyStock(stock);
@@ -81,7 +85,7 @@ const normalizeOption = (raw: unknown, basePrice: number): PurchaseOption => {
     active: option.active,
     isDefault: option.isDefault,
   };
-  if (getPurchaseOptionPrice(basePrice, normalized) < 1) {
+  if (!isSafeIntegerKrw(getPurchaseOptionPrice(basePrice, normalized), 1)) {
     throw new Error("Purchase option final price must be at least 1 KRW.");
   }
   return normalized;

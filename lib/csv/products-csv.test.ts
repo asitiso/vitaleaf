@@ -306,6 +306,41 @@ describe("serializeProducts", () => {
     });
   });
 
+  it("reports unsafe option adjustments and final prices by CSV row", () => {
+    const unsafeAdjustment = JSON.stringify([{
+      id: "unsafe-adjustment",
+      label: "안전 범위 초과 조정",
+      durationMonths: null,
+      sku: "OMEGA-UNSAFE-ADJUSTMENT",
+      priceAdjustment: Number.MAX_SAFE_INTEGER + 1,
+      stock: 10,
+      active: true,
+      isDefault: true,
+    }]);
+    const unsafeFinalPrice = JSON.stringify([{
+      id: "unsafe-final-price",
+      label: "안전 범위 초과 최종가",
+      durationMonths: null,
+      sku: "OMEGA-UNSAFE-FINAL",
+      priceAdjustment: 1,
+      stock: 10,
+      active: true,
+      isDefault: true,
+    }]);
+
+    expect(parseProductCsv([
+      "name,category,price,stock,purchaseOptionsJson",
+      `조정액 오류,혈행,35000,10,"${unsafeAdjustment.replaceAll('"', '""')}"`,
+      `최종가 오류,혈행,${Number.MAX_SAFE_INTEGER},10,"${unsafeFinalPrice.replaceAll('"', '""')}"`,
+    ].join("\n"))).toEqual({
+      valid: [],
+      errors: [
+        { row: 2, field: "purchaseOptions", message: "구매 옵션 정보가 올바르지 않습니다." },
+        { row: 3, field: "purchaseOptions", message: "구매 옵션 정보가 올바르지 않습니다." },
+      ],
+    });
+  });
+
   it("normalizes missing purchase option JSON as the legacy default option", () => {
     const result = parseProductCsv([
       "name,category,price,stock",

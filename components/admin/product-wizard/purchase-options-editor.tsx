@@ -16,6 +16,7 @@ type NumericOptionInputProps = {
   label: string;
   value: number | null;
   min?: number;
+  describedBy?: string;
   onChange(value: number | null): void;
 };
 
@@ -30,7 +31,7 @@ const formatSignedWon = (value: number): string => (
 const optionLabelId = (id: string): string => `purchase-option-${id}-label`;
 const optionInputId = (id: string, field: string): string => `purchase-option-${id}-${field}`;
 
-function NumericOptionInput({ id, label, value, min, onChange }: NumericOptionInputProps) {
+function NumericOptionInput({ id, label, value, min, describedBy, onChange }: NumericOptionInputProps) {
   const [editing, setEditing] = useState(() => ({ sourceValue: value, text: value === null ? "" : String(value) }));
   const text = Object.is(editing.sourceValue, value)
     ? editing.text
@@ -43,6 +44,7 @@ function NumericOptionInput({ id, label, value, min, onChange }: NumericOptionIn
       type="number"
       step="1"
       min={min}
+      aria-describedby={describedBy}
       value={text}
       onChange={(event) => {
         const nextText = event.currentTarget.value;
@@ -82,6 +84,13 @@ export function PurchaseOptionsEditor({ basePrice, options, errors, onChange }: 
   const pendingFocusId = useRef<string | null>(null);
   const canonicalError = canonicalValidationError(basePrice, options);
   const visibleErrors = [...new Set([...errors, ...(canonicalError ? [canonicalError] : [])])];
+  const priceError = canonicalError?.startsWith("Purchase option priceAdjustment")
+    || canonicalError?.startsWith("Purchase option final price");
+  const adjustmentErrorDescription = !priceError
+    ? undefined
+    : errors[0]
+      ? "purchase-options-publish-error"
+      : "purchase-options-canonical-error";
 
   useLayoutEffect(() => {
     if (!pendingFocusId.current) return;
@@ -214,6 +223,7 @@ export function PurchaseOptionsEditor({ basePrice, options, errors, onChange }: 
                     id={optionInputId(option.id, "adjustment")}
                     label={`옵션 ${position} 가격 조정액`}
                     value={option.priceAdjustment}
+                    describedBy={adjustmentErrorDescription}
                     onChange={(priceAdjustment) => update(index, { priceAdjustment: priceAdjustment ?? Number.NaN })}
                   />
                 </label>
@@ -263,7 +273,14 @@ export function PurchaseOptionsEditor({ basePrice, options, errors, onChange }: 
 
       {visibleErrors.length > 0 && (
         <div id="purchase-options-errors" className="purchase-options-editor__errors" role="alert">
-          {visibleErrors.map((error) => <p key={error}>{error}</p>)}
+          {visibleErrors.map((error) => <p
+            key={error}
+            id={error === errors[0]
+              ? "purchase-options-publish-error"
+              : error === canonicalError
+                ? "purchase-options-canonical-error"
+                : undefined}
+          >{error}</p>)}
         </div>
       )}
 

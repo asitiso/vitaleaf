@@ -92,6 +92,26 @@ describe("purchase options", () => {
     expect(() => normalizePurchaseOptions([option({ durationMonths: 1.5 })], 80_000, 20)).toThrow(/durationMonths/i);
   });
 
+  it("rejects an unsafe signed price adjustment", () => {
+    expect(() => normalizePurchaseOptions([
+      option({ priceAdjustment: Number.MAX_SAFE_INTEGER + 1 }),
+    ], 80_000, 20)).toThrow(/priceAdjustment/i);
+  });
+
+  it("rejects an option whose safe adjustment makes the final price unsafe", () => {
+    expect(() => normalizePurchaseOptions([
+      option({ priceAdjustment: 1 }),
+    ], Number.MAX_SAFE_INTEGER, 20)).toThrow(/final price/i);
+  });
+
+  it("accepts a negative safe adjustment when the final price stays positive", () => {
+    expect(normalizePurchaseOptions([
+      option({ priceAdjustment: -79_999 }),
+    ], 80_000, 20)).toMatchObject([
+      { priceAdjustment: -79_999 },
+    ]);
+  });
+
   it("requires one active default and never allows an inactive default", () => {
     expect(() => normalizePurchaseOptions([option({ isDefault: false })], 80_000, 20)).toThrow(/default/i);
     expect(() => normalizePurchaseOptions([option({ active: false })], 80_000, 20)).toThrow(/default/i);

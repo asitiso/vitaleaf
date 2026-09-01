@@ -142,6 +142,19 @@ describe("product drafts", () => {
     expect(errors).not.toContainEqual(expect.objectContaining({ field: "stock" }));
   });
 
+  it.each([
+    ["unsafe adjustment", 20_000, Number.MAX_SAFE_INTEGER + 1],
+    ["unsafe final price", Number.MAX_SAFE_INTEGER, 1],
+  ])("blocks publication for an option with an %s", (_label, price, priceAdjustment) => {
+    const options = purchaseOptions.map((option, index) => index === 0
+      ? { ...option, priceAdjustment }
+      : option);
+
+    expect(validatePublishableDraft(makeDraft({ price, purchaseOptions: options }))).toContainEqual(
+      expect.objectContaining({ step: 4, field: "purchaseOptions" }),
+    );
+  });
+
   it("publishes standard media while deriving legacy image fields", () => {
     const input = toPublishedProductInput(
       makeDraft({

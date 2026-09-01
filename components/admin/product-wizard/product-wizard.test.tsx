@@ -720,3 +720,21 @@ it("blocks publishing invalid explicit options and focuses their editor", async 
   expect(screen.getAllByText("구매 옵션의 기본 구성, SKU, 재고와 최종 가격을 확인해 주세요.")).toHaveLength(2);
   expect(screen.getByText("Purchase option SKU values must be unique.")).toBeVisible();
 });
+
+it("routes an unsafe option adjustment back to the sales options editor", async () => {
+  const user = userEvent.setup();
+  const options = explicitPurchaseOptions().map((option, index) => index === 0
+    ? { ...option, priceAdjustment: Number.MAX_SAFE_INTEGER + 1 }
+    : option);
+  const props = propsFor(publishableSalesDraft({ purchaseOptions: options }));
+  render(<ProductWizard {...props} />);
+
+  const adjustment = screen.getByLabelText("옵션 1 가격 조정액");
+  expect(adjustment).toHaveAttribute("step", "1");
+  await user.click(screen.getByRole("button", { name: "판매 공개" }));
+
+  expect(props.onSave).not.toHaveBeenCalled();
+  expect(props.onPublish).not.toHaveBeenCalled();
+  expect(screen.getByRole("group", { name: "구매 옵션 관리" })).toHaveFocus();
+  expect(adjustment).toHaveAccessibleDescription("구매 옵션의 기본 구성, SKU, 재고와 최종 가격을 확인해 주세요.");
+});

@@ -61,4 +61,25 @@ describe("resolveOrderLines", () => {
       { productId: "omega-3", purchaseOptionId: "discounted", quantity: 1 },
     ], [product({ price: 15_000.5 })])).toThrow(OrderLineUnavailableError);
   });
+
+  it.each([
+    ["an unsafe adjustment", 15_000, Number.MAX_SAFE_INTEGER + 1],
+    ["an unsafe final price", Number.MAX_SAFE_INTEGER, 1],
+  ])("rejects %s through the unavailable order mapping", (_label, price, priceAdjustment) => {
+    expect(() => resolveOrderLines([
+      { productId: "omega-3", purchaseOptionId: "discounted", quantity: 1 },
+    ], [product({
+      price,
+      purchaseOptions: [{
+        id: "discounted",
+        label: "할인 구성",
+        durationMonths: null,
+        sku: "OMEGA-DISCOUNT",
+        priceAdjustment,
+        stock: 4,
+        active: true,
+        isDefault: true,
+      }],
+    })])).toThrow(OrderLineUnavailableError);
+  });
 });
