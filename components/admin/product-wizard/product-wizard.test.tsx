@@ -628,6 +628,24 @@ it("routes fractional legacy stock to the visible stock control", async () => {
   expect(screen.queryByRole("group", { name: "구매 옵션 관리" })).not.toBeInTheDocument();
 });
 
+it("uses integer KRW inputs and surfaces a fractional selling-price error", async () => {
+  const user = userEvent.setup();
+  const props = propsFor(publishableSalesDraft({ price: 20_000.5 }));
+  render(<ProductWizard {...props} />);
+
+  const price = screen.getByLabelText("판매가");
+  const originalPrice = screen.getByLabelText("정상가 (선택)");
+  expect(price).toHaveAttribute("step", "1");
+  expect(originalPrice).toHaveAttribute("step", "1");
+
+  await user.click(screen.getByRole("button", { name: "판매 공개" }));
+
+  expect(props.onSave).not.toHaveBeenCalled();
+  expect(props.onPublish).not.toHaveBeenCalled();
+  expect(price).toHaveFocus();
+  expect(price).toHaveAccessibleDescription("판매가를 1원 이상의 정수로 입력해 주세요.");
+});
+
 it("does not hide a default-shaped option whose stock disagrees with legacy stock", () => {
   render(<ProductWizard {...propsFor({
     currentStep: 4,

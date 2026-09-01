@@ -36,6 +36,31 @@ describe("normalizeProduct", () => {
     );
   });
 
+  it("keeps zero KRW prices but rejects fractional and unsafe base prices", () => {
+    const requiredFields = { name: "루테인", stock: 3 };
+
+    expect(normalizeProduct("zero-price", { ...requiredFields, price: 0 }).price).toBe(0);
+    expect(() => normalizeProduct("fractional-price", { ...requiredFields, price: 10_000.5 })).toThrow();
+    expect(() => normalizeProduct("unsafe-price", {
+      ...requiredFields,
+      price: Number.MAX_SAFE_INTEGER + 1,
+    })).toThrow();
+  });
+
+  it("drops fractional and unsafe original KRW prices while retaining zero", () => {
+    const requiredFields = { name: "루테인", price: 28_000, stock: 3 };
+
+    expect(normalizeProduct("zero-original", { ...requiredFields, originalPrice: 0 }).originalPrice).toBe(0);
+    expect(normalizeProduct("fractional-original", {
+      ...requiredFields,
+      originalPrice: 30_000.5,
+    }).originalPrice).toBeNull();
+    expect(normalizeProduct("unsafe-original", {
+      ...requiredFields,
+      originalPrice: Number.MAX_SAFE_INTEGER + 1,
+    }).originalPrice).toBeNull();
+  });
+
   it("defaults optional collections and flags, clamps ratings, and reads Firestore timestamps", () => {
     const createdAt = new Date("2026-08-10T00:00:00.000Z");
     const updatedAt = new Date("2026-08-11T00:00:00.000Z");

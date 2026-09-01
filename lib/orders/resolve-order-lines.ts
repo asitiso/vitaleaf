@@ -2,6 +2,7 @@ import {
   getPurchaseOptionPrice,
   normalizePurchaseOptions,
 } from "../products/purchase-options";
+import { isSafeIntegerKrw } from "../products/price";
 import type { Product } from "../products/types";
 
 export type OrderLineSelection = {
@@ -52,8 +53,7 @@ export const resolveOrderLines = (
       || product.id !== selection.productId
       || !Number.isInteger(selection.quantity)
       || selection.quantity < 1
-      || !Number.isSafeInteger(product.price)
-      || product.price < 0
+      || !isSafeIntegerKrw(product.price)
     ) {
       throw new OrderLineUnavailableError();
     }
@@ -68,7 +68,7 @@ export const resolveOrderLines = (
 
       const unitPrice = getPurchaseOptionPrice(product.price, option);
       const lineTotal = unitPrice * selection.quantity;
-      if (unitPrice < 1 || !Number.isSafeInteger(unitPrice) || !Number.isSafeInteger(lineTotal)) {
+      if (!isSafeIntegerKrw(unitPrice, 1) || !isSafeIntegerKrw(lineTotal, 1)) {
         throw new OrderLineUnavailableError();
       }
 

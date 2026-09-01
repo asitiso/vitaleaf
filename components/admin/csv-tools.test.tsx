@@ -85,7 +85,7 @@ it("blocks all writes when any row is invalid and shows every row-field error", 
     ",혈행,12000,-2",
   ].join("\n")));
 
-  expect(await screen.findByText("2행 판매가: 판매가는 0 이상의 숫자여야 합니다.")).toBeVisible();
+  expect(await screen.findByText("2행 판매가: 판매가는 0 이상의 정수여야 합니다.")).toBeVisible();
   expect(screen.getByText("3행 상품명: 상품명을 입력해 주세요.")).toBeVisible();
   expect(screen.getByText("3행 재고: 재고는 0 이상의 정수여야 합니다.")).toBeVisible();
   expect(screen.queryByRole("button", { name: /임시저장으로 가져오기/ })).not.toBeInTheDocument();

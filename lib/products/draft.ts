@@ -1,11 +1,12 @@
 import { normalizeMedia } from "./normalize";
 import { getProductAvailableStock, normalizePurchaseOptions } from "./purchase-options";
+import { isSafeIntegerKrw } from "./price";
 import { canonicalAgeTargets, canonicalTaxonomyValue, canonicalTaxonomyValues, HEALTH_CONCERNS, PRODUCT_CATEGORIES } from "../catalog/taxonomy";
 import type { ProductDraft, ProductInput } from "./types";
 
 export type DraftValidationError = {
   step: 1 | 2 | 3 | 4;
-  field: "name" | "category" | "price" | "stock" | "media" | "dosage" | "ingredients" | "origin" | "cautions" | "purchaseOptions";
+  field: "name" | "category" | "price" | "originalPrice" | "stock" | "media" | "dosage" | "ingredients" | "origin" | "cautions" | "purchaseOptions";
   message: string;
 };
 
@@ -19,10 +20,13 @@ export const validatePublishableDraft = (draft: ProductDraft): DraftValidationEr
 
   if (!isNonEmptyText(draft.name)) addError(1, "name", "Enter a product name.");
   if (!isNonEmptyText(draft.category)) addError(1, "category", "Choose a product category.");
-  if (!Number.isFinite(draft.price) || draft.price <= 0) addError(1, "price", "Enter a price greater than zero.");
+  if (!isSafeIntegerKrw(draft.price, 1)) addError(1, "price", "Enter a whole-won price greater than zero.");
+  if (draft.originalPrice !== null && !isSafeIntegerKrw(draft.originalPrice)) {
+    addError(1, "originalPrice", "Enter an original price as a non-negative whole-won amount.");
+  }
   const hasValidLegacyStock = Number.isInteger(draft.stock) && draft.stock >= 0;
   if (!hasValidLegacyStock) addError(1, "stock", "Enter stock as a non-negative integer.");
-  if (Number.isFinite(draft.price) && draft.price > 0 && hasValidLegacyStock) {
+  if (isSafeIntegerKrw(draft.price, 1) && hasValidLegacyStock) {
     try {
       normalizePurchaseOptions(draft.purchaseOptions, draft.price, draft.stock);
     } catch {

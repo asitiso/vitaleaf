@@ -109,11 +109,31 @@ describe("parseProductCsv", () => {
 
     expect(result.valid).toEqual([]);
     expect(result.errors).toEqual([
-      { row: 2, field: "price", message: "판매가는 0 이상의 숫자여야 합니다." },
+      { row: 2, field: "price", message: "판매가는 0 이상의 정수여야 합니다." },
       { row: 2, field: "isBest", message: "true 또는 false를 입력해 주세요." },
       { row: 4, field: "name", message: "상품명을 입력해 주세요." },
       { row: 4, field: "category", message: "카테고리를 입력해 주세요." },
     ]);
+  });
+
+  it("rejects fractional and unsafe selling or original KRW prices by field", () => {
+    const result = parseProductCsv([
+      "name,category,price,originalPrice,stock",
+      "소수 판매가,혈행,35000.5,,10",
+      `안전 범위 초과 판매가,혈행,${Number.MAX_SAFE_INTEGER + 1},,10`,
+      "소수 정상가,혈행,35000,42000.5,10",
+      `안전 범위 초과 정상가,혈행,35000,${Number.MAX_SAFE_INTEGER + 1},10`,
+    ].join("\n"));
+
+    expect(result).toEqual({
+      valid: [],
+      errors: [
+        { row: 2, field: "price", message: "판매가는 0 이상의 정수여야 합니다." },
+        { row: 3, field: "price", message: "판매가는 0 이상의 정수여야 합니다." },
+        { row: 4, field: "originalPrice", message: "정상가는 0 이상의 정수여야 합니다." },
+        { row: 5, field: "originalPrice", message: "정상가는 0 이상의 정수여야 합니다." },
+      ],
+    });
   });
 
   it("rejects malformed ingredient JSON and an unclosed quoted row without throwing", () => {

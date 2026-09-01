@@ -1,5 +1,6 @@
 import type { Ingredient, Product, ProductMedia } from "./types";
 import { getProductAvailableStock, normalizePurchaseOptions } from "./purchase-options";
+import { isSafeIntegerKrw } from "./price";
 import { canonicalAgeTargets, canonicalTaxonomyValue, canonicalTaxonomyValues, HEALTH_CONCERNS, PRODUCT_CATEGORIES } from "../catalog/taxonomy";
 
 type ProductRecord = Record<string, unknown>;
@@ -29,6 +30,9 @@ const asIngredients = (value: unknown): Ingredient[] =>
 
 const asNullableNonNegativeNumber = (value: unknown): number | null =>
   typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+
+const asNullableNonNegativeKrw = (value: unknown): number | null =>
+  isSafeIntegerKrw(value) ? value : null;
 
 const asNonNegativeNumber = (value: unknown): number =>
   typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
@@ -109,7 +113,7 @@ export const normalizeProduct = (id: string, raw: unknown): Product & { purchase
   const name = asString(product.name).trim();
   if (!name) throw new Error("상품명이 필요합니다");
 
-  if (typeof product.price !== "number" || !Number.isFinite(product.price) || product.price < 0) {
+  if (!isSafeIntegerKrw(product.price)) {
     throw new Error("가격은 0 이상의 유한한 숫자여야 합니다");
   }
 
@@ -127,7 +131,7 @@ export const normalizeProduct = (id: string, raw: unknown): Product & { purchase
     concerns: canonicalTaxonomyValues(HEALTH_CONCERNS, asStringArray(product.concerns)),
     ageTargets: canonicalAgeTargets(asStringArray(product.ageTargets)),
     price: product.price,
-    originalPrice: asNullableNonNegativeNumber(product.originalPrice),
+    originalPrice: asNullableNonNegativeKrw(product.originalPrice),
     thumbnailUrl: media[0]?.url ?? "",
     images: media.map((item) => item.url),
     media,

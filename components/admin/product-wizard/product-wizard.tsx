@@ -33,7 +33,7 @@ const steps: ReadonlyArray<{ number: WizardStep; name: string; description: stri
 ];
 
 const visibleStepFor = (error: DraftValidationError): WizardStep => (
-  error.field === "price" || error.field === "stock" ? 4
+  error.field === "price" || error.field === "originalPrice" || error.field === "stock" ? 4
     : error.field === "origin" || error.field === "cautions" ? 3
       : error.step
 );
@@ -41,7 +41,8 @@ const visibleStepFor = (error: DraftValidationError): WizardStep => (
 const staffMessageFor = (error: DraftValidationError): string => ({
   name: "상품명을 입력해 주세요.",
   category: "상품 분류를 선택해 주세요.",
-  price: "판매가를 0원보다 크게 입력해 주세요.",
+  price: "판매가를 1원 이상의 정수로 입력해 주세요.",
+  originalPrice: "정상가를 0원 이상의 정수로 입력해 주세요.",
   stock: "재고 수량을 0 이상의 정수로 입력해 주세요.",
   media: "상품 이미지를 한 장 이상 추가해 주세요.",
   dosage: "섭취 방법을 입력해 주세요.",
@@ -55,6 +56,7 @@ const focusIdFor = (field: DraftValidationError["field"]): string | null => ({
   name: "wizard-name",
   category: "wizard-category",
   price: "wizard-price",
+  originalPrice: "wizard-original-price",
   stock: "wizard-stock",
   media: "wizard-media-slot",
   dosage: "wizard-dosage",

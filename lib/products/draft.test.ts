@@ -116,6 +116,24 @@ describe("product drafts", () => {
     });
   });
 
+  it.each([
+    ["fractional", 20_000.5],
+    ["unsafe", Number.MAX_SAFE_INTEGER + 1],
+  ])("rejects a %s selling price before publication", (_label, price) => {
+    expect(validatePublishableDraft(makeDraft({ price }))).toContainEqual(
+      expect.objectContaining({ step: 1, field: "price" }),
+    );
+  });
+
+  it.each([
+    ["fractional", 25_000.5],
+    ["unsafe", Number.MAX_SAFE_INTEGER + 1],
+  ])("rejects a %s optional original price before publication", (_label, originalPrice) => {
+    expect(validatePublishableDraft(makeDraft({ originalPrice }))).toContainEqual(
+      expect.objectContaining({ step: 1, field: "originalPrice" }),
+    );
+  });
+
   it("keeps an explicit fractional option stock error on purchase options", () => {
     const options = purchaseOptions.map((option, index) => index === 0 ? { ...option, stock: 1.5 } : option);
     const errors = validatePublishableDraft(makeDraft({ purchaseOptions: options }));

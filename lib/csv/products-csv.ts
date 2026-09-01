@@ -1,6 +1,7 @@
 import type { Ingredient, Product, ProductDraft, ProductInput } from "../products/types";
 import { canonicalAgeTargets } from "../catalog/taxonomy";
 import { getProductAvailableStock, normalizePurchaseOptions } from "../products/purchase-options";
+import { isSafeIntegerKrw } from "../products/price";
 
 export type CsvRowError = {
   row: number;
@@ -280,11 +281,21 @@ export const parseProductCsv = (text: string): { valid: ProductInput[]; errors: 
       rowErrors.push({ row: row.sourceRow, field, message });
     };
     const list = (field: ProductCsvHeader): string[] => decodeList(value(field));
-    const optionalNumber = (field: "originalPrice" | "salesRank", message: string): number | null => {
+    const optionalNumber = (field: "salesRank", message: string): number | null => {
       const raw = value(field);
       if (!raw) return null;
       const number = Number(raw);
       if (!Number.isFinite(number) || number < 0) {
+        addError(field, message);
+        return null;
+      }
+      return number;
+    };
+    const optionalKrw = (field: "originalPrice", message: string): number | null => {
+      const raw = value(field);
+      if (!raw) return null;
+      const number = Number(raw);
+      if (!isSafeIntegerKrw(number)) {
         addError(field, message);
         return null;
       }
@@ -309,10 +320,10 @@ export const parseProductCsv = (text: string): { valid: ProductInput[]; errors: 
     const priceText = value("price");
     const price = Number(priceText);
     if (!priceText) addError("price", "판매가를 입력해 주세요.");
-    else if (!Number.isFinite(price) || price < 0) addError("price", "판매가는 0 이상의 숫자여야 합니다.");
+    else if (!isSafeIntegerKrw(price)) addError("price", "판매가는 0 이상의 정수여야 합니다.");
     else product.price = price;
 
-    product.originalPrice = optionalNumber("originalPrice", "정상가는 0 이상의 숫자여야 합니다.");
+    product.originalPrice = optionalKrw("originalPrice", "정상가는 0 이상의 정수여야 합니다.");
     product.thumbnailUrl = value("thumbnailUrl");
     product.images = list("images");
     product.description = value("description");
@@ -340,7 +351,7 @@ export const parseProductCsv = (text: string): { valid: ProductInput[]; errors: 
     else if (!Number.isInteger(stock) || stock < 0) addError("stock", "재고는 0 이상의 정수여야 합니다.");
     else product.stock = stock;
 
-    if (Number.isFinite(product.price) && product.price >= 0 && Number.isInteger(product.stock) && product.stock >= 0) {
+    if (isSafeIntegerKrw(product.price) && Number.isInteger(product.stock) && product.stock >= 0) {
       const purchaseOptionsJson = value("purchaseOptionsJson");
       if (purchaseOptionsJson) {
         try {
