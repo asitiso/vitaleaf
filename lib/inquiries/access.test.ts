@@ -18,6 +18,40 @@ const MEMBER: InquirySubject = { kind: "member", uid: "member-1" };
 const GUEST: InquirySubject = { kind: "guest", orderNumber: ORDER_NUMBER };
 const OBJECT_PATH = "inquiryPending/subject-hash/upload-1";
 
+const VALID_OBJECT_PATHS = [
+  OBJECT_PATH,
+  `inquiryPending/${"0123456789abcdef".repeat(4)}/123e4567-e89b-12d3-a456-426614174000`,
+  `inquiryPending/${"A".repeat(41)}_-/${"random_ID-20260828"}`,
+  `inquiryPending/${"s".repeat(8)}/${"u".repeat(8)}`,
+  `inquiryPending/${"S".repeat(64)}/${"U".repeat(64)}`,
+] as const;
+
+const UNSAFE_OBJECT_PATHS: ReadonlyArray<readonly [string, string]> = [
+  ["wrong prefix", "inquiries/subject-hash/upload-1"],
+  ["URL-like path", "inquiryPending/http:/evil.test/file"],
+  ["drive-like path", "inquiryPending/C:/Windows/file"],
+  ["percent-encoded traversal", "inquiryPending/%2e%2e/upload-1"],
+  ["query and fragment", "inquiryPending/subject?query/upload#fragment"],
+  ["literal traversal", "inquiryPending/../upload-1"],
+  ["dot segment", "inquiryPending/subject-hash/./upload-1"],
+  ["dot in identifier", "inquiryPending/subject.hash/upload-1"],
+  ["colon in identifier", "inquiryPending/subject:hash/upload-1"],
+  ["backslash", "inquiryPending/subject-hash\\upload-1"],
+  ["slash inside identifier", "inquiryPending/subject/hash/upload-1"],
+  ["empty subject hash", "inquiryPending//upload-1"],
+  ["empty upload ID", "inquiryPending/subject-hash/"],
+  ["leading slash", "/inquiryPending/subject-hash/upload-1"],
+  ["leading whitespace", ` ${OBJECT_PATH}`],
+  ["trailing whitespace", `${OBJECT_PATH} `],
+  ["segment whitespace", "inquiryPending/subject hash/upload-1"],
+  ["Unicode slash lookalike", "inquiryPending/subject／hash/upload-1"],
+  ["control character", "inquiryPending/subject-hash/upload-1\u0000"],
+  ["seven-character subject hash", "inquiryPending/1234567/upload-1"],
+  ["seven-character upload ID", "inquiryPending/subject-hash/1234567"],
+  ["overlong subject hash", `inquiryPending/${"s".repeat(65)}/upload-1`],
+  ["overlong upload ID", `inquiryPending/subject-hash/${"u".repeat(65)}`],
+];
+
 type TestEnvelope = {
   v: unknown;
   purpose: unknown;
@@ -154,7 +188,7 @@ describe("upload receipts", () => {
     (subject) => {
       const token = issueUploadReceipt(
         subject,
-        ` ${OBJECT_PATH} `,
+        OBJECT_PATH,
         "image/webp",
         5 * 1024 * 1024,
         NOW,
@@ -167,6 +201,22 @@ describe("upload receipts", () => {
         contentType: "image/webp",
         declaredSize: 5 * 1024 * 1024,
       });
+    },
+  );
+
+  it.each(VALID_OBJECT_PATHS)(
+    "round-trips canonical 8-to-64-character generated path segments: %s",
+    (objectPath) => {
+      const token = issueUploadReceipt(
+        MEMBER,
+        objectPath,
+        "image/png",
+        100,
+        NOW,
+        SECRET,
+      );
+
+      expect(verifyUploadReceipt(token, MEMBER, NOW, SECRET).objectPath).toBe(objectPath);
     },
   );
 
@@ -226,14 +276,7 @@ describe("upload receipts", () => {
     expectAccessError(() => verifyUploadReceipt(tampered, MEMBER, NOW, SECRET));
   });
 
-  it.each([
-    "inquiries/subject-hash/upload-1",
-    "inquiryPending/../upload-1",
-    "inquiryPending/subject-hash/./upload-1",
-    "inquiryPending/subject-hash\\upload-1",
-    "inquiryPending/subject-hash/upload-1\u0000",
-    `inquiryPending/${"x".repeat(1_100)}`,
-  ])("rejects an unsafe pending object path: %s", (objectPath) => {
+  it.each(UNSAFE_OBJECT_PATHS)("rejects unsafe pending path issuance (%s)", (_reason, objectPath) => {
     expectAccessError(() => issueUploadReceipt(
       MEMBER,
       objectPath,
@@ -243,6 +286,25 @@ describe("upload receipts", () => {
       SECRET,
     ));
   });
+
+  it.each(UNSAFE_OBJECT_PATHS)(
+    "rejects a correctly signed unsafe pending path during verification (%s)",
+    (_reason, objectPath) => {
+      const token = signEnvelope({
+        v: 1,
+        purpose: "inquiry-upload",
+        exp: NOW.getTime() + 10 * 60_000,
+        payload: {
+          subject: MEMBER,
+          objectPath,
+          contentType: "image/jpeg",
+          declaredSize: 100,
+        },
+      });
+
+      expectAccessError(() => verifyUploadReceipt(token, MEMBER, NOW, SECRET));
+    },
+  );
 
   it.each(["image/gif", "IMAGE/JPEG", "image/jpeg; charset=utf-8"])(
     "rejects a disallowed MIME type: %s",

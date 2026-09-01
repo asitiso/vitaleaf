@@ -37,9 +37,9 @@ const GUEST_TOKEN_LIFETIME_MS = 30 * 60_000;
 const UPLOAD_RECEIPT_LIFETIME_MS = 10 * 60_000;
 const MAXIMUM_TOKEN_LENGTH = 8_192;
 const MAXIMUM_MEMBER_UID_LENGTH = 128;
-const MAXIMUM_OBJECT_PATH_LENGTH = 1_024;
 const MAXIMUM_UPLOAD_SIZE = 5 * 1024 * 1024;
 const BASE64URL = /^[A-Za-z0-9_-]+$/u;
+const PENDING_OBJECT_PATH = /^inquiryPending\/[A-Za-z0-9_-]{8,64}\/[A-Za-z0-9_-]{8,64}$/u;
 
 const IMAGE_CONTENT_TYPES: ReadonlySet<InquiryImageContentType> = new Set([
   "image/jpeg",
@@ -103,17 +103,8 @@ const normalizeSubject = (value: unknown): InquirySubject => {
 };
 
 const normalizeObjectPath = (value: unknown): string => {
-  const objectPath = normalizeBoundedIdentifier(value, MAXIMUM_OBJECT_PATH_LENGTH);
-  if (!objectPath.startsWith("inquiryPending/") || objectPath.includes("\\")) return fail();
-  const segments = objectPath.split("/");
-  if (
-    segments.length < 2
-    || segments[0] !== "inquiryPending"
-    || segments.slice(1).some((segment) => segment.length === 0 || segment === "." || segment === "..")
-  ) {
-    return fail();
-  }
-  return objectPath;
+  if (typeof value !== "string" || !PENDING_OBJECT_PATH.test(value)) return fail();
+  return value;
 };
 
 const normalizeContentType = (value: unknown): InquiryImageContentType => {
