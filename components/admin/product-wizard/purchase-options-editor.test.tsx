@@ -147,6 +147,24 @@ describe("PurchaseOptionsEditor", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(message);
   });
 
+  it.each([
+    ["adjustment", 80_000, Number.MAX_SAFE_INTEGER + 1, "Purchase option priceAdjustment must be a safe integer."],
+    ["final price", Number.MAX_SAFE_INTEGER, 1, "Purchase option final price must be at least 1 KRW."],
+  ])("describes only the first adjustment whose %s is unsafe", (_label, basePrice, priceAdjustment, error) => {
+    const options = explicitOptions().map((option, index) => index === 0
+      ? { ...option, priceAdjustment }
+      : option);
+    render(<EditorHarness basePrice={basePrice} initialOptions={options} />);
+
+    const invalidAdjustment = screen.getByLabelText("옵션 1 가격 조정액");
+    const validAdjustment = screen.getByLabelText("옵션 2 가격 조정액");
+
+    expect(invalidAdjustment).toHaveAttribute("data-purchase-options-price-error-target", "true");
+    expect(invalidAdjustment).toHaveAccessibleDescription(error);
+    expect(validAdjustment).not.toHaveAttribute("data-purchase-options-price-error-target");
+    expect(validAdjustment).not.toHaveAccessibleDescription();
+  });
+
   it("reports a missing active default after the default row is deleted", async () => {
     const user = userEvent.setup();
     render(<EditorHarness />);

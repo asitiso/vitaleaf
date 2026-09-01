@@ -95,9 +95,12 @@ export function ProductWizard({ draft, saveState, onChange, onSave, onPreview, o
     const firstError = errorsByStep[activeStep]?.[0];
     if (!firstError) return;
     const id = focusIdFor(firstError.field);
-    const target = id
+    const priceTarget = firstError.field === "purchaseOptions"
+      ? document.querySelector<HTMLElement>("[data-purchase-options-price-error-target='true']")
+      : null;
+    const target = priceTarget ?? (id
       ? document.getElementById(id)
-      : document.querySelector<HTMLElement>(`[data-wizard-field="${firstError.field}"]`);
+      : document.querySelector<HTMLElement>(`[data-wizard-field="${firstError.field}"]`));
     target?.focus();
   }, [activeStep, errorsByStep]);
 

@@ -2,6 +2,7 @@ import { useId, useLayoutEffect, useRef, useState } from "react";
 
 import { formatWon } from "../../../lib/format";
 import { getPurchaseOptionPrice, normalizePurchaseOptions } from "../../../lib/products/purchase-options";
+import { isSafeIntegerKrw } from "../../../lib/products/price";
 import type { PurchaseOption } from "../../../lib/products/types";
 
 type PurchaseOptionsEditorProps = {
@@ -17,6 +18,7 @@ type NumericOptionInputProps = {
   value: number | null;
   min?: number;
   describedBy?: string;
+  priceErrorTarget?: boolean;
   onChange(value: number | null): void;
 };
 
@@ -31,7 +33,7 @@ const formatSignedWon = (value: number): string => (
 const optionLabelId = (id: string): string => `purchase-option-${id}-label`;
 const optionInputId = (id: string, field: string): string => `purchase-option-${id}-${field}`;
 
-function NumericOptionInput({ id, label, value, min, describedBy, onChange }: NumericOptionInputProps) {
+function NumericOptionInput({ id, label, value, min, describedBy, priceErrorTarget, onChange }: NumericOptionInputProps) {
   const [editing, setEditing] = useState(() => ({ sourceValue: value, text: value === null ? "" : String(value) }));
   const text = Object.is(editing.sourceValue, value)
     ? editing.text
@@ -45,6 +47,7 @@ function NumericOptionInput({ id, label, value, min, describedBy, onChange }: Nu
       step="1"
       min={min}
       aria-describedby={describedBy}
+      data-purchase-options-price-error-target={priceErrorTarget ? "true" : undefined}
       value={text}
       onChange={(event) => {
         const nextText = event.currentTarget.value;
@@ -71,6 +74,14 @@ const canonicalValidationError = (basePrice: number, options: PurchaseOption[]):
   }
 };
 
+const firstInvalidPriceOptionId = (basePrice: number, options: PurchaseOption[]): string | null => {
+  const option = options.find((candidate) => (
+    !isSafeIntegerKrw(candidate.priceAdjustment, Number.MIN_SAFE_INTEGER)
+    || !isSafeIntegerKrw(basePrice + candidate.priceAdjustment, 1)
+  ));
+  return option?.id ?? null;
+};
+
 const suggestedSku = (preferred: string, options: PurchaseOption[]): string => {
   const used = new Set(options.map((option) => option.sku.trim()).filter(Boolean));
   if (!used.has(preferred)) return preferred;
@@ -86,11 +97,7 @@ export function PurchaseOptionsEditor({ basePrice, options, errors, onChange }: 
   const visibleErrors = [...new Set([...errors, ...(canonicalError ? [canonicalError] : [])])];
   const priceError = canonicalError?.startsWith("Purchase option priceAdjustment")
     || canonicalError?.startsWith("Purchase option final price");
-  const adjustmentErrorDescription = !priceError
-    ? undefined
-    : errors[0]
-      ? "purchase-options-publish-error"
-      : "purchase-options-canonical-error";
+  const invalidPriceOptionId = priceError ? firstInvalidPriceOptionId(basePrice, options) : null;
 
   useLayoutEffect(() => {
     if (!pendingFocusId.current) return;
@@ -223,7 +230,12 @@ export function PurchaseOptionsEditor({ basePrice, options, errors, onChange }: 
                     id={optionInputId(option.id, "adjustment")}
                     label={`옵션 ${position} 가격 조정액`}
                     value={option.priceAdjustment}
-                    describedBy={adjustmentErrorDescription}
+                    describedBy={option.id === invalidPriceOptionId
+                      ? errors[0]
+                        ? "purchase-options-publish-error"
+                        : "purchase-options-canonical-error"
+                      : undefined}
+                    priceErrorTarget={option.id === invalidPriceOptionId}
                     onChange={(priceAdjustment) => update(index, { priceAdjustment: priceAdjustment ?? Number.NaN })}
                   />
                 </label>

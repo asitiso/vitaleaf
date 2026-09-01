@@ -730,11 +730,15 @@ it("routes an unsafe option adjustment back to the sales options editor", async 
   render(<ProductWizard {...props} />);
 
   const adjustment = screen.getByLabelText("옵션 1 가격 조정액");
+  const validAdjustment = screen.getByLabelText("옵션 2 가격 조정액");
   expect(adjustment).toHaveAttribute("step", "1");
   await user.click(screen.getByRole("button", { name: "판매 공개" }));
 
   expect(props.onSave).not.toHaveBeenCalled();
   expect(props.onPublish).not.toHaveBeenCalled();
-  expect(screen.getByRole("group", { name: "구매 옵션 관리" })).toHaveFocus();
+  expect(adjustment).toHaveFocus();
+  expect(adjustment).toHaveAttribute("data-purchase-options-price-error-target", "true");
   expect(adjustment).toHaveAccessibleDescription("구매 옵션의 기본 구성, SKU, 재고와 최종 가격을 확인해 주세요.");
+  expect(validAdjustment).not.toHaveAttribute("data-purchase-options-price-error-target");
+  expect(validAdjustment).not.toHaveAccessibleDescription();
 });
