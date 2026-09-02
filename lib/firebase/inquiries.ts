@@ -199,4 +199,6 @@ export const createFirestoreInquiryRepository = ({
   },
 });
 
+export const inquiryRepository = createFirestoreInquiryRepository();
+
 export { InquiryRepositoryError } from "../inquiries/repository";

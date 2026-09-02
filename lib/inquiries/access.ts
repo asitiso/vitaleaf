@@ -138,6 +138,13 @@ const epochMilliseconds = (now: unknown): number => {
   return milliseconds;
 };
 
+export const guestInquiryTokenExpiresAt = (now: Date): Date => {
+  const issuedAt = epochMilliseconds(now);
+  const expiresAt = issuedAt + GUEST_TOKEN_LIFETIME_MS;
+  if (!Number.isSafeInteger(expiresAt)) return fail();
+  return new Date(expiresAt);
+};
+
 const strictBase64urlDecode = (value: string): Buffer => {
   if (!BASE64URL.test(value)) return fail();
   const decoded = Buffer.from(value, "base64url");

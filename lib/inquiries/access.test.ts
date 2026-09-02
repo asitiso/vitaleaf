@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   InquiryAccessError,
+  guestInquiryTokenExpiresAt,
   issueGuestInquiryToken,
   issueUploadReceipt,
   verifyGuestInquiryToken,
@@ -110,6 +111,10 @@ const expectAccessError = (operation: () => unknown): void => {
 };
 
 describe("guest inquiry access tokens", () => {
+  it("derives the public guest expiry from the same thirty-minute token lifetime", () => {
+    expect(guestInquiryTokenExpiresAt(NOW)).toEqual(new Date("2026-08-28T09:30:00.000Z"));
+  });
+
   it("round-trips only the canonical guest subject", () => {
     const token = issueGuestInquiryToken(ORDER_NUMBER, NOW, SECRET);
 

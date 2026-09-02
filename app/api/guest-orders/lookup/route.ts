@@ -8,17 +8,13 @@ import {
   GuestOrderNotFoundError,
   GuestOrderRateLimitError,
 } from "../../../../lib/guest-orders/service";
+import { guestOrderClientKeyFrom } from "../../../../lib/guest-orders/client-key";
 import { GuestOrderValidationError } from "../../../../lib/guest-orders/validation";
 
 export const runtime = "nodejs";
 
 const jsonMessage = (message: string, status: number): Response =>
   Response.json({ message }, { status });
-
-const clientKeyFrom = (request: Request): string => {
-  const forwarded = request.headers.get("x-forwarded-for")?.split(",", 1)[0]?.trim();
-  return forwarded || request.headers.get("x-real-ip")?.trim() || "unknown";
-};
 
 const safeErrorClass = (error: unknown): string => {
   const className = error instanceof Error ? error.constructor.name : "UnknownError";
@@ -35,7 +31,7 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const service = createGuestOrderService({ repository: guestOrderRepository });
-    const order = await service.lookup(body, clientKeyFrom(request));
+    const order = await service.lookup(body, guestOrderClientKeyFrom(request));
     return Response.json({ order });
   } catch (error) {
     if (error instanceof GuestOrderValidationError) {
