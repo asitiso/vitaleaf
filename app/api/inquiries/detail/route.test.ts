@@ -4,11 +4,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
+  readUrls: vi.fn(),
   resolveInquirySubject: vi.fn(),
 }));
 
 vi.mock("../../../../lib/firebase/inquiries", () => ({
   inquiryRepository: { get: mocks.get },
+}));
+
+vi.mock("../../../../lib/firebase/inquiry-uploads", () => ({
+  createInquiryAttachmentReadUrls: mocks.readUrls,
 }));
 
 vi.mock("../../../../lib/inquiries/server", async (importOriginal) => {
@@ -17,6 +22,7 @@ vi.mock("../../../../lib/inquiries/server", async (importOriginal) => {
 });
 
 import type { InquiryRecord } from "../../../../lib/inquiries/types";
+import { FirebaseAdminConfigurationError } from "../../../../lib/firebase/admin";
 import { POST } from "./route";
 
 const NOW = new Date("2026-09-02T01:02:03.000Z");
@@ -47,6 +53,7 @@ const requestFor = (id = memberRecord.id): Request => new Request("http://localh
 
 beforeEach(() => {
   mocks.get.mockReset().mockResolvedValue(memberRecord);
+  mocks.readUrls.mockReset().mockResolvedValue(["https://storage.example.test/signed-read"]);
   mocks.resolveInquirySubject.mockReset().mockResolvedValue({ kind: "member", uid: "member-1" });
 });
 
@@ -63,6 +70,8 @@ describe("POST /api/inquiries/detail", () => {
     expect(mocks.get).toHaveBeenCalledWith(memberRecord.id);
     const body = await response.json();
     expect(body).toMatchObject({ inquiry: { id: memberRecord.id, ownerType: "member" } });
+    expect(body.inquiry.attachments[0].readUrl).toBe("https://storage.example.test/signed-read");
+    expect(mocks.readUrls).toHaveBeenCalledWith(memberRecord.attachments, expect.any(Date));
     expect(JSON.stringify(body)).not.toContain("memberUid");
     expect(JSON.stringify(body)).not.toContain("admin-private-id");
     expect(JSON.stringify(body)).not.toContain("storagePath");
@@ -77,7 +86,7 @@ describe("POST /api/inquiries/detail", () => {
     expect(missing.status).toBe(404);
     expect(crossOwner.status).toBe(404);
     expect(await missing.json()).toEqual(await crossOwner.json());
-    expect(await POST(requestFor()).then((response) => response.status)).toBe(200);
+    expect(mocks.readUrls).not.toHaveBeenCalled();
   });
 
   it("returns the same 404 for a guest token from another order", async () => {
@@ -87,6 +96,31 @@ describe("POST /api/inquiries/detail", () => {
 
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({ message: "문의 정보를 찾을 수 없습니다." });
+    expect(mocks.readUrls).not.toHaveBeenCalled();
+  });
+
+  it("returns a safe 503 for read-signing configuration failure", async () => {
+    mocks.readUrls.mockRejectedValueOnce(new FirebaseAdminConfigurationError("FIREBASE_STORAGE_BUCKET"));
+
+    const response = await POST(requestFor());
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ message: "문의 이미지 서버 설정이 필요합니다." });
+  });
+
+  it("returns 500 with class-only logging for a generic read-signing failure", async () => {
+    const privateUrl = "https://storage.example.test/private-signed-url";
+    mocks.readUrls.mockRejectedValueOnce(new Error(privateUrl));
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const response = await POST(requestFor());
+
+    expect(response.status).toBe(500);
+    expect(consoleError).toHaveBeenCalledWith("Inquiry detail API failure", {
+      errorClass: "Error",
+      requestId: expect.stringMatching(/^[0-9a-f-]{36}$/u),
+    });
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(privateUrl);
   });
 
   it("returns 400 for an unsafe detail ID and 500 with safe logging for repository failures", async () => {

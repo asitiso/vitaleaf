@@ -4,6 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   create: vi.fn(),
+  deleteObjects: vi.fn(),
+  finalizeUploads: vi.fn(),
+  requiredSecret: vi.fn(),
   resolveInquirySubject: vi.fn(),
 }));
 
@@ -11,13 +14,24 @@ vi.mock("../../../lib/firebase/inquiries", () => ({
   inquiryRepository: { create: mocks.create },
 }));
 
+vi.mock("../../../lib/firebase/inquiry-uploads", () => ({
+  deleteInquiryObjects: mocks.deleteObjects,
+  finalizeInquiryUploads: mocks.finalizeUploads,
+}));
+
 vi.mock("../../../lib/inquiries/server", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../lib/inquiries/server")>();
-  return { ...actual, resolveInquirySubject: mocks.resolveInquirySubject };
+  return {
+    ...actual,
+    requiredInquiryTokenSecret: mocks.requiredSecret,
+    resolveInquirySubject: mocks.resolveInquirySubject,
+  };
 });
 
+import { FirebaseAdminConfigurationError } from "../../../lib/firebase/admin";
 import { ServerAuthenticationError } from "../../../lib/firebase/admin-auth";
 import { InquiryConfigurationError } from "../../../lib/inquiries/server";
+import { InquiryUploadError } from "../../../lib/inquiries/uploads";
 import { POST } from "./route";
 
 const guestOrder = "VL-20260826-ABC123";
@@ -40,6 +54,9 @@ const requestFor = (body: unknown = input, headers: Record<string, string> = {})
 
 beforeEach(() => {
   mocks.create.mockReset().mockResolvedValue(undefined);
+  mocks.deleteObjects.mockReset().mockResolvedValue(undefined);
+  mocks.finalizeUploads.mockReset().mockResolvedValue([]);
+  mocks.requiredSecret.mockReset().mockReturnValue("test-only-inquiry-secret-that-is-long-enough");
   mocks.resolveInquirySubject.mockReset().mockResolvedValue({ kind: "member", uid: "verified-member" });
 });
 
@@ -78,6 +95,9 @@ describe("POST /api/inquiries", () => {
     expect(serialized).not.toContain("010-1234-5678");
     expect(serialized).not.toContain("attacker-token");
     expect(JSON.stringify(responseBody)).not.toContain("verified-member");
+    expect(mocks.finalizeUploads).not.toHaveBeenCalled();
+    expect(mocks.deleteObjects).not.toHaveBeenCalled();
+    expect(mocks.requiredSecret).not.toHaveBeenCalled();
   });
 
   it("forces a guest record and public order number to the verified token order", async () => {
@@ -95,10 +115,65 @@ describe("POST /api/inquiries", () => {
     expect(await response.json()).toMatchObject({ ownerType: "guest", orderNumber: guestOrder });
   });
 
-  it("rejects nonempty upload receipts until Task 5 finalization exists", async () => {
-    const response = await POST(requestFor({ ...input, uploadReceipts: ["unverified-upload-receipt"] }));
+  it("finalizes verified receipts into attachments without exposing private paths", async () => {
+    const attachment = {
+      id: "uploadId123",
+      storagePath: "inquiries/inquiry-1234/uploadId123",
+      originalName: "첨부 이미지 1.png",
+      contentType: "image/png",
+      size: 8,
+    } as const;
+    mocks.finalizeUploads.mockResolvedValueOnce([attachment]);
 
-    expect(response.status).toBe(400);
+    const response = await POST(requestFor({ ...input, uploadReceipts: ["verified-upload-receipt"] }));
+
+    expect(response.status).toBe(201);
+    expect(mocks.finalizeUploads).toHaveBeenCalledWith(expect.objectContaining({
+      subject: { kind: "member", uid: "verified-member" },
+      receipts: ["verified-upload-receipt"],
+      inquiryId: expect.stringMatching(/^[0-9a-f-]{36}$/u),
+      now: expect.any(Date),
+      secret: "test-only-inquiry-secret-that-is-long-enough",
+    }));
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ attachments: [attachment] }));
+    const responseBody = await response.json();
+    expect(responseBody.attachments).toEqual([{
+      id: attachment.id,
+      originalName: attachment.originalName,
+      contentType: attachment.contentType,
+      size: attachment.size,
+      readUrl: null,
+    }]);
+    expect(JSON.stringify(responseBody)).not.toContain("storagePath");
+    expect(JSON.stringify(responseBody)).not.toContain(attachment.storagePath);
+  });
+
+  it("deletes every finalized object when repository creation fails", async () => {
+    const attachment = {
+      id: "uploadId123",
+      storagePath: "inquiries/inquiry-1234/uploadId123",
+      originalName: "첨부 이미지 1.jpg",
+      contentType: "image/jpeg",
+      size: 3,
+    } as const;
+    mocks.finalizeUploads.mockResolvedValueOnce([attachment]);
+    mocks.create.mockRejectedValueOnce(new Error("private repository failure"));
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const response = await POST(requestFor({ ...input, uploadReceipts: ["verified-upload-receipt"] }));
+
+    expect(response.status).toBe(500);
+    expect(mocks.deleteObjects).toHaveBeenCalledWith([attachment.storagePath]);
+  });
+
+  it("returns 400 for a rejected receipt and 503 for Storage configuration failure", async () => {
+    mocks.finalizeUploads.mockRejectedValueOnce(new InquiryUploadError());
+    const invalid = await POST(requestFor({ ...input, uploadReceipts: ["expired-receipt"] }));
+    mocks.finalizeUploads.mockRejectedValueOnce(new FirebaseAdminConfigurationError("FIREBASE_STORAGE_BUCKET"));
+    const configuration = await POST(requestFor({ ...input, uploadReceipts: ["verified-receipt"] }));
+
+    expect(invalid.status).toBe(400);
+    expect(configuration.status).toBe(503);
     expect(mocks.create).not.toHaveBeenCalled();
   });
 
@@ -136,5 +211,6 @@ describe("POST /api/inquiries", () => {
       requestId: expect.stringMatching(/^[0-9a-f-]{36}$/u),
     });
     expect(JSON.stringify(consoleError.mock.calls)).not.toContain("010-1234-5678");
+    expect(mocks.deleteObjects).not.toHaveBeenCalled();
   });
 });

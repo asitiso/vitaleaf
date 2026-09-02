@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { issueUploadReceipt } from "./access";
 import {
   InquiryValidationError,
   parseInquiryCreateInput,
@@ -67,6 +68,23 @@ describe("parseInquiryCreateInput", () => {
     });
   });
 
+  it("accepts a valid receipt bound to the longest supported multibyte member UID", () => {
+    const receipt = issueUploadReceipt(
+      { kind: "member", uid: "😀".repeat(128) },
+      `inquiryPending/${"s".repeat(64)}/${"u".repeat(64)}`,
+      "image/webp",
+      5 * 1024 * 1024,
+      new Date("2026-09-02T00:00:00.000Z"),
+      "test-only-inquiry-secret-that-is-long-enough",
+    );
+
+    expect(receipt.length).toBeGreaterThan(512);
+    expect(parseInquiryCreateInput({
+      ...validCreateInput,
+      uploadReceipts: [receipt],
+    }).uploadReceipts).toEqual([receipt]);
+  });
+
   it.each(["invalid", "ORDER", "배송"])("rejects an unsupported category: %s", (category) => {
     expect(() => parseInquiryCreateInput({ ...validCreateInput, category }))
       .toThrow(InquiryValidationError);
@@ -113,7 +131,7 @@ describe("parseInquiryCreateInput", () => {
     ["a non-array receipt value", "receipt-1"],
     ["a blank receipt", ["  "]],
     ["a duplicate receipt", ["receipt-1", " receipt-1 "]],
-    ["an oversized receipt", ["x".repeat(513)]],
+    ["an oversized receipt", ["x".repeat(2_049)]],
   ])("rejects %s", (_description, uploadReceipts) => {
     expect(() => parseInquiryCreateInput({ ...validCreateInput, uploadReceipts }))
       .toThrow(InquiryValidationError);

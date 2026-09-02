@@ -1,5 +1,6 @@
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
 
 const SERVER_APP_NAME = "vitaleaf-server";
 
@@ -34,3 +35,6 @@ export const getServerApp = () => {
 
 export const getAdminFirestore = (): FirebaseFirestore.Firestore =>
   getFirestore(getServerApp());
+
+export const getAdminStorageBucket = () => getStorage(getServerApp())
+  .bucket(requiredFirebaseAdminEnv("FIREBASE_STORAGE_BUCKET"));

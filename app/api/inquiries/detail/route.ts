@@ -1,4 +1,6 @@
+import { FirebaseAdminConfigurationError } from "../../../../lib/firebase/admin";
 import { ServerAuthenticationError } from "../../../../lib/firebase/admin-auth";
+import { createInquiryAttachmentReadUrls } from "../../../../lib/firebase/inquiry-uploads";
 import { inquiryRepository } from "../../../../lib/firebase/inquiries";
 import {
   InquiryConfigurationError,
@@ -54,8 +56,24 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const record = await inquiryRepository.get(id);
     if (!record || !inquirySubjectOwnsRecord(subject, record)) return notFound();
-    return Response.json({ inquiry: toInquiryPublic(record) });
+    const readUrls = await createInquiryAttachmentReadUrls(record.attachments, new Date());
+    if (readUrls.length !== record.attachments.length) {
+      throw new Error("Incomplete inquiry attachment signing result.");
+    }
+    const inquiry = toInquiryPublic(record);
+    return Response.json({
+      inquiry: {
+        ...inquiry,
+        attachments: inquiry.attachments.map((attachment, index) => ({
+          ...attachment,
+          readUrl: readUrls[index],
+        })),
+      },
+    });
   } catch (error) {
+    if (error instanceof FirebaseAdminConfigurationError) {
+      return jsonMessage("문의 이미지 서버 설정이 필요합니다.", 503);
+    }
     logInquiryApiFailure("Inquiry detail", error);
     return jsonMessage("문의 정보를 불러오지 못했습니다.", 500);
   }
