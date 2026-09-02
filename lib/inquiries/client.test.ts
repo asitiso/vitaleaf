@@ -94,6 +94,33 @@ describe("guest inquiry verification client", () => {
     expect(String(url)).not.toContain(orderNumber);
     expect(String(url)).not.toContain("010-1234-5678");
   });
+
+  it.each([
+    ["guest verification wrapper secret", {
+      order: publicOrder,
+      accessToken: "guest-access-token",
+      expiresAt: "2026-09-02T01:32:03.000Z",
+      secret: "server-secret",
+    }],
+    ["raw guest order phone and address", {
+      order: { ...publicOrder, phone: "01012345678", address: "서울시 비공개 주소" },
+      accessToken: "guest-access-token",
+      expiresAt: "2026-09-02T01:32:03.000Z",
+    }],
+    ["unknown nested guest order line field", {
+      order: {
+        ...publicOrder,
+        lines: [{ ...publicOrder.lines[0], storagePath: "inquiries/private.png" }],
+      },
+      accessToken: "guest-access-token",
+      expiresAt: "2026-09-02T01:32:03.000Z",
+    }],
+  ])("rejects an extra private %s instead of returning it to UI code", async (_description, body) => {
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json(body));
+
+    await expect(verifyGuestInquiryAccess(orderNumber, "010-1234-5678"))
+      .rejects.toThrow(InquiryClientError);
+  });
 });
 
 describe("private inquiry browser client", () => {
@@ -190,5 +217,44 @@ describe("private inquiry browser client", () => {
     }));
     await expect(getInquiry({ kind: "guest", token: "guest-access-token" }, inquiry.id))
       .rejects.toThrow(InquiryClientError);
+  });
+
+  it("keeps a future HTTPS authorized attachment read URL parseable", async () => {
+    const readUrl = "https://storage.example.test/inquiries/inquiry-1/image-1?signature=temporary";
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({
+      inquiry: { ...inquiry, attachments: [{ ...inquiry.attachments[0], readUrl }] },
+    }));
+
+    await expect(getInquiry({ kind: "guest", token: "guest-access-token" }, inquiry.id))
+      .resolves.toMatchObject({ attachments: [{ readUrl }] });
+  });
+
+  it.each([
+    ["create inquiry private member identity", () => createInquiry({ kind: "guest", token: "guest-access-token" }, input), {
+      ...inquiry,
+      memberUid: "private-member",
+    }],
+    ["list wrapper token", () => listInquiries({ kind: "guest", token: "guest-access-token" }), {
+      inquiries: [inquiry],
+      token: "private-token",
+    }],
+    ["list inquiry private guest owner", () => listInquiries({ kind: "guest", token: "guest-access-token" }), {
+      inquiries: [{ ...inquiry, guestOrderNumber: orderNumber }],
+    }],
+    ["detail wrapper unknown field", () => getInquiry({ kind: "guest", token: "guest-access-token" }, inquiry.id), {
+      inquiry,
+      arbitrary: true,
+    }],
+    ["detail attachment path and reply author", () => getInquiry({ kind: "guest", token: "guest-access-token" }, inquiry.id), {
+      inquiry: {
+        ...inquiry,
+        attachments: [{ ...inquiry.attachments[0], storagePath: "inquiries/private.png" }],
+        repliedBy: "admin-private-id",
+      },
+    }],
+  ])("rejects an extra private %s at every inquiry success level", async (_description, operation, body) => {
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json(body));
+
+    await expect(operation()).rejects.toThrow(InquiryClientError);
   });
 });

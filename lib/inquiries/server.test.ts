@@ -12,6 +12,7 @@ import {
 } from "./server";
 import type { InquiryCreateInput, InquiryRecord } from "./types";
 import { ServerAuthenticationError } from "../firebase/admin-auth";
+import { FirebaseAdminConfigurationError } from "../firebase/admin";
 
 const NOW = new Date("2026-09-02T01:02:03.000Z");
 const SECRET = "inquiry-token-secret-that-is-at-least-thirty-two-characters";
@@ -99,6 +100,26 @@ describe("inquiry server access boundary", () => {
     })).rejects.toMatchObject({ status: 401 });
   });
 
+  it("fails closed for a present empty guest header instead of falling back to a bearer", async () => {
+    const verifyGuestToken = vi.fn(() => { throw new InquiryAccessError(); });
+    const verifyBearerMember = vi.fn().mockResolvedValue({ uid: "member-1" });
+    const request = new Request("http://localhost", {
+      headers: { authorization: "Bearer valid-member-token", "x-inquiry-access": "" },
+    });
+
+    expect(request.headers.has("x-inquiry-access")).toBe(true);
+    expect(request.headers.get("x-inquiry-access")).toBe("");
+    await expect(resolveInquirySubject(request, {
+      now: () => NOW,
+      requiredSecret: () => SECRET,
+      verifyGuestToken,
+      verifyBearerMember,
+    })).rejects.toMatchObject({ status: 401 });
+
+    expect(verifyGuestToken).toHaveBeenCalledWith("", NOW, SECRET);
+    expect(verifyBearerMember).not.toHaveBeenCalled();
+  });
+
   it("derives a member only from the verified bearer and ignores browser owner fields", async () => {
     const verifyBearerMember = vi.fn().mockResolvedValue({ uid: "verified-member" });
     const request = new Request("http://localhost", {
@@ -122,6 +143,14 @@ describe("inquiry server access boundary", () => {
       verifyGuestToken: vi.fn(),
       verifyBearerMember: vi.fn().mockRejectedValue(new ServerAuthenticationError(401)),
     })).rejects.toMatchObject({ status: 401 });
+  });
+
+  it("maps a Firebase Admin configuration failure to the safe inquiry configuration boundary", async () => {
+    await expect(resolveInquirySubject(new Request("http://localhost", {
+      headers: { authorization: "Bearer member-token" },
+    }), {
+      verifyBearerMember: vi.fn().mockRejectedValue(new FirebaseAdminConfigurationError()),
+    })).rejects.toBeInstanceOf(InquiryConfigurationError);
   });
 });
 

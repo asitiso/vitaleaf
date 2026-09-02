@@ -52,6 +52,13 @@ const asRecord = (value: unknown): Record<string, unknown> => {
   return value as Record<string, unknown>;
 };
 
+const requireExactKeys = (value: Record<string, unknown>, expected: readonly string[]): void => {
+  const actual = Object.keys(value);
+  if (actual.length !== expected.length || expected.some((key) => !actual.includes(key))) {
+    throw new InquiryClientError();
+  }
+};
+
 const hasControlCharacter = (value: string): boolean => [...value].some((character) => {
   const codePoint = character.codePointAt(0) ?? 0;
   return codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f);
@@ -104,8 +111,33 @@ const parseOrderNumber = (value: unknown): string => {
   return orderNumber;
 };
 
+const parseReadUrl = (value: unknown): string | null => {
+  if (value === null) return null;
+  const readUrl = text(value, 2_000);
+  try {
+    const url = new URL(readUrl);
+    if (url.protocol !== "https:") throw new InquiryClientError();
+  } catch (error) {
+    if (error instanceof InquiryClientError) throw error;
+    throw new InquiryClientError();
+  }
+  return readUrl;
+};
+
 const parsePublicOrder = (value: unknown): GuestOrderPublic => {
   const order = asRecord(value);
+  requireExactKeys(order, [
+    "orderNumber",
+    "status",
+    "receivedAt",
+    "customerNameMasked",
+    "phoneMasked",
+    "addressMasked",
+    "lines",
+    "subtotal",
+    "shippingFee",
+    "total",
+  ]);
   const orderNumber = parseOrderNumber(order.orderNumber);
   if (order.status !== "mock-received") throw new InquiryClientError();
   if (!Array.isArray(order.lines) || order.lines.length < 1 || order.lines.length > 20) {
@@ -120,6 +152,19 @@ const parsePublicOrder = (value: unknown): GuestOrderPublic => {
     addressMasked: text(order.addressMasked, 250),
     lines: order.lines.map((item) => {
       const line = asRecord(item);
+      requireExactKeys(line, [
+        "productId",
+        "purchaseOptionId",
+        "purchaseOptionLabel",
+        "sku",
+        "name",
+        "thumbnailUrl",
+        "basePrice",
+        "priceAdjustment",
+        "unitPrice",
+        "quantity",
+        "lineTotal",
+      ]);
       return {
         productId: text(line.productId, 128),
         purchaseOptionId: text(line.purchaseOptionId, 128),
@@ -142,6 +187,20 @@ const parsePublicOrder = (value: unknown): GuestOrderPublic => {
 
 const parseInquiry = (value: unknown): InquiryPublic => {
   const inquiry = asRecord(value);
+  requireExactKeys(inquiry, [
+    "id",
+    "ownerType",
+    "orderNumber",
+    "category",
+    "title",
+    "body",
+    "status",
+    "attachments",
+    "adminReply",
+    "repliedAt",
+    "createdAt",
+    "updatedAt",
+  ]);
   const ownerType = inquiry.ownerType;
   const category = inquiry.category;
   const status = inquiry.status;
@@ -173,8 +232,9 @@ const parseInquiry = (value: unknown): InquiryPublic => {
     status: status as InquiryStatus,
     attachments: inquiry.attachments.map((item) => {
       const attachment = asRecord(item);
+      requireExactKeys(attachment, ["id", "originalName", "contentType", "size", "readUrl"]);
       const contentType = attachment.contentType;
-      if (!contentTypes.has(contentType as InquiryImageContentType) || attachment.readUrl !== null) {
+      if (!contentTypes.has(contentType as InquiryImageContentType)) {
         throw new InquiryClientError();
       }
       return {
@@ -182,7 +242,7 @@ const parseInquiry = (value: unknown): InquiryPublic => {
         originalName: text(attachment.originalName, 255),
         contentType: contentType as InquiryImageContentType,
         size: integer(attachment.size, 1, MAX_ATTACHMENT_SIZE),
-        readUrl: null,
+        readUrl: parseReadUrl(attachment.readUrl),
       };
     }),
     adminReply: adminReply === null ? null : text(adminReply, 3_000),
@@ -262,6 +322,7 @@ export async function verifyGuestInquiryAccess(
     undefined,
     true,
   ));
+  requireExactKeys(response, ["order", "accessToken", "expiresAt"]);
   return {
     order: parsePublicOrder(response.order),
     accessToken: text(response.accessToken, 8_192),
@@ -281,11 +342,13 @@ export async function listInquiries(
   filters: Partial<InquiryListFilters> = {},
 ): Promise<InquiryPublic[]> {
   const response = asRecord(await post("/api/inquiries/list", listPayload(filters), access));
+  requireExactKeys(response, ["inquiries"]);
   if (!Array.isArray(response.inquiries)) throw new InquiryClientError();
   return response.inquiries.map(parseInquiry);
 }
 
 export async function getInquiry(access: InquiryClientAccess, id: string): Promise<InquiryPublic> {
   const response = asRecord(await post("/api/inquiries/detail", { id }, access));
+  requireExactKeys(response, ["inquiry"]);
   return parseInquiry(response.inquiry);
 }

@@ -1,6 +1,10 @@
 import { getAuth, type Auth, type DecodedIdToken } from "firebase-admin/auth";
 
-import { getAdminFirestore, getServerApp } from "./admin";
+import {
+  FirebaseAdminConfigurationError,
+  getAdminFirestore,
+  getServerApp,
+} from "./admin";
 
 type AdminRecord = { role?: unknown } | null;
 
@@ -44,6 +48,7 @@ export async function verifyBearerMember(
     return await dependencies.verifyIdToken(bearerToken(request));
   } catch (error) {
     if (error instanceof ServerAuthenticationError) throw error;
+    if (error instanceof FirebaseAdminConfigurationError) throw error;
     throw new ServerAuthenticationError(401);
   }
 }

@@ -2,6 +2,7 @@ import type { DecodedIdToken } from "firebase-admin/auth";
 import { describe, expect, it, vi } from "vitest";
 
 import { verifyBearerAdmin, verifyBearerMember } from "./admin-auth";
+import { FirebaseAdminConfigurationError } from "./admin";
 
 const memberIdentity = { uid: "member-1" } as DecodedIdToken;
 const adminIdentity = { uid: "admin-1" } as DecodedIdToken;
@@ -62,6 +63,20 @@ describe("server bearer authentication", () => {
       expect(error).toMatchObject({ status: 401 });
       expect(error).not.toHaveProperty("message", expect.stringContaining(bearerToken));
     }
+  });
+
+  it("preserves Firebase Admin configuration failures while ordinary invalid tokens remain 401", async () => {
+    const configuration = new FirebaseAdminConfigurationError("FIREBASE_ADMIN_PROJECT_ID");
+
+    await expect(verifyBearerMember(requestWithAuthorization("Bearer member-token"), {
+      verifyIdToken: vi.fn().mockRejectedValue(configuration),
+      getAdminRecord: vi.fn(),
+    })).rejects.toBe(configuration);
+
+    await expect(verifyBearerAdmin(requestWithAuthorization("Bearer admin-token"), {
+      verifyIdToken: vi.fn().mockRejectedValue(configuration),
+      getAdminRecord: vi.fn(),
+    })).rejects.toBe(configuration);
   });
 
   it("returns the verified identity for a valid member bearer token", async () => {

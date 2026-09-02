@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { FirebaseAdminConfigurationError } from "../firebase/admin";
 import { ServerAuthenticationError, verifyBearerMember } from "../firebase/admin-auth";
 import {
   InquiryAccessError,
@@ -40,8 +41,8 @@ export async function resolveInquirySubject(
   request: Request,
   dependencies: ResolveInquirySubjectDependencies = {},
 ): Promise<InquirySubject> {
-  const guestToken = request.headers.get("x-inquiry-access");
-  if (guestToken) {
+  if (request.headers.has("x-inquiry-access")) {
+    const guestToken = request.headers.get("x-inquiry-access") ?? "";
     const now = (dependencies.now ?? (() => new Date()))();
     const secret = (dependencies.requiredSecret ?? requiredInquiryTokenSecret)();
     try {
@@ -52,8 +53,15 @@ export async function resolveInquirySubject(
     }
   }
 
-  const member = await (dependencies.verifyBearerMember ?? verifyBearerMember)(request);
-  return { kind: "member", uid: member.uid };
+  try {
+    const member = await (dependencies.verifyBearerMember ?? verifyBearerMember)(request);
+    return { kind: "member", uid: member.uid };
+  } catch (error) {
+    if (error instanceof FirebaseAdminConfigurationError) {
+      throw new InquiryConfigurationError();
+    }
+    throw error;
+  }
 }
 
 export const createInquiryRecord = (
