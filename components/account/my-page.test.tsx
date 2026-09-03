@@ -147,6 +147,14 @@ it("loads the profile and order history for the signed-in UID", async () => {
   expect(await screen.findByText("VL-20260824-NEW123")).toBeVisible();
 });
 
+it("offers the exact member inquiry destination from My Page", async () => {
+  authState.status = "signed-in";
+  authState.user = { uid: "user-1", email: "member@example.com", emailVerified: true };
+  render(<MyPage />);
+
+  expect(await screen.findByRole("link", { name: "1:1 문의" })).toHaveAttribute("href", "/mypage/inquiries");
+});
+
 it("repairs a missing profile only after explicit consent and becomes normally editable", async () => {
   authState.status = "signed-in";
   authState.user = { uid: "user-1", email: "member@example.com", emailVerified: true };

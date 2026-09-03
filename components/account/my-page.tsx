@@ -203,6 +203,11 @@ function AuthenticatedMyPage({ notice, user }: AuthenticatedMyPageProps) {
         ) : null}
         {orderIsCurrent && orderState.kind === "ready" ? <OrderHistory orders={orderState.data} /> : null}
       </section>
+      <section className="my-page__inquiry-card" aria-labelledby="inquiries-heading">
+        <h2 id="inquiries-heading">1:1 문의</h2>
+        <p>배송·상품·주문 문의와 답변을 빠르게 확인할 수 있습니다.</p>
+        <Link href="/mypage/inquiries">1:1 문의</Link>
+      </section>
     </main>
   );
 }

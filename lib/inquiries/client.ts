@@ -13,6 +13,7 @@ const ORDER_NUMBER = /^VL-\d{8}-[A-Z0-9]{6}$/u;
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const MAX_MONEY = 1_000_000_000;
 const MAX_ATTACHMENT_SIZE = 5 * 1024 * 1024;
+const MAX_UPLOAD_RECEIPT_LENGTH = 2_048;
 
 const categories: ReadonlySet<InquiryCategory> = new Set([
   "order",
@@ -35,6 +36,12 @@ export type InquiryClientAccess =
 export type GuestInquiryAccess = {
   order: GuestOrderPublic;
   accessToken: string;
+  expiresAt: string;
+};
+
+export type InquiryUploadUrl = {
+  uploadUrl: string;
+  receipt: string;
   expiresAt: string;
 };
 
@@ -122,6 +129,17 @@ const parseReadUrl = (value: unknown): string | null => {
     throw new InquiryClientError();
   }
   return readUrl;
+};
+
+const parseHttpsUrl = (value: unknown): string => {
+  const url = text(value, 2_000);
+  try {
+    if (new URL(url).protocol !== "https:") throw new InquiryClientError();
+  } catch (error) {
+    if (error instanceof InquiryClientError) throw error;
+    throw new InquiryClientError();
+  }
+  return url;
 };
 
 const parsePublicOrder = (value: unknown): GuestOrderPublic => {
@@ -335,6 +353,41 @@ export async function createInquiry(
   input: InquiryCreateInput,
 ): Promise<InquiryPublic> {
   return parseInquiry(await post("/api/inquiries", createPayload(input), access));
+}
+
+export async function requestInquiryUploadUrl(
+  access: InquiryClientAccess,
+  input: { contentType: InquiryImageContentType; size: number },
+): Promise<InquiryUploadUrl> {
+  const response = asRecord(await post("/api/inquiries/upload-url", input, access));
+  requireExactKeys(response, ["uploadUrl", "receipt", "expiresAt"]);
+  return {
+    uploadUrl: parseHttpsUrl(response.uploadUrl),
+    receipt: text(response.receipt, MAX_UPLOAD_RECEIPT_LENGTH),
+    expiresAt: parseTimestamp(response.expiresAt),
+  };
+}
+
+export async function putInquiryUpload(uploadUrl: string, file: File): Promise<void> {
+  let safeUrl: string;
+  try {
+    safeUrl = parseHttpsUrl(uploadUrl);
+  } catch {
+    throw new InquiryClientError("문의 이미지를 업로드하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+  }
+  let response: Response;
+  try {
+    response = await fetch(safeUrl, {
+      method: "PUT",
+      headers: { "content-type": file.type },
+      body: file,
+    });
+  } catch {
+    throw new InquiryClientError("문의 이미지를 업로드하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+  }
+  if (!response.ok) {
+    throw new InquiryClientError("문의 이미지를 업로드하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+  }
 }
 
 export async function listInquiries(

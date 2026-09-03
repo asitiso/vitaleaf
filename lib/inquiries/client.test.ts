@@ -11,6 +11,8 @@ import {
   createInquiry,
   getInquiry,
   listInquiries,
+  requestInquiryUploadUrl,
+  putInquiryUpload,
   verifyGuestInquiryAccess,
 } from "./client";
 
@@ -124,6 +126,48 @@ describe("guest inquiry verification client", () => {
 });
 
 describe("private inquiry browser client", () => {
+  it("requests a strict member upload URL and PUTs the original file directly", async () => {
+    const file = new File(["image-bytes"], "leaf.png", { type: "image/png" });
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(Response.json({
+        uploadUrl: "https://storage.example.test/upload?signature=temporary",
+        receipt: "receipt-123",
+        expiresAt: "2026-09-02T01:12:03.000Z",
+      }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    const signed = await requestInquiryUploadUrl({ kind: "member" }, { contentType: "image/png", size: file.size });
+    await putInquiryUpload(signed.uploadUrl, file);
+
+    expect(fetch).toHaveBeenNthCalledWith(1, "/api/inquiries/upload-url", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer member-token" },
+      body: JSON.stringify({ contentType: "image/png", size: file.size }),
+    });
+    expect(fetch).toHaveBeenNthCalledWith(2, signed.uploadUrl, {
+      method: "PUT",
+      headers: { "content-type": "image/png" },
+      body: file,
+    });
+  });
+
+  it.each([
+    { uploadUrl: "http://storage.example.test/upload", receipt: "receipt-123", expiresAt: "2026-09-02T01:12:03.000Z" },
+    { uploadUrl: "https://storage.example.test/upload", receipt: "x".repeat(2049), expiresAt: "2026-09-02T01:12:03.000Z" },
+    { uploadUrl: "https://storage.example.test/upload", receipt: "receipt-123", expiresAt: "not-a-date" },
+    { uploadUrl: "https://storage.example.test/upload", receipt: "receipt-123", expiresAt: "2026-09-02T01:12:03.000Z", storagePath: "private" },
+  ])("rejects malformed or private upload URL responses", async (body) => {
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json(body));
+    await expect(requestInquiryUploadUrl({ kind: "member" }, { contentType: "image/png", size: 1 }))
+      .rejects.toThrow(InquiryClientError);
+  });
+
+  it("maps a failed direct PUT to the generic safe upload error", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 403 }));
+    await expect(putInquiryUpload("https://storage.example.test/upload", new File(["x"], "x.png", { type: "image/png" })))
+      .rejects.toThrow("문의 이미지를 업로드하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+  });
+
   it("uses a fresh member bearer and POST-only body without browser owner fields", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(Response.json(inquiry, { status: 201 }));
 
