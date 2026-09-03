@@ -1382,6 +1382,46 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
     font-size: 27px;
   }
 }
+.guest-inquiry-entry {
+  width: 100%;
+  font-size: 16px;
+}
+.guest-inquiry-panel {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+  padding: 24px 16px;
+  border: 1px solid #d6e1d8;
+  border-radius: 8px;
+  background: #fff;
+  overflow-wrap: anywhere;
+}
+.guest-inquiry-panel .inquiry-page {
+  width: 100%;
+  padding: 0;
+}
+.guest-inquiry-panel .inquiry-form {
+  padding: 0;
+  border: 0;
+}
+.guest-inquiry-panel label {
+  font-size: 16px;
+}
+.guest-inquiry-entry:focus-visible,
+.guest-inquiry-panel > button:focus-visible {
+  outline: 3px solid #7bbf9a;
+  outline-offset: 3px;
+}
+.guest-inquiry-notice {
+  margin: 0;
+  padding: 16px;
+  border: 1px solid #dfb9b2;
+  border-radius: 5px;
+  color: #8f3426;
+  background: #fff4f1;
+  font-size: 16px;
+  line-height: 1.7;
+}
 
 @media (max-width: 480px) {
   .product-wizard__body { padding: 22px 17px; }

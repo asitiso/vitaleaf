@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { type InquiryClientAccess, getInquiry } from "../../lib/inquiries/client";
+import { type InquiryClientAccess, InquiryClientError, getInquiry } from "../../lib/inquiries/client";
 import type { InquiryPublic } from "../../lib/inquiries/types";
 
 const labels: Record<InquiryPublic["category"], string> = {
@@ -29,6 +29,7 @@ type InquiryDetailProps = {
   id: string;
   backHref?: string;
   onBack?: () => void;
+  onAccessExpired?: () => void;
 };
 
 export function InquiryDetail(props: InquiryDetailProps) {
@@ -36,7 +37,7 @@ export function InquiryDetail(props: InquiryDetailProps) {
   return <InquiryDetailContent key={identity + ":" + props.id} {...props} />;
 }
 
-function InquiryDetailContent({ access, id, backHref, onBack }: InquiryDetailProps) {
+function InquiryDetailContent({ access, id, backHref, onBack, onAccessExpired }: InquiryDetailProps) {
   const [state, setState] = useState<{
     kind: "loading" | "error" | "ready";
     inquiry: InquiryPublic | null;
@@ -56,12 +57,18 @@ function InquiryDetailContent({ access, id, backHref, onBack }: InquiryDetailPro
       (inquiry) => {
         if (!controller.signal.aborted) setState({ kind: "ready", inquiry });
       },
-      () => {
-        if (!controller.signal.aborted) setState({ kind: "error", inquiry: null });
+      (reason) => {
+        if (controller.signal.aborted) return;
+        if (guestToken !== null && reason instanceof InquiryClientError && reason.status === 401 && onAccessExpired) {
+          controller.abort();
+          onAccessExpired();
+          return;
+        }
+        setState({ kind: "error", inquiry: null });
       },
     );
     return () => controller.abort();
-  }, [guestToken, id, retry]);
+  }, [guestToken, id, retry, onAccessExpired]);
 
   function reload() {
     setRetry((count) => count + 1);

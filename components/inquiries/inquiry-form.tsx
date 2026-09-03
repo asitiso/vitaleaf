@@ -6,6 +6,7 @@ import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from "r
 import {
   createInquiry,
   type InquiryClientAccess,
+  InquiryClientError,
   putInquiryUpload,
   requestInquiryUploadUrl,
 } from "../../lib/inquiries/client";
@@ -27,6 +28,7 @@ type InquiryFormProps = {
   orderNumbers: string[];
   onSuccess: (id: string) => void;
   lockedOrderNumber?: string | null;
+  onAccessExpired?: () => void;
 };
 
 const categories = [
@@ -63,7 +65,7 @@ export function InquiryForm(props: InquiryFormProps) {
   return <InquiryFormContent key={identity + ":" + String(props.lockedOrderNumber)} {...props} />;
 }
 
-function InquiryFormContent({ access, orderNumbers, onSuccess, lockedOrderNumber }: InquiryFormProps) {
+function InquiryFormContent({ access, orderNumbers, onSuccess, lockedOrderNumber, onAccessExpired }: InquiryFormProps) {
   const [category, setCategory] = useState("");
   const [orderNumber, setOrderNumber] = useState(lockedOrderNumber ?? "");
   const [title, setTitle] = useState("");
@@ -94,6 +96,15 @@ function InquiryFormContent({ access, orderNumbers, onSuccess, lockedOrderNumber
     // This is the canonical operation state, not an effect-flushed render snapshot.
     uploadsRef.current = next;
     setUploads(next);
+  }
+
+  function expireAccess(reason: unknown, signal: AbortSignal): boolean {
+    if (signal.aborted || access.kind !== "guest" || !onAccessExpired
+      || !(reason instanceof InquiryClientError) || reason.status !== 401) return false;
+    // Stop both upload workers immediately, before React unmounts this private draft.
+    lifetime.current?.abort();
+    onAccessExpired();
+    return true;
   }
 
   function updateUpload(id: number, patch: Partial<Upload>) {
@@ -169,7 +180,8 @@ function InquiryFormContent({ access, orderNumbers, onSuccess, lockedOrderNumber
           updateUpload(upload.id, {
             status: "ready", receipt: signed.receipt, receivedAt, expiresAt: signed.expiresAt,
           });
-        } catch {
+        } catch (reason) {
+          if (expireAccess(reason, signal)) return;
           if (!signal.aborted) {
             updateUpload(upload.id, {
               status: "error", receipt: null, receivedAt: null, expiresAt: null,
@@ -218,7 +230,8 @@ function InquiryFormContent({ access, orderNumbers, onSuccess, lockedOrderNumber
       }, signal);
       signal.throwIfAborted();
       onSuccess(created.id);
-    } catch {
+    } catch (reason) {
+      if (expireAccess(reason, signal)) return;
       if (!signal.aborted) {
         replaceUploads(uploadsRef.current.map(withoutReceipt));
         setError("문의 정보를 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.");
@@ -237,12 +250,13 @@ function InquiryFormContent({ access, orderNumbers, onSuccess, lockedOrderNumber
   }
 
   const options = lockedOrderNumber ? [lockedOrderNumber] : orderNumbers;
+  const orderLabel = access.kind === "guest" ? "관련 주문번호" : "관련 주문";
   return (
     <section className="inquiry-page">
       <header className="inquiry-page__header">
         <p>VITALEAF</p>
         <h1>문의 작성</h1>
-        <p>주문과 관련 없는 문의도 남길 수 있습니다.</p>
+        <p>{access.kind === "guest" ? "확인한 주문에 대한 문의를 남겨 주세요." : "주문과 관련 없는 문의도 남길 수 있습니다."}</p>
       </header>
       <form className="inquiry-form" onSubmit={submit}>
         {error ? <p role="alert">{error}</p> : null}
@@ -259,9 +273,9 @@ function InquiryFormContent({ access, orderNumbers, onSuccess, lockedOrderNumber
           </select>
         </label>
         <label>
-          관련 주문
+          {orderLabel}
           <select
-            aria-label="관련 주문"
+            aria-label={orderLabel}
             disabled={busy || lockedOrderNumber !== undefined}
             onChange={(event) => setOrderNumber(event.target.value)}
             value={lockedOrderNumber ?? orderNumber}

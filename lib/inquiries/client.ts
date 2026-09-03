@@ -46,7 +46,10 @@ export type InquiryUploadUrl = {
 };
 
 export class InquiryClientError extends Error {
-  constructor(message = "문의 정보를 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.") {
+  constructor(
+    message = "문의 정보를 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+    readonly status?: number,
+  ) {
     super(message);
     this.name = "InquiryClientError";
   }
@@ -326,7 +329,7 @@ const post = async (
     method: "POST", headers, body: JSON.stringify(body), ...(signal ? { signal } : {}),
   });
   signal?.throwIfAborted();
-  if (!response.ok) throw new InquiryClientError(errorMessage(response.status, guestVerification));
+  if (!response.ok) throw new InquiryClientError(errorMessage(response.status, guestVerification), response.status);
   try {
     return await response.json();
   } catch {

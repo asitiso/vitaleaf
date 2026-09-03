@@ -54,3 +54,11 @@ it("renders help support details from the shared policy", () => {
     Object.assign(support, original);
   }
 });
+
+it("offers distinct member and guest inquiry entries without removing support guides", () => {
+  render(<HelpPage />);
+  expect(screen.getByRole("link", { name: "회원 1:1 문의" })).toHaveAttribute("href", "/mypage/inquiries");
+  expect(screen.getByRole("link", { name: "비회원 주문 문의" })).toHaveAttribute("href", "/order-lookup");
+  expect(screen.getByRole("link", { name: "배송 안내" })).toHaveAttribute("href", "/help/shipping");
+  expect(screen.getByRole("link", { name: "교환 및 반품 안내" })).toHaveAttribute("href", "/help/returns");
+});

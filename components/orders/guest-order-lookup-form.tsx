@@ -1,10 +1,11 @@
 "use client";
 
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { formatWon } from "../../lib/format";
-import { lookupGuestOrder } from "../../lib/guest-orders/client";
 import type { GuestOrderPublic } from "../../lib/guest-orders/types";
+import { type GuestInquiryAccess, verifyGuestInquiryAccess } from "../../lib/inquiries/client";
+import { GuestInquiryPanel } from "../inquiries/guest-inquiry-panel";
 
 const ORDER_NUMBER_PATTERN = /^VL-\d{8}-[A-Z0-9]{6}$/u;
 
@@ -32,36 +33,90 @@ export function GuestOrderLookupForm({ initialOrderNumber = "" }: GuestOrderLook
   const [state, setState] = useState<LookupState>("idle");
   const [error, setError] = useState("");
   const [order, setOrder] = useState<GuestOrderPublic | null>(null);
+  const [session, setSession] = useState<GuestInquiryAccess | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const request = useRef({ generation: 0, busy: false });
   const resultHeadingRef = useRef<HTMLHeadingElement>(null);
   const isSubmitting = state === "submitting";
+
+  const expireSession = useCallback(() => {
+    setSession(null);
+    setPanelOpen(false);
+    setSessionExpired(true);
+  }, []);
+
+  useEffect(() => {
+    const current = request.current;
+    return () => {
+      current.generation += 1;
+      current.busy = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!session) return;
+    const expiresAt = Date.parse(session.expiresAt);
+    const checkExpiry = () => {
+      if (Date.now() >= expiresAt) expireSession();
+    };
+    const timer = window.setTimeout(checkExpiry, Math.max(0, expiresAt - Date.now()));
+    // Recheck after background tab suspension or a device clock change.
+    window.addEventListener("focus", checkExpiry);
+    document.addEventListener("visibilitychange", checkExpiry);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("focus", checkExpiry);
+      document.removeEventListener("visibilitychange", checkExpiry);
+    };
+  }, [session, expireSession]);
 
   useEffect(() => {
     if (state === "success") resultHeadingRef.current?.focus();
   }, [state]);
 
+  function cancelPendingLookup() {
+    if (!request.current.busy) return;
+    request.current.generation += 1;
+    request.current.busy = false;
+    setState("idle");
+  }
+
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (isSubmitting) return;
+    if (request.current.busy) return;
 
+    const generation = ++request.current.generation;
     const submittedOrderNumber = orderNumber.trim();
     const submittedPhone = phone.trim();
     setError("");
     setOrder(null);
+    setSession(null);
+    setPanelOpen(false);
+    setSessionExpired(false);
     if (!ORDER_NUMBER_PATTERN.test(submittedOrderNumber) || submittedPhone.length === 0) {
       setState("error");
       setError("주문번호와 주문 시 휴대전화 번호를 확인해 주세요.");
       return;
     }
 
+    request.current.busy = true;
     setState("submitting");
     try {
-      const foundOrder = await lookupGuestOrder(submittedOrderNumber, submittedPhone);
-      setOrder(foundOrder);
+      const verified = await verifyGuestInquiryAccess(submittedOrderNumber, submittedPhone);
+      if (generation !== request.current.generation) return;
+      if (verified.order.orderNumber !== submittedOrderNumber) throw new Error("Invalid order verification");
+      setOrder(verified.order);
       setPhone("");
       setState("success");
+      if (Date.parse(verified.expiresAt) <= Date.now()) expireSession();
+      else setSession(verified);
     } catch {
+      if (generation !== request.current.generation) return;
       setState("error");
       setError("주문 정보를 확인하지 못했습니다. 주문번호와 휴대전화 번호를 다시 확인해 주세요.");
+    } finally {
+      if (generation === request.current.generation) request.current.busy = false;
     }
   };
 
@@ -79,7 +134,10 @@ export function GuestOrderLookupForm({ initialOrderNumber = "" }: GuestOrderLook
             <input
               autoCapitalize="characters"
               autoComplete="off"
-              onChange={(event) => setOrderNumber(event.target.value.toUpperCase())}
+              onChange={(event) => {
+                cancelPendingLookup();
+                setOrderNumber(event.target.value.toUpperCase());
+              }}
               placeholder="VL-20260826-ABC123"
               required
               value={orderNumber}
@@ -88,9 +146,12 @@ export function GuestOrderLookupForm({ initialOrderNumber = "" }: GuestOrderLook
           <label>
             <span>주문 시 휴대전화 번호</span>
             <input
-              autoComplete="tel"
+              autoComplete="off"
               inputMode="tel"
-              onChange={(event) => setPhone(formatPhoneForDisplay(event.target.value))}
+              onChange={(event) => {
+                cancelPendingLookup();
+                setPhone(formatPhoneForDisplay(event.target.value));
+              }}
               placeholder="010-1234-5678"
               required
               type="tel"
@@ -132,6 +193,27 @@ export function GuestOrderLookupForm({ initialOrderNumber = "" }: GuestOrderLook
             <div><dt>배송지</dt><dd>{order.addressMasked}</dd></div>
           </dl>
         </section>
+      ) : null}
+      {sessionExpired ? <p className="guest-inquiry-notice" role="alert">문의 인증이 만료되었습니다. 주문을 다시 조회해 주세요.</p> : null}
+      {session ? (
+        <button
+          aria-expanded={panelOpen}
+          className="inquiry-button guest-inquiry-entry"
+          onClick={() => {
+            if (Date.parse(session.expiresAt) <= Date.now()) expireSession();
+            else setPanelOpen(true);
+          }}
+          type="button"
+        >
+          이 주문으로 1:1 문의하기
+        </button>
+      ) : null}
+      {session && panelOpen ? (
+        <GuestInquiryPanel
+          access={{ kind: "guest", token: session.accessToken }}
+          orderNumber={session.order.orderNumber}
+          onAccessExpired={expireSession}
+        />
       ) : null}
     </section>
   );

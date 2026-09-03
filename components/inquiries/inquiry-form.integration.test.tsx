@@ -264,8 +264,8 @@ it.each(["signing", "put", "create"])("aborts %s and suppresses subsequent effec
 
 it("shows the locked guest order and rejects a tampered unlocked member order", async () => {
   const { rerender } = render(<InquiryForm access={{ kind: "guest", token: "guest" }} orderNumbers={[]} lockedOrderNumber={orderNumber} onSuccess={complete} />);
-  expect(screen.getByLabelText("관련 주문")).toBeDisabled();
-  expect(screen.getByLabelText("관련 주문")).toHaveValue(orderNumber);
+  expect(screen.getByLabelText("관련 주문번호")).toBeDisabled();
+  expect(screen.getByLabelText("관련 주문번호")).toHaveValue(orderNumber);
   rerender(<InquiryForm key="member" access={{ kind: "member" }} orderNumbers={[]} onSuccess={complete} />);
   fillForm();
   const select = screen.getByLabelText("관련 주문");
