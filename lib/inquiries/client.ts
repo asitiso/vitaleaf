@@ -66,7 +66,8 @@ const requireExactKeys = (value: Record<string, unknown>, expected: readonly str
   }
 };
 
-const hasControlCharacter = (value: string): boolean => [...value].some((character) => {
+const hasControlCharacter = (value: string, allowBodyWhitespace = false): boolean => [...value].some((character) => {
+  if (allowBodyWhitespace && (character === "\n" || character === "\t")) return false;
   const codePoint = character.codePointAt(0) ?? 0;
   return codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f);
 });
@@ -86,6 +87,19 @@ const text = (value: unknown, maximum: number): string => {
 const optionalText = (value: unknown, maximum: number): string => {
   if (value === undefined) return "";
   if (typeof value !== "string" || value.length > maximum || hasControlCharacter(value)) {
+    throw new InquiryClientError();
+  }
+  return value;
+};
+
+// Match the server's Unicode character bounds without relaxing URL/token fields.
+const inquiryText = (value: unknown, maximum: number, allowBodyWhitespace = false): string => {
+  if (
+    typeof value !== "string"
+    || value.trim().length === 0
+    || [...value].length > maximum
+    || hasControlCharacter(value, allowBodyWhitespace)
+  ) {
     throw new InquiryClientError();
   }
   return value;
@@ -245,8 +259,8 @@ const parseInquiry = (value: unknown): InquiryPublic => {
     ownerType,
     orderNumber,
     category: category as InquiryCategory,
-    title: text(inquiry.title, 100),
-    body: text(inquiry.body, 3_000),
+    title: inquiryText(inquiry.title, 100),
+    body: inquiryText(inquiry.body, 3_000, true),
     status: status as InquiryStatus,
     attachments: inquiry.attachments.map((item) => {
       const attachment = asRecord(item);
@@ -263,7 +277,7 @@ const parseInquiry = (value: unknown): InquiryPublic => {
         readUrl: parseReadUrl(attachment.readUrl),
       };
     }),
-    adminReply: adminReply === null ? null : text(adminReply, 3_000),
+    adminReply: adminReply === null ? null : inquiryText(adminReply, 3_000, true),
     repliedAt,
     createdAt: parseTimestamp(inquiry.createdAt),
     updatedAt: parseTimestamp(inquiry.updatedAt),
@@ -300,11 +314,18 @@ const post = async (
   body: unknown,
   access?: InquiryClientAccess,
   guestVerification = false,
+  signal?: AbortSignal,
 ): Promise<unknown> => {
+  signal?.throwIfAborted();
   const headers = access
     ? await requestHeaders(access)
     : { "content-type": "application/json" };
-  const response = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
+  // Auth can change while Firebase resolves the token. Never send a cancelled draft.
+  signal?.throwIfAborted();
+  const response = await fetch(url, {
+    method: "POST", headers, body: JSON.stringify(body), ...(signal ? { signal } : {}),
+  });
+  signal?.throwIfAborted();
   if (!response.ok) throw new InquiryClientError(errorMessage(response.status, guestVerification));
   try {
     return await response.json();
@@ -351,15 +372,17 @@ export async function verifyGuestInquiryAccess(
 export async function createInquiry(
   access: InquiryClientAccess,
   input: InquiryCreateInput,
+  signal?: AbortSignal,
 ): Promise<InquiryPublic> {
-  return parseInquiry(await post("/api/inquiries", createPayload(input), access));
+  return parseInquiry(await post("/api/inquiries", createPayload(input), access, false, signal));
 }
 
 export async function requestInquiryUploadUrl(
   access: InquiryClientAccess,
   input: { contentType: InquiryImageContentType; size: number },
+  signal?: AbortSignal,
 ): Promise<InquiryUploadUrl> {
-  const response = asRecord(await post("/api/inquiries/upload-url", input, access));
+  const response = asRecord(await post("/api/inquiries/upload-url", input, access, false, signal));
   requireExactKeys(response, ["uploadUrl", "receipt", "expiresAt"]);
   return {
     uploadUrl: parseHttpsUrl(response.uploadUrl),
@@ -368,7 +391,8 @@ export async function requestInquiryUploadUrl(
   };
 }
 
-export async function putInquiryUpload(uploadUrl: string, file: File): Promise<void> {
+export async function putInquiryUpload(uploadUrl: string, file: File, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted();
   let safeUrl: string;
   try {
     safeUrl = parseHttpsUrl(uploadUrl);
@@ -381,6 +405,7 @@ export async function putInquiryUpload(uploadUrl: string, file: File): Promise<v
       method: "PUT",
       headers: { "content-type": file.type },
       body: file,
+      ...(signal ? { signal } : {}),
     });
   } catch {
     throw new InquiryClientError("문의 이미지를 업로드하지 못했습니다. 잠시 후 다시 시도해 주세요.");
@@ -388,20 +413,22 @@ export async function putInquiryUpload(uploadUrl: string, file: File): Promise<v
   if (!response.ok) {
     throw new InquiryClientError("문의 이미지를 업로드하지 못했습니다. 잠시 후 다시 시도해 주세요.");
   }
+  signal?.throwIfAborted();
 }
 
 export async function listInquiries(
   access: InquiryClientAccess,
   filters: Partial<InquiryListFilters> = {},
+  signal?: AbortSignal,
 ): Promise<InquiryPublic[]> {
-  const response = asRecord(await post("/api/inquiries/list", listPayload(filters), access));
+  const response = asRecord(await post("/api/inquiries/list", listPayload(filters), access, false, signal));
   requireExactKeys(response, ["inquiries"]);
   if (!Array.isArray(response.inquiries)) throw new InquiryClientError();
   return response.inquiries.map(parseInquiry);
 }
 
-export async function getInquiry(access: InquiryClientAccess, id: string): Promise<InquiryPublic> {
-  const response = asRecord(await post("/api/inquiries/detail", { id }, access));
+export async function getInquiry(access: InquiryClientAccess, id: string, signal?: AbortSignal): Promise<InquiryPublic> {
+  const response = asRecord(await post("/api/inquiries/detail", { id }, access, false, signal));
   requireExactKeys(response, ["inquiry"]);
   return parseInquiry(response.inquiry);
 }

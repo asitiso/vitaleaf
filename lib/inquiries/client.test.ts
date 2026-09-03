@@ -126,6 +126,42 @@ describe("guest inquiry verification client", () => {
 });
 
 describe("private inquiry browser client", () => {
+  it("parses server-valid LF/tab body and reply with codepoint-based text limits", async () => {
+    const multiline = {
+      ...inquiry,
+      title: "🌿".repeat(100),
+      body: "첫 줄\n\t" + "🌿".repeat(2995),
+      status: "answered",
+      adminReply: "확인했습니다.\n\t감사합니다.",
+      repliedAt: inquiry.createdAt,
+    };
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({ inquiry: multiline }));
+    await expect(getInquiry({ kind: "member" }, inquiry.id)).resolves.toEqual(multiline);
+  });
+
+  it.each([
+    { body: "본문\u0000비밀" },
+    { body: "본문\r줄" },
+    { title: "제목\n줄" },
+    { title: "🌿".repeat(101) },
+    { body: "🌿".repeat(3001) },
+    { status: "answered", adminReply: "답변\u0085제어", repliedAt: inquiry.createdAt },
+  ])("keeps unsupported whitespace and oversized response fields rejected", async (fields) => {
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({ inquiry: { ...inquiry, ...fields } }));
+    await expect(getInquiry({ kind: "member" }, inquiry.id)).rejects.toThrow(InquiryClientError);
+  });
+
+  it("never sends an old draft if its operation aborts while a fresh token is pending", async () => {
+    let resolveToken!: (token: string) => void;
+    getCurrentFirebaseIdTokenMock.mockReturnValueOnce(new Promise<string>((resolve) => { resolveToken = resolve; }));
+    const controller = new AbortController();
+    const result = createInquiry({ kind: "member" }, input, controller.signal);
+    controller.abort();
+    resolveToken("next-member-token");
+    await expect(result).rejects.toThrow();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("requests a strict member upload URL and PUTs the original file directly", async () => {
     const file = new File(["image-bytes"], "leaf.png", { type: "image/png" });
     vi.mocked(fetch)

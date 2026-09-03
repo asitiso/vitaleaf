@@ -1,16 +1,25 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-const listMock = vi.hoisted(() => vi.fn());
-vi.mock("../../lib/inquiries/client", () => ({ listInquiries: listMock }));
+vi.mock("../../lib/firebase/id-token", () => ({
+  getCurrentFirebaseIdToken: vi.fn(async () => "member-token"),
+}));
+
+import { deferred, inquiryFixture } from "../../tests/inquiry-fixtures";
 import { InquiryList } from "./inquiry-list";
 
-const rows = [{ id: "i-1", category: "shipping", title: "배송 일정", orderNumber: "VL-20260826-ABC123", status: "waiting", createdAt: "2026-09-02T01:02:03.000Z" }, { id: "i-2", category: "product", title: "성분 문의", orderNumber: null, status: "answered", createdAt: "2026-09-01T01:02:03.000Z" }];
-beforeEach(() => listMock.mockReset().mockResolvedValue(rows));
+const rows = [
+  { ...inquiryFixture, id: "i-1", category: "shipping", title: "배송 일정", orderNumber: "VL-20260826-ABC123" },
+  { ...inquiryFixture, id: "i-2", category: "product", title: "성분 문의", status: "answered", adminReply: "답변", repliedAt: inquiryFixture.createdAt },
+];
+const detailHref = (id: string) => "/mypage/inquiries/" + encodeURIComponent(id);
+
+beforeEach(() => vi.stubGlobal("fetch", vi.fn(async () => Response.json({ inquiries: rows }))));
+afterEach(() => vi.unstubAllGlobals());
 
 it("loads a private list with waiting and answered links", async () => {
-  render(<InquiryList access={{ kind: "member" }} createHref="/mypage/inquiries/new" detailHref={(id) => `/mypage/inquiries/${encodeURIComponent(id)}`} />);
+  render(<InquiryList access={{ kind: "member" }} createHref="/mypage/inquiries/new" detailHref={detailHref} />);
   expect(screen.getByRole("status")).toHaveTextContent("문의 내역을 불러오는 중");
   expect(await screen.findByRole("link", { name: /배송 일정/ })).toHaveAttribute("href", "/mypage/inquiries/i-1");
   expect(screen.getByText("답변 대기")).toBeVisible();
@@ -19,13 +28,15 @@ it("loads a private list with waiting and answered links", async () => {
 });
 
 it("shows retry after an error and ignores an old access response", async () => {
-  let resolveOld!: (value: typeof rows) => void;
-  const old = new Promise<typeof rows>((resolve) => { resolveOld = resolve; });
-  listMock.mockReturnValueOnce(old).mockRejectedValueOnce(new Error("failed")).mockResolvedValueOnce([]);
+  const old = deferred<Response>();
+  vi.mocked(fetch).mockReturnValueOnce(old.promise)
+    .mockRejectedValueOnce(new Error("failed"))
+    .mockResolvedValueOnce(Response.json({ inquiries: [] }));
   const user = userEvent.setup();
-  const { rerender } = render(<InquiryList access={{ kind: "member" }} createHref="/mypage/inquiries/new" detailHref={(id) => `/mypage/inquiries/${id}`} />);
-  rerender(<InquiryList access={{ kind: "guest", token: "new-access" }} createHref="/mypage/inquiries/new" detailHref={(id) => `/mypage/inquiries/${id}`} />);
-  resolveOld(rows);
+  const { rerender } = render(<InquiryList access={{ kind: "member" }} detailHref={detailHref} />);
+  await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+  rerender(<InquiryList access={{ kind: "guest", token: "new-access" }} detailHref={detailHref} />);
+  await act(async () => old.resolve(Response.json({ inquiries: rows })));
   expect(await screen.findByRole("alert")).toHaveTextContent("문의 내역을 불러오지 못했습니다");
   expect(screen.queryByText("배송 일정")).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "문의 내역 다시 불러오기" }));
