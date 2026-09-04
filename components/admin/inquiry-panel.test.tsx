@@ -133,6 +133,34 @@ it("blocks duplicate reply and delete submissions", async () => {
   await waitFor(() => expect(within(screen.getByRole("dialog")).getByRole("alert")).toBeVisible());
 });
 
+it("keeps one reply in flight when editing or reselecting the same inquiry and restores controls after settlement", async () => {
+  const saving = deferred<InquiryPublic>();
+  const reply = vi.fn(() => saving.promise);
+  const api = client({ reply });
+  const user = userEvent.setup();
+  render(<InquiryPanel client={api} onWaitingCountChange={vi.fn()} />);
+  const rowButton = await screen.findByRole("button", { name: /배송이 궁금해요/u });
+  await user.click(rowButton);
+  await screen.findByRole("heading", { name: "배송이 궁금해요" });
+  const textarea = screen.getByLabelText("관리자 답변");
+  await user.type(textarea, "최초 답변");
+  await user.click(screen.getByRole("button", { name: "답변 저장" }));
+  expect(textarea).toBeDisabled();
+  const savingButton = screen.getByRole("button", { name: "저장 중" });
+  expect(savingButton).toBeDisabled();
+  await user.type(textarea, "변경 시도");
+  await user.click(rowButton);
+  expect(screen.getByLabelText("관리자 답변")).toBeDisabled();
+  expect(screen.getByRole("button", { name: "저장 중" })).toBeDisabled();
+  await user.click(screen.getByRole("button", { name: "저장 중" }));
+  expect(reply).toHaveBeenCalledTimes(1);
+  expect(reply).toHaveBeenCalledWith("inquiry-1", "최초 답변", expect.any(AbortSignal));
+  act(() => saving.resolve(row({ status: "answered", adminReply: "최초 답변", repliedAt: inquiryFixture.createdAt })));
+  expect(await screen.findByRole("button", { name: "답변 저장" })).toBeEnabled();
+  expect(screen.getByLabelText("관리자 답변")).toBeEnabled();
+  expect(reply).toHaveBeenCalledTimes(1);
+});
+
 it("uses a non-destructive focused confirmation and handles cancel, failure, and success", async () => {
   const remove = vi.fn().mockRejectedValueOnce(new Error("fail")).mockResolvedValueOnce(undefined);
   const api = client({ delete: remove });
@@ -181,10 +209,11 @@ it("clears detail and draft and cancels stale work when the authorization genera
 it("ignores a pending reply after selecting another inquiry without starting old refresh effects", async () => {
   const pendingReply = deferred<InquiryPublic>();
   const rows = [row(), row({ id: "inquiry-2", title: "새 문의" })];
+  const nextAnswer = row({ id: "inquiry-2", title: "새 문의", status: "answered", adminReply: "새 답변", repliedAt: inquiryFixture.createdAt });
   const api = client({
     list: vi.fn().mockResolvedValue(rows),
     get: vi.fn(async (id) => rows.find((item) => item.id === id)!),
-    reply: vi.fn(() => pendingReply.promise),
+    reply: vi.fn().mockImplementationOnce(() => pendingReply.promise).mockResolvedValueOnce(nextAnswer),
   });
   const user = userEvent.setup();
   render(<InquiryPanel client={api} onWaitingCountChange={vi.fn()} />);
@@ -209,6 +238,10 @@ it("ignores a pending reply after selecting another inquiry without starting old
   expect(api.list).toHaveBeenCalledTimes(callsBeforeResolution.list);
   expect(api.get).toHaveBeenCalledTimes(callsBeforeResolution.get);
   expect(api.count).toHaveBeenCalledTimes(callsBeforeResolution.count);
+  await user.type(screen.getByLabelText("관리자 답변"), "새 답변");
+  await user.click(screen.getByRole("button", { name: "답변 저장" }));
+  await waitFor(() => expect(api.reply).toHaveBeenCalledTimes(2));
+  expect(api.reply).toHaveBeenLastCalledWith("inquiry-2", "새 답변", expect.any(AbortSignal));
 });
 
 it("ignores a pending reply after filters reset selection", async () => {

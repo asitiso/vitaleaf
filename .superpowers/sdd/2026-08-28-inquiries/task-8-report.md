@@ -115,3 +115,43 @@ Fix isolated strict TypeScript:
 node_modules/.bin/tsc.cmd --project tsconfig.task8-fix.json --pretty false
 
 Result: exit 0. The temporary non-incremental config with Vitest/Testing Library globals was removed afterward.
+
+## Review fix round 2
+
+The duplicate reply-submit path is closed with a mutation invariant independent of React display state. While a reply request is active, the reply textarea and Save button remain disabled, selecting the already-open inquiry does not reset the saving state, and the in-flight guard rejects any repeated invocation. The guard is released only by that request settling or by the existing selection/filter/auth/unmount invalidation boundary. After selecting a different inquiry, the stale request remains ignored and the newly selected inquiry can start its own reply request.
+
+Fix 2 RED command:
+
+node_modules/.bin/vitest.cmd run components/admin/inquiry-panel.test.tsx --reporter=dot
+
+RED result: 1 test failed and 11 passed because the reply textarea remained enabled while the controlled reply promise was pending.
+
+Fix 2 GREEN command:
+
+node_modules/.bin/vitest.cmd run components/admin/inquiry-panel.test.tsx --reporter=dot
+
+GREEN result: 1 file passed, 12 tests passed. The controlled-promise regression verifies attempted editing, same-inquiry reselection, and repeated Save produce exactly one reply request while the UI remains visibly saving; both controls return after settlement. The selection-change regression also verifies that a new inquiry can save after the prior request is invalidated.
+
+Focused interaction/client command:
+
+node_modules/.bin/vitest.cmd run components/admin/inquiry-panel.test.tsx components/admin/admin-dashboard.test.tsx lib/inquiries/admin-client.test.ts --reporter=dot
+
+Result: 3 files passed, 75 tests passed.
+
+Fix 2 regression command:
+
+node_modules/.bin/vitest.cmd run app/api/admin/inquiries components/admin/inquiry-panel.test.tsx components/admin/admin-dashboard.test.tsx lib/inquiries/admin-client.test.ts lib/inquiries/client.test.ts lib/inquiries/validation.test.ts lib/inquiries/reply-validation.test.ts lib/inquiries/server.test.ts lib/firebase/admin-auth.test.ts lib/firebase/inquiries.test.ts lib/firebase/inquiry-uploads.test.ts lib/firebase/admin.storage.test.ts --reporter=dot
+
+Result: 14 files passed, 273 tests passed, zero failures.
+
+Fix 2 ESLint:
+
+node_modules/.bin/eslint.cmd components/admin/inquiry-panel.tsx components/admin/inquiry-panel.test.tsx components/admin/admin-dashboard.tsx components/admin/admin-dashboard.test.tsx lib/inquiries/admin-client.ts lib/inquiries/admin-client.test.ts
+
+Result: exit 0, no warnings or errors.
+
+Fix 2 isolated strict TypeScript:
+
+node_modules/.bin/tsc.cmd --project tsconfig.task8-fix2.json --pretty false
+
+Result: exit 0. The temporary non-incremental config used Vitest/Testing Library globals and was removed afterward. Browser, cloud, account, credential, push, and deploy actions remained outside this fix round, consistent with the Task 8 limits.

@@ -33,6 +33,7 @@ export function InquiryPanel({ client = adminInquiryClient, onWaitingCountChange
   const selectedIdRef = useRef<string | null>(null);
   const mutationGenerationRef = useRef(0);
   const mutationControllerRef = useRef<AbortController | null>(null);
+  const replyInFlightRef = useRef(false);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const deleteConfirmRef = useRef<HTMLButtonElement>(null);
   const deleteTriggerRef = useRef<HTMLButtonElement>(null);
@@ -41,6 +42,7 @@ export function InquiryPanel({ client = adminInquiryClient, onWaitingCountChange
   useEffect(() => () => {
     mutationGenerationRef.current += 1;
     mutationControllerRef.current?.abort();
+    replyInFlightRef.current = false;
   }, []);
 
   useEffect(() => {
@@ -108,6 +110,7 @@ export function InquiryPanel({ client = adminInquiryClient, onWaitingCountChange
     mutationGenerationRef.current += 1;
     mutationControllerRef.current?.abort();
     mutationControllerRef.current = null;
+    replyInFlightRef.current = false;
   }
 
   function resetSelection() {
@@ -122,7 +125,9 @@ export function InquiryPanel({ client = adminInquiryClient, onWaitingCountChange
   }
 
   function selectInquiry(id: string) {
-    if (selectedIdRef.current !== id) invalidateMutation();
+    const isSameInquiry = selectedIdRef.current === id;
+    if (isSameInquiry && replyInFlightRef.current) return;
+    if (!isSameInquiry) invalidateMutation();
     selectedIdRef.current = id;
     setSelectedId(id);
     setReplyState("idle");
@@ -166,15 +171,17 @@ export function InquiryPanel({ client = adminInquiryClient, onWaitingCountChange
 
   async function saveReply() {
     const inquiry = detailState.inquiry;
-    if (!inquiry || replyState === "saving") return;
+    if (!inquiry || replyInFlightRef.current) return;
     mutationControllerRef.current?.abort();
     const controller = new AbortController();
     mutationControllerRef.current = controller;
+    replyInFlightRef.current = true;
     const mutationGeneration = ++mutationGenerationRef.current;
     const signal = controller.signal;
+    const ownsMutation = () => mutationControllerRef.current === controller && mutationGenerationRef.current === mutationGeneration;
     const isCurrent = () => (
       !signal.aborted
-      && mutationGenerationRef.current === mutationGeneration
+      && ownsMutation()
       && selectedIdRef.current === inquiry.id
     );
     setReplyState("saving");
@@ -182,10 +189,14 @@ export function InquiryPanel({ client = adminInquiryClient, onWaitingCountChange
     try {
       answered = await client.reply(inquiry.id, draft, signal);
     } catch {
-      if (isCurrent()) setReplyState("error");
+      if (isCurrent()) {
+        replyInFlightRef.current = false;
+        setReplyState("error");
+      }
       return;
     }
     if (!isCurrent()) return;
+    replyInFlightRef.current = false;
     setDetailState({ kind: "ready", inquiry: answered });
     setDraft(answered.adminReply ?? "");
     setReplyState("success");
@@ -301,7 +312,7 @@ export function InquiryPanel({ client = adminInquiryClient, onWaitingCountChange
                 <Image key={attachment.id} alt={"문의 첨부 이미지 " + (index + 1)} src={attachment.readUrl!} width={360} height={270} unoptimized />
               ))}</div>
               {inquiry.adminReply ? <div className="admin-inquiry-existing-reply"><strong>기존 답변</strong><p>{inquiry.adminReply}</p>{inquiry.repliedAt ? <time dateTime={inquiry.repliedAt}>{new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(inquiry.repliedAt))}</time> : null}</div> : null}
-              <label>관리자 답변<textarea rows={7} value={draft} onChange={(event) => { setDraft(event.target.value); setReplyState("idle"); }} /></label>
+              <label>관리자 답변<textarea rows={7} value={draft} disabled={replyState === "saving"} onChange={(event) => { setDraft(event.target.value); setReplyState("idle"); }} /></label>
               {replyState === "error" ? <p role="alert">답변을 저장하지 못했습니다. 내용을 유지했으니 다시 시도해 주세요.</p> : null}
               {replyState === "success" ? <p role="status">답변을 저장했습니다.</p> : null}
               <div className="admin-inquiry-actions">
