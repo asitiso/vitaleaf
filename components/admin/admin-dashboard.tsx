@@ -41,6 +41,8 @@ import { CsvTools } from "./csv-tools";
 import { ProductTable, type ProductSort, type ProductStatusFilter, type ProductTableRow } from "./product-table";
 import { ProductWizard } from "./product-wizard/product-wizard";
 import type { MediaUpload } from "./product-wizard/media-step";
+import { adminInquiryClient, type AdminInquiryClient } from "../../lib/inquiries/admin-client";
+import { InquiryPanel } from "./inquiry-panel";
 
 export type AdminDashboardDependencies = {
   observeAdminSession(next: (state: AdminSessionState) => void, onError: (error: unknown) => void): () => void;
@@ -59,6 +61,7 @@ export type AdminDashboardDependencies = {
   discardDraft(draft: ProductDraft): Promise<void>;
   duplicateProductToDraft(productId: string): Promise<ProductDraft>;
   uploadProductImage: MediaUpload;
+  inquiryClient: AdminInquiryClient;
 };
 
 const defaultDependencies: Omit<AdminDashboardDependencies, "duplicateProductToDraft"> = {
@@ -77,6 +80,7 @@ const defaultDependencies: Omit<AdminDashboardDependencies, "duplicateProductToD
   unpublishProduct,
   discardDraft,
   uploadProductImage,
+  inquiryClient: adminInquiryClient,
 };
 
 const blankDraft = (id: string): ProductDraft => ({
@@ -427,9 +431,9 @@ const DraftEditor = forwardRef<DraftEditorHandle, {
   );
 });
 
-type DashboardView = "published" | "drafts" | "csv";
+type DashboardView = "published" | "drafts" | "csv" | "inquiries";
 type PendingOperation = { action: "unpublish" | "delete"; row: ProductTableRow };
-const dashboardViews: readonly DashboardView[] = ["published", "drafts", "csv"];
+const dashboardViews: readonly DashboardView[] = ["published", "drafts", "csv", "inquiries"];
 
 export function AdminDashboard({ dependencies: providedDependencies }: { dependencies?: AdminDashboardDependencies }) {
   const router = useRouter();
@@ -463,6 +467,7 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
   const [editorGuardActive, setEditorGuardActive] = useState(false);
   const [editorGeneration, setEditorGeneration] = useState(0);
   const [authorizationGeneration, setAuthorizationGeneration] = useState(0);
+  const [inquiryWaitingCount, setInquiryWaitingCount] = useState<number | null>(null);
   const [csvImporting, setCsvImporting] = useState(false);
   const authorizationGenerationRef = useRef(0);
   const sessionRef = useRef<AdminSessionState | "loading">(session);
@@ -473,6 +478,7 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
     published: null,
     drafts: null,
     csv: null,
+    inquiries: null,
   });
   const mutationTokensRef = useRef(new Map<string, symbol>());
   useUnsavedHistoryGuard({
@@ -512,6 +518,7 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
       setToast("");
       setQuery("");
       setView("published");
+      setInquiryWaitingCount(null);
     }
   }, (error) => {
     authorizationGenerationRef.current += 1;
@@ -533,6 +540,7 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
     setToast("");
     setQuery("");
     setView("published");
+    setInquiryWaitingCount(null);
     setSession("signed-out");
     setAuthMessage(getAdminAuthErrorMessage(error));
   }), [dependencies]);
@@ -554,6 +562,25 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
       active = false;
       unsubscribe?.();
     };
+  }, [authorizationGeneration, dependencies, session]);
+
+  useEffect(() => {
+    if (session !== "admin") return;
+    const controller = new AbortController();
+    const countGeneration = authorizationGeneration;
+    void dependencies.inquiryClient.count(controller.signal).then(
+      (count) => {
+        if (!controller.signal.aborted && authorizationGenerationRef.current === countGeneration) {
+          setInquiryWaitingCount(count);
+        }
+      },
+      () => {
+        if (!controller.signal.aborted && authorizationGenerationRef.current === countGeneration) {
+          setInquiryWaitingCount(null);
+        }
+      },
+    );
+    return () => controller.abort();
   }, [authorizationGeneration, dependencies, session]);
 
   useEffect(() => {
@@ -873,6 +900,9 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
             <button ref={(node) => { tabRefs.current.published = node; }} id="admin-tab-published" type="button" disabled={csvImporting} role="tab" tabIndex={view === "published" ? 0 : -1} aria-label="판매 상품" aria-describedby="admin-tab-published-count" aria-selected={view === "published"} aria-controls="admin-panel-published" onClick={() => setView("published")} onKeyDown={(event) => handleTabKeyDown(event, "published")}>판매 상품 <span id="admin-tab-published-count">{products.length}개</span></button>
             <button ref={(node) => { tabRefs.current.drafts = node; }} id="admin-tab-drafts" type="button" disabled={csvImporting} role="tab" tabIndex={view === "drafts" ? 0 : -1} aria-label="임시 저장" aria-describedby="admin-tab-drafts-count" aria-selected={view === "drafts"} aria-controls="admin-panel-drafts" onClick={() => setView("drafts")} onKeyDown={(event) => handleTabKeyDown(event, "drafts")}>임시 저장 <span id="admin-tab-drafts-count">{drafts.length}개</span></button>
             <button ref={(node) => { tabRefs.current.csv = node; }} id="admin-tab-csv" type="button" disabled={csvImporting} role="tab" tabIndex={view === "csv" ? 0 : -1} aria-label="CSV 관리" aria-selected={view === "csv"} aria-controls="admin-panel-csv" onClick={() => setView("csv")} onKeyDown={(event) => handleTabKeyDown(event, "csv")}>CSV 관리</button>
+            <button ref={(node) => { tabRefs.current.inquiries = node; }} id="admin-tab-inquiries" type="button" disabled={csvImporting} role="tab" tabIndex={view === "inquiries" ? 0 : -1} aria-label="1:1 문의" aria-selected={view === "inquiries"} aria-controls="admin-panel-inquiries" onClick={() => setView("inquiries")} onKeyDown={(event) => handleTabKeyDown(event, "inquiries")}>
+              1:1 문의 {inquiryWaitingCount === null ? null : <span className="admin-inquiry-badge" aria-label={`미답변 ${inquiryWaitingCount}건`}>{inquiryWaitingCount}</span>}
+            </button>
           </div>
 
           {view === "published" ? (
@@ -937,6 +967,18 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
           {view === "csv" ? (
             <section id="admin-panel-csv" className="admin-catalog" role="tabpanel" aria-labelledby="admin-tab-csv">
               <CsvTools products={products} importing={csvImporting} onImportDrafts={importDrafts} />
+            </section>
+          ) : null}
+
+          {view === "inquiries" ? (
+            <section id="admin-panel-inquiries" className="admin-catalog" role="tabpanel" aria-labelledby="admin-tab-inquiries">
+              <InquiryPanel
+                key={authorizationGeneration}
+                client={dependencies.inquiryClient}
+                onWaitingCountChange={(count) => {
+                  if (authorizationGenerationRef.current === authorizationGeneration) setInquiryWaitingCount(count);
+                }}
+              />
             </section>
           ) : null}
         </>

@@ -37,6 +37,7 @@ vi.mock("../../lib/firebase/product-media", () => ({
 }));
 
 import type { Product, ProductDraft } from "../../lib/products/types";
+import type { AdminInquiryClient } from "../../lib/inquiries/admin-client";
 import { createAdminAuth, type AdminSessionState } from "../../lib/firebase/auth";
 import { AdminDashboard, type AdminDashboardDependencies } from "./admin-dashboard";
 
@@ -111,6 +112,13 @@ const dependencies = (overrides: Partial<AdminDashboardDependencies> = {}): Admi
     stock: 0,
   })),
   uploadProductImage: vi.fn(),
+  inquiryClient: {
+    count: vi.fn().mockResolvedValue(3),
+    list: vi.fn().mockResolvedValue([]),
+    get: vi.fn(),
+    reply: vi.fn(),
+    delete: vi.fn(),
+  },
   ...overrides,
 });
 
@@ -1621,11 +1629,13 @@ it("exposes tab counts and uses roving focus with Arrow, Home, and End keys", as
   const publishedTab = await screen.findByRole("tab", { name: "판매 상품" });
   const draftsTab = screen.getByRole("tab", { name: "임시 저장" });
   const csvTab = screen.getByRole("tab", { name: "CSV 관리" });
+  const inquiryTab = screen.getByRole("tab", { name: "1:1 문의" });
   expect(publishedTab).toHaveAccessibleDescription("2개");
   expect(draftsTab).toHaveAccessibleDescription("1개");
   expect(publishedTab).toHaveAttribute("tabindex", "0");
   expect(draftsTab).toHaveAttribute("tabindex", "-1");
   expect(csvTab).toHaveAttribute("tabindex", "-1");
+  expect(inquiryTab).toHaveTextContent("3");
 
   publishedTab.focus();
   await user.keyboard("{ArrowRight}");
@@ -1634,16 +1644,65 @@ it("exposes tab counts and uses roving focus with Arrow, Home, and End keys", as
   expect(draftsTab).toHaveAttribute("tabindex", "0");
 
   await user.keyboard("{End}");
-  expect(csvTab).toHaveFocus();
-  expect(csvTab).toHaveAttribute("aria-selected", "true");
+  expect(inquiryTab).toHaveFocus();
+  expect(inquiryTab).toHaveAttribute("aria-selected", "true");
 
   await user.keyboard("{Home}");
   expect(publishedTab).toHaveFocus();
   expect(publishedTab).toHaveAttribute("aria-selected", "true");
 
   await user.keyboard("{ArrowLeft}");
-  expect(csvTab).toHaveFocus();
-  expect(csvTab).toHaveAttribute("aria-selected", "true");
+  expect(inquiryTab).toHaveFocus();
+  expect(inquiryTab).toHaveAttribute("aria-selected", "true");
+});
+
+it("loads only the pending count after authorization and opens inquiries without replacing product subscriptions", async () => {
+  const user = userEvent.setup();
+  const inquiryClient: AdminInquiryClient = {
+    count: vi.fn().mockResolvedValue(4), list: vi.fn().mockResolvedValue([]),
+    get: vi.fn(), reply: vi.fn(), delete: vi.fn(),
+  };
+  const subscribeProducts = vi.fn((onData: (products: Product[]) => void) => { onData([product]); return vi.fn(); });
+  const subscribeDrafts = vi.fn((onData: (drafts: ProductDraft[]) => void) => { onData([]); return vi.fn(); });
+  const deps = dependencies({
+    observeAdminSession: (next) => { next("admin"); return vi.fn(); },
+    inquiryClient, subscribeProducts, subscribeDrafts,
+  });
+  render(<AdminDashboard dependencies={deps} />);
+  const tab = await screen.findByRole("tab", { name: "1:1 문의" });
+  await waitFor(() => expect(tab).toHaveTextContent("4"));
+  expect(inquiryClient.count).toHaveBeenCalledTimes(1);
+  expect(inquiryClient.list).not.toHaveBeenCalled();
+  await user.click(tab);
+  expect(await screen.findByRole("tabpanel", { name: "1:1 문의" })).toBeVisible();
+  expect(inquiryClient.list).toHaveBeenCalledTimes(1);
+  expect(subscribeProducts).toHaveBeenCalledTimes(1);
+  expect(subscribeDrafts).toHaveBeenCalledTimes(1);
+});
+
+it("cancels stale count/panel work across checking and a new admin generation", async () => {
+  let emitSession!: (state: AdminSessionState) => void;
+  const oldCount = deferred<number>();
+  const firstClient = dependencies().inquiryClient;
+  firstClient.count = vi.fn().mockReturnValueOnce(oldCount.promise).mockResolvedValueOnce(5);
+  const deps = dependencies({
+    observeAdminSession: (next) => { emitSession = next; return vi.fn(); },
+    inquiryClient: firstClient,
+    subscribeProducts: vi.fn(() => vi.fn()),
+    subscribeDrafts: vi.fn(() => vi.fn()),
+  });
+  render(<AdminDashboard dependencies={deps} />);
+  act(() => emitSession("admin"));
+  const inquiryTab = await screen.findByRole("tab", { name: "1:1 문의" });
+  await userEvent.setup().click(inquiryTab);
+  act(() => emitSession("checking"));
+  expect(await screen.findByRole("status")).toHaveTextContent("권한을 확인");
+  oldCount.resolve(99);
+  await act(async () => undefined);
+  act(() => emitSession("admin"));
+  await waitFor(() => expect(screen.getByRole("tab", { name: "1:1 문의" })).toHaveTextContent("5"));
+  expect(screen.getByRole("tab", { name: "1:1 문의" })).not.toHaveTextContent("99");
+  expect(screen.queryByLabelText("관리자 답변")).not.toBeInTheDocument();
 });
 
 it("guards unpublish and draft deletion, restores focus, and keeps each operation locked to its document", async () => {

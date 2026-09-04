@@ -220,7 +220,7 @@ const parsePublicOrder = (value: unknown): GuestOrderPublic => {
   };
 };
 
-const parseInquiry = (value: unknown): InquiryPublic => {
+export const parseInquiry = (value: unknown): InquiryPublic => {
   const inquiry = asRecord(value);
   requireExactKeys(inquiry, [
     "id",
@@ -312,7 +312,7 @@ const requestHeaders = async (access: InquiryClientAccess): Promise<Record<strin
   return { "content-type": "application/json", authorization: `Bearer ${token}` };
 };
 
-const post = async (
+export const post = async (
   url: string,
   body: unknown,
   access?: InquiryClientAccess,
@@ -330,6 +330,7 @@ const post = async (
   });
   signal?.throwIfAborted();
   if (!response.ok) throw new InquiryClientError(errorMessage(response.status, guestVerification), response.status);
+  if (response.status === 204) return undefined;
   try {
     return await response.json();
   } catch {

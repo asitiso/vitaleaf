@@ -6,6 +6,7 @@ import type {
   InquiryListFilters,
   InquiryOwner,
   InquiryRecord,
+  InquiryReplyInput,
   InquiryStatus,
 } from "./types";
 
@@ -159,6 +160,11 @@ export const parseInquiryListFilters = (value: unknown = {}): InquiryListFilters
     pageSize: parsePageSize(input.pageSize),
     cursor: parseCursor(input.cursor),
   };
+};
+
+export const parseInquiryReplyInput = (value: unknown): InquiryReplyInput => {
+  const input = asRecord(value);
+  return { adminReply: normalizeText(input.adminReply, 3_000, { allowBodyWhitespace: true }) };
 };
 
 const parseIdentifier = (value: unknown, maximum: number): string => normalizeText(value, maximum);

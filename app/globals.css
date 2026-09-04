@@ -1439,3 +1439,97 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
   .product-wizard__actions { right: 0; bottom: 0; left: 0; padding: 10px 16px max(10px, env(safe-area-inset-bottom)); border-top: 1px solid #d6dfd8; box-shadow: 0 -8px 20px rgb(24 50 41 / 10%); }
   .product-wizard__actions button { flex: 1 1 calc(50% - 8px); }
 }
+.admin-inquiry-badge {
+  display: inline-grid;
+  min-width: 1.6rem;
+  min-height: 1.6rem;
+  margin-left: 0.35rem;
+  place-items: center;
+  border-radius: 999px;
+  background: #a43c2e;
+  color: #fff;
+  font-size: 0.78rem;
+}
+
+.admin-inquiry-filters,
+.admin-inquiry-actions,
+.admin-inquiry-pagination {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.admin-inquiry-filters label,
+.admin-inquiry-detail > label {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.admin-inquiry-layout {
+  display: grid;
+  grid-template-columns: minmax(16rem, 0.8fr) minmax(20rem, 1.2fr);
+  gap: 1.25rem;
+}
+
+.admin-inquiry-list {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-inquiry-list button {
+  display: grid;
+  width: 100%;
+  min-height: 44px;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.65rem;
+  align-items: center;
+  text-align: left;
+}
+
+.admin-inquiry-list button[aria-current="true"] {
+  outline: 2px solid #315d45;
+  outline-offset: 2px;
+}
+
+.admin-inquiry-detail textarea {
+  width: 100%;
+  min-height: 9rem;
+  padding: 0.75rem;
+  font: inherit;
+}
+
+.admin-inquiry-body,
+.admin-inquiry-existing-reply p {
+  white-space: pre-wrap;
+  line-height: 1.75;
+}
+
+.admin-inquiry-images {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.75rem;
+}
+
+.admin-inquiry-images img {
+  width: 100%;
+  height: auto;
+  border-radius: 0.6rem;
+}
+
+.admin-inquiry-filters select,
+.admin-inquiry-actions button,
+.admin-inquiry-pagination button {
+  min-height: 44px;
+}
+
+@media (max-width: 760px) {
+  .admin-inquiry-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-inquiry-list button {
+    grid-template-columns: 1fr;
+  }
+}
