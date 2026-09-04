@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import type { AdminInquiryClient } from "../../lib/inquiries/admin-client";
@@ -159,6 +159,55 @@ it("keeps one reply in flight when editing or reselecting the same inquiry and r
   expect(await screen.findByRole("button", { name: "답변 저장" })).toBeEnabled();
   expect(screen.getByLabelText("관리자 답변")).toBeEnabled();
   expect(reply).toHaveBeenCalledTimes(1);
+});
+
+it("keeps delete unavailable while a reply is pending and restores it after settlement", async () => {
+  const saving = deferred<InquiryPublic>();
+  const remove = vi.fn().mockResolvedValue(undefined);
+  const api = client({ reply: vi.fn(() => saving.promise), delete: remove });
+  const user = userEvent.setup();
+  render(<InquiryPanel client={api} onWaitingCountChange={vi.fn()} />);
+  await user.click(await screen.findByRole("button", { name: /배송이 궁금해요/u }));
+  await screen.findByRole("heading", { name: "배송이 궁금해요" });
+  await user.type(screen.getByLabelText("관리자 답변"), "직렬화 답변");
+  await user.click(screen.getByRole("button", { name: "답변 저장" }));
+  const deleteButton = screen.getByRole("button", { name: "문의 삭제" });
+  expect(deleteButton).toBeDisabled();
+  deleteButton.removeAttribute("disabled");
+  fireEvent.click(deleteButton);
+  expect(screen.queryByRole("dialog", { name: "문의 삭제 확인" })).not.toBeInTheDocument();
+  expect(remove).not.toHaveBeenCalled();
+  act(() => saving.resolve(row({ status: "answered", adminReply: "직렬화 답변", repliedAt: inquiryFixture.createdAt })));
+  expect(await screen.findByRole("button", { name: "답변 저장" })).toBeEnabled();
+  expect(deleteButton).toBeEnabled();
+  await user.click(deleteButton);
+  expect(screen.getByRole("dialog", { name: "문의 삭제 확인" })).toBeVisible();
+});
+
+it("rejects a delete confirmation that collides programmatically with an active reply", async () => {
+  const saving = deferred<InquiryPublic>();
+  const deleting = deferred<void>();
+  const remove = vi.fn(() => deleting.promise);
+  const api = client({ reply: vi.fn(() => saving.promise), delete: remove });
+  const user = userEvent.setup();
+  render(<InquiryPanel client={api} onWaitingCountChange={vi.fn()} />);
+  await user.click(await screen.findByRole("button", { name: /배송이 궁금해요/u }));
+  await screen.findByRole("heading", { name: "배송이 궁금해요" });
+  await user.type(screen.getByLabelText("관리자 답변"), "충돌 답변");
+  await user.click(screen.getByRole("button", { name: "문의 삭제" }));
+  const dialog = screen.getByRole("dialog", { name: "문의 삭제 확인" });
+  fireEvent.click(screen.getByRole("button", { name: "답변 저장" }));
+  expect(screen.getByRole("button", { name: "저장 중" })).toBeDisabled();
+  const confirmButton = within(dialog).getByRole("button", { name: "삭제 확인" });
+  expect(confirmButton).toBeDisabled();
+  confirmButton.removeAttribute("disabled");
+  fireEvent.click(confirmButton);
+  expect(remove).not.toHaveBeenCalled();
+  expect(vi.mocked(api.reply).mock.calls[0]![2]!.aborted).toBe(false);
+  act(() => saving.resolve(row({ status: "answered", adminReply: "충돌 답변", repliedAt: inquiryFixture.createdAt })));
+  expect(await screen.findByRole("button", { name: "답변 저장" })).toBeEnabled();
+  await user.click(confirmButton);
+  await waitFor(() => expect(remove).toHaveBeenCalledTimes(1));
 });
 
 it("uses a non-destructive focused confirmation and handles cancel, failure, and success", async () => {

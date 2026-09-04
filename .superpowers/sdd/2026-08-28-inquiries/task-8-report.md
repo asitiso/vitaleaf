@@ -155,3 +155,43 @@ Fix 2 isolated strict TypeScript:
 node_modules/.bin/tsc.cmd --project tsconfig.task8-fix2.json --pretty false
 
 Result: exit 0. The temporary non-incremental config used Vitest/Testing Library globals and was removed afterward. Browser, cloud, account, credential, push, and deploy actions remained outside this fix round, consistent with the Task 8 limits.
+
+## Review fix round 3
+
+Reply and delete mutations are now serialized. The root cause was that Delete remained enabled during a reply save, and both mutations shared the same controller/generation; starting delete replaced the reply mutation while leaving the retained inquiry in a saving/in-flight state if delete failed. During the full reply-save interval, the Delete trigger and any pre-existing delete-confirm action are disabled, while both open and confirm handlers independently reject a disabled-attribute bypass through the in-flight ref. Once the reply settles, Delete becomes available again. Existing selection/filter/auth invalidation behavior remains unchanged.
+
+Fix 3 RED command:
+
+node_modules/.bin/vitest.cmd run components/admin/inquiry-panel.test.tsx --reporter=dot
+
+RED result: 2 tests failed and 12 passed. The Delete trigger remained enabled during a controlled pending reply, and a programmatic confirmation invoked delete once and displaced the reply mutation. After changing the immediate delete mock to a controlled promise to remove unrelated React timing warnings, the same two failures reproduced with clean output.
+
+Fix 3 GREEN command:
+
+node_modules/.bin/vitest.cmd run components/admin/inquiry-panel.test.tsx --reporter=dot
+
+GREEN result: 1 file passed, 14 tests passed. The tests cover the visible disabled interval, disabled-attribute bypasses at both dialog-open and confirm handlers, preservation of the active reply signal/request, post-settlement Delete restoration, and the existing selection-change behavior.
+
+Fix 3 focused interaction/client command:
+
+node_modules/.bin/vitest.cmd run components/admin/inquiry-panel.test.tsx components/admin/admin-dashboard.test.tsx lib/inquiries/admin-client.test.ts --reporter=dot
+
+Result: 3 files passed, 77 tests passed.
+
+Fix 3 regression command:
+
+node_modules/.bin/vitest.cmd run app/api/admin/inquiries components/admin/inquiry-panel.test.tsx components/admin/admin-dashboard.test.tsx lib/inquiries/admin-client.test.ts lib/inquiries/client.test.ts lib/inquiries/validation.test.ts lib/inquiries/reply-validation.test.ts lib/inquiries/server.test.ts lib/firebase/admin-auth.test.ts lib/firebase/inquiries.test.ts lib/firebase/inquiry-uploads.test.ts lib/firebase/admin.storage.test.ts --reporter=dot
+
+Result: 14 files passed, 275 tests passed, zero failures.
+
+Fix 3 ESLint:
+
+node_modules/.bin/eslint.cmd components/admin/inquiry-panel.tsx components/admin/inquiry-panel.test.tsx components/admin/admin-dashboard.tsx components/admin/admin-dashboard.test.tsx lib/inquiries/admin-client.ts lib/inquiries/admin-client.test.ts
+
+Result: exit 0, no warnings or errors.
+
+Fix 3 isolated strict TypeScript:
+
+node_modules/.bin/tsc.cmd --project tsconfig.task8-fix3.json --pretty false
+
+Result: exit 0. The temporary non-incremental config used Vitest/Testing Library globals and was removed afterward. No browser, cloud, account, credential, push, or deploy action was performed.

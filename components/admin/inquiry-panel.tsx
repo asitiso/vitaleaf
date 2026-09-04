@@ -141,6 +141,12 @@ export function InquiryPanel({ client = adminInquiryClient, onWaitingCountChange
     deleteTriggerRef.current?.focus();
   }
 
+  function openConfirmation() {
+    if (replyInFlightRef.current) return;
+    setConfirmation(true);
+    setDeleteState("idle");
+  }
+
   function handleDialogKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
     if (event.key === "Escape" && deleteState !== "deleting") {
       event.preventDefault();
@@ -223,7 +229,7 @@ export function InquiryPanel({ client = adminInquiryClient, onWaitingCountChange
 
   async function confirmDelete() {
     const inquiry = detailState.inquiry;
-    if (!inquiry || deleteState === "deleting") return;
+    if (!inquiry || replyInFlightRef.current || deleteState === "deleting") return;
     mutationControllerRef.current?.abort();
     const controller = new AbortController();
     mutationControllerRef.current = controller;
@@ -317,7 +323,7 @@ export function InquiryPanel({ client = adminInquiryClient, onWaitingCountChange
               {replyState === "success" ? <p role="status">답변을 저장했습니다.</p> : null}
               <div className="admin-inquiry-actions">
                 <button type="button" disabled={replyState === "saving"} onClick={() => void saveReply()}>{replyState === "saving" ? "저장 중" : "답변 저장"}</button>
-                <button ref={deleteTriggerRef} type="button" onClick={() => { setConfirmation(true); setDeleteState("idle"); }}>문의 삭제</button>
+                <button ref={deleteTriggerRef} type="button" disabled={replyState === "saving"} onClick={openConfirmation}>문의 삭제</button>
               </div>
             </>
           ) : null}
@@ -332,7 +338,7 @@ export function InquiryPanel({ client = adminInquiryClient, onWaitingCountChange
             {deleteState === "error" ? <p role="alert">문의를 삭제하지 못했습니다. 문의는 유지되며 다시 시도할 수 있습니다.</p> : null}
             <div>
               <button ref={cancelRef} type="button" disabled={deleteState === "deleting"} onClick={closeConfirmation} onKeyDown={handleDialogKeyDown}>취소</button>
-              <button ref={deleteConfirmRef} type="button" disabled={deleteState === "deleting"} onClick={() => void confirmDelete()} onKeyDown={handleDialogKeyDown}>{deleteState === "deleting" ? "삭제 중" : "삭제 확인"}</button>
+              <button ref={deleteConfirmRef} type="button" disabled={deleteState === "deleting" || replyState === "saving"} onClick={() => void confirmDelete()} onKeyDown={handleDialogKeyDown}>{deleteState === "deleting" ? "삭제 중" : "삭제 확인"}</button>
             </div>
           </section>
         </div>
