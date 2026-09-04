@@ -100,3 +100,27 @@ describeRules("product image storage rules", () => {
     await assertFails(upload(storage, "products/draft-1/nested/secret.png", 1, "image/png"));
   });
 });
+
+describeRules("inquiry image explicit client denial", () => {
+  it("denies read, list, upload, and delete for pending and final inquiry objects", async () => {
+    await seedImage("inquiryPending/inquiry-1/image.png");
+    await seedImage("inquiries/inquiry-1/image.png");
+    await seedAdmin("admin-1", "admin");
+    const clients = [
+      testEnvironment.unauthenticatedContext().storage(),
+      testEnvironment.authenticatedContext("member-1").storage(),
+      testEnvironment.authenticatedContext("member-2").storage(),
+      testEnvironment.authenticatedContext("admin-1").storage(),
+    ];
+
+    for (const storage of clients) {
+      for (const root of ["inquiryPending", "inquiries"]) {
+        const existingPath = `${root}/inquiry-1/image.png`;
+        await assertFails(storage.ref(existingPath).getDownloadURL());
+        await assertFails(storage.ref(root).listAll());
+        await assertFails(upload(storage, `${root}/inquiry-1/client-create.png`, 1, "image/png"));
+        await assertFails(storage.ref(existingPath).delete());
+      }
+    }
+  });
+});

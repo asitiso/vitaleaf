@@ -32,7 +32,7 @@ NEXT_PUBLIC_SITE_URL=http://localhost:3000
 
 `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID`는 Analytics를 쓰지 않으면 비워 둘 수 있습니다. 운영 배포에서는 `NEXT_PUBLIC_SITE_URL`을 실제 HTTPS 주소로 바꿉니다.
 
-Vercel 프로젝트의 **Settings → Environment Variables**에 `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL`, `FIREBASE_ADMIN_PRIVATE_KEY`, `GUEST_ORDER_LOOKUP_SECRET` 네 값을 서버 전용 변수로 등록합니다. Admin 비공개 키는 서비스 계정 JSON의 `private_key` 값에 있는 줄바꿈을 `\n`으로 유지하고, `GUEST_ORDER_LOOKUP_SECRET`은 암호학적으로 안전한 무작위 바이트를 32바이트 이상 생성해 사용합니다. 이 네 이름에 `NEXT_PUBLIC_` 접두사를 붙이면 브라우저 번들에 노출될 수 있으므로 절대 붙이지 않습니다.
+Vercel 프로젝트의 **Settings → Environment Variables**에 `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL`, `FIREBASE_ADMIN_PRIVATE_KEY`, `FIREBASE_STORAGE_BUCKET`, `GUEST_ORDER_LOOKUP_SECRET`, `INQUIRY_TOKEN_SECRET`을 서버 전용 변수로 등록합니다. Admin 비공개 키는 서비스 계정 JSON의 `private_key` 값에 있는 줄바꿈을 `\n`으로 유지하고, `GUEST_ORDER_LOOKUP_SECRET`과 `INQUIRY_TOKEN_SECRET`은 각각 암호학적으로 안전한 무작위 바이트를 32바이트 이상 생성해 사용합니다. 이 이름들에 `NEXT_PUBLIC_` 접두사를 붙이면 브라우저 번들에 노출될 수 있으므로 절대 붙이지 않습니다.
 
 `NEXT_PUBLIC_*`는 브라우저에 공개되는 웹 앱 설정입니다. 서비스 계정 JSON 전체나 Admin SDK 비공개 키를 공개 변수, 소스 코드, 커밋, 이슈, 로그에 붙여 넣지 마세요. `.env.example`에는 예시값만 두고 실제 값은 로컬 `.env.local`과 Vercel의 암호화된 환경 변수에만 보관합니다.
 
@@ -48,7 +48,7 @@ Preview와 Production에 다음 공개 Firebase 웹 앱 변수 이름을 등록�
 - `NEXT_PUBLIC_FIREBASE_APP_ID`
 - `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID` (optional)
 
-서버 전용 변수는 다음 네 이름으로 분리하며 `NEXT_PUBLIC_` 접두사를 붙이지 않습니다: `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL`, `FIREBASE_ADMIN_PRIVATE_KEY`, `GUEST_ORDER_LOOKUP_SECRET`. 환경변수 점검 시 값은 출력하거나 저장하지 않고, 변수 이름과 Preview/Production별 존재 여부만 확인합니다.
+서버 전용 변수는 다음 여섯 이름으로 분리하며 `NEXT_PUBLIC_` 접두사를 붙이지 않습니다: `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL`, `FIREBASE_ADMIN_PRIVATE_KEY`, `FIREBASE_STORAGE_BUCKET`, `GUEST_ORDER_LOOKUP_SECRET`, `INQUIRY_TOKEN_SECRET`. `FIREBASE_STORAGE_BUCKET`은 Admin SDK가 서명 URL을 만들 대상 버킷 이름이고, `INQUIRY_TOKEN_SECRET`은 문의 회원/비회원 접근 토큰 서명용 비밀로 32자 이상이어야 합니다. 환경변수 점검 시 값은 출력하거나 저장하지 않고, 변수 이름과 Preview/Production별 존재 여부만 확인합니다.
 
 1. Confirm the six required `NEXT_PUBLIC_FIREBASE_*` values in Preview and Production; Measurement ID is optional.
 2. Redeploy after any public-variable change.
@@ -128,7 +128,54 @@ npx firebase-tools@15.26.0 deploy --only storage --project YOUR_PROJECT_ID
 - 최상위 `orders`와 그 밖의 경로: 기본 거부
 - Storage `products/{productId}/**`: 관리자만 쓰기, 10 MiB 이하 JPEG/PNG/WebP만 허용
 
-## 3. 상품 운영 흐름
+### 문의 데이터와 비공개 업로드 경계
+
+문의 원문(`inquiries/{id}`)과 임시·최종 이미지(`inquiryPending/**`, `inquiries/**`)는 모든 브라우저 클라이언트(비로그인, 회원, 다른 회원, 관리자)의 Firestore/Storage 직접 읽기·목록·쓰기·삭제를 거부합니다. 회원/비회원 화면은 서버 API로만 문의를 만들고 본인 문의를 조회하며, Admin SDK가 검증된 요청에 한해 저장·답변·삭제를 수행합니다. 따라서 Firebase 규칙의 직접 예외를 추가하거나 Storage 객체를 공개로 바꾸지 마세요.
+
+문의 첨부 흐름은 `서버가 짧은 수명의 서명 PUT URL 발급 → 브라우저가 해당 URL로 직접 업로드 → 서버가 영수증·파일 형식·크기·소유권을 최종 검증하고 inquiries/로 이동 → 권한이 확인된 짧은 수명의 GET URL 발급` 순서입니다. 문의 하나에 JPEG/PNG/WebP를 최대 3개, 파일당 최대 5 MiB까지 허용하며, `inquiryPending/` 객체는 하루가 지나면 정리 대상으로 지정됩니다. 답변과 삭제는 관리자 서버 경로에서만 수행하고, 회원/비회원은 각각 자신의 검증된 접근 토큰 범위만 사용합니다.
+
+`FIREBASE_STORAGE_BUCKET`과 `INQUIRY_TOKEN_SECRET`은 문의 서버 기능에 필요한 추가 서버 전용 변수입니다. 후자는 32자 이상 무작위 비밀이어야 합니다. 기존 Admin SDK 변수(`FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL`, `FIREBASE_ADMIN_PRIVATE_KEY`)도 필요하고, 브라우저에는 `NEXT_PUBLIC_FIREBASE_API_KEY`, `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`, `NEXT_PUBLIC_FIREBASE_PROJECT_ID`, `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`, `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`, `NEXT_PUBLIC_FIREBASE_APP_ID`(Measurement ID는 선택)를 둡니다. 실제 값·서비스 계정 키·토큰은 `.env.example`, 셸 명령 기록, 소스, 로그에 넣지 마세요. 누락된 설정은 안전한 구성 오류로 종료하며, 이 프로젝트에는 실제 결제 처리가 없습니다.
+
+문의 목록의 member/guest 소유자 조합과 상태·카테고리 선택 조합, 관리자 상태·카테고리 조합은 `firestore.indexes.json`에 명시되어 있습니다. `firebase.json`은 해당 파일을 가리키며, 상품·프로필·회원 주문의 기존 규칙과 동작은 변경하지 않습니다.
+
+## 3. 문의 Firebase 산출물 검증과 승인된 적용
+
+### 로컬 Emulator 검증 (외부 적용 없음)
+
+로컬에서만 Firebase CLI `15.26.0`과 JDK 21 이상이 설치되어 있을 때, 운영 프로젝트와 분리된 `demo-vitaleaf-rules-test`로 Firestore·Storage Emulator를 함께 실행합니다. 이 작업의 환경에서는 `java`, `firebase`, `gcloud`가 감지되지 않아 Emulator 테스트를 실행하지 않았습니다. 캐시된 Emulator JAR만으로는 실행 가능한 Java/CLI가 되지 않습니다.
+
+```powershell
+npx firebase-tools@15.26.0 emulators:exec --only firestore,storage --project demo-vitaleaf-rules-test "node ./node_modules/vitest/vitest.mjs run firestore.rules.test.ts storage.rules.test.ts --maxWorkers=1 --no-file-parallelism"
+```
+
+Emulator가 없는 환경에서는 위 테스트를 통과했다고 보고하지 말고 `pnpm test`의 `skipped` 결과와 원인(누락된 Java/CLI)을 기록합니다. Emulator가 실제로 실행될 때만 이 명령은 규칙의 상품 공개 읽기·프로필/주문 동작·문의 직접 거부·Storage 직접 거부를 검증합니다.
+
+### 향후 승인된 배포 (이 작업에서 실행하지 않음)
+
+먼저 승인된 Firebase 프로젝트와 버킷을 확인하고, 현재 정책을 읽기 전용으로 검사합니다. 아래 예시의 `YOUR_PROJECT_ID`와 `BUCKET_NAME`은 실제 비밀값이 아니지만, 비밀·토큰을 명령줄에 넣거나 셸 기록에 남기지 마세요.
+
+```powershell
+npx firebase-tools@15.26.0 firestore:indexes --project YOUR_PROJECT_ID
+gcloud storage buckets describe gs://BUCKET_NAME --format=json
+```
+
+Firestore 규칙/인덱스를 검토한 뒤 승인 시에만 다음을 적용합니다.
+
+```powershell
+npx firebase-tools@15.26.0 deploy --only firestore:rules,firestore:indexes --project YOUR_PROJECT_ID
+npx firebase-tools@15.26.0 deploy --only storage --project YOUR_PROJECT_ID
+```
+
+Cloud Storage CORS와 lifecycle 파일은 현재 버킷 설정을 통째로 대체할 수 있습니다. 먼저 승인된 대상 버킷의 기존 CORS/lifecycle 정책을 확인하고, 관련 없는 기존 규칙을 보존한 병합 파일을 리뷰한 뒤에만 적용합니다. 이 저장소의 `storage.cors.json`과 `storage.lifecycle.json`은 문의용 로컬 템플릿일 뿐, 기존 정책을 덮어쓸 권한이나 지시가 아닙니다. CORS의 `--cors-file`에는 최상위 `cors` 래퍼 없는 배열을 사용하고, lifecycle은 `--lifecycle-file`의 `rule` 객체를 사용합니다([Cloud Storage CORS schema and CLI](https://docs.cloud.google.com/storage/docs/cors-configurations), [Cloud Storage lifecycle CLI](https://docs.cloud.google.com/storage/docs/managing-lifecycles)).
+
+```powershell
+gcloud storage buckets update gs://BUCKET_NAME --cors-file=REVIEWED_MERGED_CORS.json
+gcloud storage buckets update gs://BUCKET_NAME --lifecycle-file=REVIEWED_MERGED_LIFECYCLE.json
+```
+
+인덱스 파일 형식과 `firebase deploy --only firestore:indexes` 사용법은 [Cloud Firestore index definition reference](https://firebase.google.com/docs/reference/firestore/indexes)를 따릅니다. 규칙·인덱스·CORS·lifecycle 적용과 버킷 정책 병합은 모두 최종 action-time 승인을 받은 뒤 수행하며, 이번 작업에서는 어떤 외부 명령도 실행하지 않았습니다.
+
+## 4. 상품 운영 흐름
 
 1. **상품 등록**에서 4단계(기본 정보 → 상품 이미지 → 상세 정보 → 판매 설정)를 작성합니다.
 2. 변경 후 약 1.2초 뒤 자동 저장 상태가 `저장됨`으로 바뀌는지 확인합니다. 실패하면 입력을 유지한 채 다시 저장합니다.
@@ -139,7 +186,7 @@ npx firebase-tools@15.26.0 deploy --only storage --project YOUR_PROJECT_ID
 
 상품 복제는 리뷰·평점·판매순위를 복사하지 않고 `상품명 (복사본)`, 재고 0의 초안을 만듭니다. 공개 상품을 편집하거나 복제한 초안은 기존 Storage 경로를 공유할 수 있으므로, 초안에서 이미지를 제거하거나 초안·상품 문서를 삭제해도 브라우저는 실제 파일을 삭제하지 않습니다.
 
-## 4. 이미지 업로드와 정리
+## 5. 이미지 업로드와 정리
 
 - 허용 형식: JPEG (`image/jpeg`), PNG (`image/png`), WebP (`image/webp`)
 - 최대 크기: 파일당 10 MiB
@@ -152,7 +199,7 @@ npx firebase-tools@15.26.0 deploy --only storage --project YOUR_PROJECT_ID
 
 Firestore 문서와 Storage 객체는 함께 원자적으로 삭제할 수 없고, 브라우저가 전체 컬렉션을 스캔해 참조 여부를 판정하는 방식은 경쟁 상태와 권한 범위 때문에 안전하지 않습니다. 참조를 인식하는 신뢰할 수 있는 백엔드/정기 운영 작업은 이번 클라이언트 범위에서 보류했습니다. 그 기능을 만들기 전에는 관리자가 충분한 보존 기간을 둔 스냅샷을 기준으로 `products`와 `productDrafts` 어디에서도 참조하지 않는 것이 확인된 파일만 수동 정리하고, 다른 문서가 참조하거나 판단이 불확실한 파일은 삭제하지 마세요.
 
-## 5. CSV 일괄등록
+## 6. CSV 일괄등록
 
 관리자 화면의 **CSV 양식 다운로드**를 사용합니다. UTF-8(BOM 허용) CSV를 한 번에 최대 400개 유효 행까지 검증하며, 알 수 없는/중복/필수 누락 헤더, 열 개수, 따옴표, 숫자 범위, 불리언, 원료 JSON, 수식 주입 위험을 검사합니다. 오류가 하나라도 있으면 어떤 초안도 만들지 않습니다.
 
@@ -164,7 +211,7 @@ Firestore 문서와 Storage 객체는 함께 원자적으로 삭제할 수 없�
 [{"name":"EPA","amount":"900 mg","dailyValue":"-"}]
 ```
 
-## 6. 에뮬레이터와 전체 검증
+## 7. 에뮬레이터와 전체 검증
 
 JDK 21 이상과 Firebase CLI `15.26.0`을 사용합니다. 테스트 프로젝트 ID `demo-vitaleaf-rules-test`는 운영 데이터나 운영 자격 증명과 분리된 로컬 Emulator 전용 ID입니다.
 
@@ -190,13 +237,13 @@ pnpm build
 git diff --check
 ```
 
-## 7. 실제 PG 연동 시 교체 지점
+## 8. 실제 PG 연동 시 교체 지점
 
 `lib/payment/process-payment.ts`의 `processPayment(orderDraft)`는 `VL-날짜-임의문자` 주문번호와 수신 시각만 반환합니다. PG 승인, 서버 금액 검증, 주문 저장, 재고 차감, 영수증, 취소·환불을 처리하지 않습니다.
 
 실제 연동에서는 이 함수의 호출 경계를 유지하되 비밀 키를 보관하는 서버 API에서 금액을 다시 계산하고, PG 웹훅 서명과 중복 승인을 검증한 뒤 주문·재고를 원자적으로 저장해야 합니다. 이 작업과 개인정보·약관 검토가 끝나기 전에는 고객 결제를 받지 마세요.
 
-## 8. 출시 전 수동 확인
+## 9. 출시 전 수동 확인
 
 - [ ] Firebase 프로젝트 ID, Storage 버킷, 웹 앱 환경 변수가 한 프로젝트의 값인지 확인
 - [ ] Storage, 이메일/비밀번호 Auth, Firestore가 사용 설정되었는지 확인

@@ -221,6 +221,11 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Inquiry records are server-only; browsers use the authenticated API flow.
+    match /inquiries/{inquiryId} {
+      allow read, write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

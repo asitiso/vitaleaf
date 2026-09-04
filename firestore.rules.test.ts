@@ -487,6 +487,29 @@ describeRules("orders and default deny", () => {
   });
 });
 
+describeRules("inquiries explicit client denial", () => {
+  it("denies direct inquiry document reads, lists, and writes for every browser principal", async () => {
+    await seed({
+      "admins/admin-1": { role: "admin" },
+      "inquiries/inquiry-1": { title: "private inquiry" },
+    });
+    const clients = [
+      testEnvironment.unauthenticatedContext().firestore(),
+      testEnvironment.authenticatedContext("member-1").firestore(),
+      testEnvironment.authenticatedContext("member-2").firestore(),
+      testEnvironment.authenticatedContext("admin-1").firestore(),
+    ];
+
+    for (const database of clients) {
+      await assertFails(getDoc(doc(database, "inquiries/inquiry-1")));
+      await assertFails(getDocs(collection(database, "inquiries")));
+      await assertFails(setDoc(doc(database, "inquiries/client-create"), { title: "blocked" }));
+      await assertFails(updateDoc(doc(database, "inquiries/inquiry-1"), { title: "changed" }));
+      await assertFails(deleteDoc(doc(database, "inquiries/inquiry-1")));
+    }
+  });
+});
+
 describeRules("member profiles and orders", () => {
   it("denies signed-out profile and member-order access", async () => {
     const publicDatabase = testEnvironment.unauthenticatedContext().firestore();

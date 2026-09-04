@@ -14,6 +14,15 @@ service firebase.storage {
       allow delete: if isAdmin();
     }
 
+    // Inquiry uploads and finalized images are server-only. Browsers use signed URLs.
+    match /inquiryPending/{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    match /inquiries/{allPaths=**} {
+      allow read, write: if false;
+    }
+
     match /{allPaths=**} {
       allow read, write: if false;
     }
