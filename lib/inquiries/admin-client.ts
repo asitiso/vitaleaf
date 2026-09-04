@@ -62,10 +62,14 @@ export const adminInquiryClient: AdminInquiryClient = {
     return rows.map(parseAdminInquiry);
   },
   async get(id, signal) {
-    return parseAdminInquiry(envelope(await request(endpoint, { action: "detail", id }, signal), "inquiry"));
+    const inquiry = parseAdminInquiry(envelope(await request(endpoint, { action: "detail", id }, signal), "inquiry"));
+    if (inquiry.id !== id) throw new InquiryClientError();
+    return inquiry;
   },
   async reply(id, adminReply, signal) {
-    return parseAdminInquiry(envelope(await request(endpoint + "/reply", { id, adminReply }, signal), "inquiry"));
+    const inquiry = parseAdminInquiry(envelope(await request(endpoint + "/reply", { id, adminReply }, signal), "inquiry"));
+    if (inquiry.id !== id) throw new InquiryClientError();
+    return inquiry;
   },
   async delete(id, signal) {
     const result = await request(endpoint + "/delete", { id }, signal);

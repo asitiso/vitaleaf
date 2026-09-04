@@ -1520,7 +1520,8 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
 
 .admin-inquiry-filters select,
 .admin-inquiry-actions button,
-.admin-inquiry-pagination button {
+.admin-inquiry-pagination button,
+.admin-inquiry-layout [role="alert"] button {
   min-height: 44px;
 }
 

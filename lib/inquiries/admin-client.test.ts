@@ -43,6 +43,21 @@ it("sends only reply/id fields and requires a bodyless deletion success", async 
   await expect(adminInquiryClient.delete("new-1")).rejects.toThrow();
 });
 
+it("rejects detail and reply payloads whose inquiry id differs from the requested id", async () => {
+  fetchMock.mockResolvedValueOnce(Response.json({ inquiry: { ...inquiryFixture, id: "other-id" } }));
+  await expect(adminInquiryClient.get("requested-id")).rejects.toThrow();
+  fetchMock.mockResolvedValueOnce(Response.json({
+    inquiry: {
+      ...inquiryFixture,
+      id: "other-id",
+      status: "answered",
+      adminReply: "답변",
+      repliedAt: inquiryFixture.createdAt,
+    },
+  }));
+  await expect(adminInquiryClient.reply("requested-id", "답변")).rejects.toThrow();
+});
+
 it.each([-1, 1.5, "3", null])("rejects malformed waiting count %s", async (waitingCount) => {
   fetchMock.mockResolvedValueOnce(Response.json({ waitingCount }));
   await expect(adminInquiryClient.count()).rejects.toThrow();

@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { adminInquiryClient, type AdminInquiryClient } from "../../lib/inquiries/admin-client";
 import type { InquiryCategory, InquiryPublic, InquiryStatus } from "../../lib/inquiries/types";
 
@@ -27,13 +27,21 @@ export function InquiryPanel({ client = adminInquiryClient, onWaitingCountChange
   const [confirmation, setConfirmation] = useState(false);
   const [deleteState, setDeleteState] = useState<"idle" | "deleting" | "error">("idle");
   const [reload, setReload] = useState(0);
+  const [detailReload, setDetailReload] = useState(0);
   const listRequestRef = useRef(0);
   const detailRequestRef = useRef(0);
+  const selectedIdRef = useRef<string | null>(null);
+  const mutationGenerationRef = useRef(0);
+  const mutationControllerRef = useRef<AbortController | null>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
-  const lifetimeRef = useRef<AbortController | null>(null);
-  if (lifetimeRef.current === null) lifetimeRef.current = new AbortController();
+  const deleteConfirmRef = useRef<HTMLButtonElement>(null);
+  const deleteTriggerRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
 
-  useEffect(() => () => lifetimeRef.current?.abort(), []);
+  useEffect(() => () => {
+    mutationGenerationRef.current += 1;
+    mutationControllerRef.current?.abort();
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -73,20 +81,75 @@ export function InquiryPanel({ client = adminInquiryClient, onWaitingCountChange
       },
     );
     return () => controller.abort();
-  }, [client, selectedId]);
+  }, [client, detailReload, selectedId]);
 
   useEffect(() => {
     if (!confirmation) return;
     cancelRef.current?.focus();
   }, [confirmation]);
 
+  useEffect(() => {
+    if (!confirmation) return;
+    const containBackgroundKeyboard = (event: KeyboardEvent) => {
+      if (dialogRef.current?.contains(event.target as Node)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.key === "Escape" && deleteState !== "deleting") {
+        closeConfirmation();
+        return;
+      }
+      cancelRef.current?.focus();
+    };
+    document.addEventListener("keydown", containBackgroundKeyboard, true);
+    return () => document.removeEventListener("keydown", containBackgroundKeyboard, true);
+  }, [confirmation, deleteState]);
+
+  function invalidateMutation() {
+    mutationGenerationRef.current += 1;
+    mutationControllerRef.current?.abort();
+    mutationControllerRef.current = null;
+  }
+
   function resetSelection() {
+    invalidateMutation();
     detailRequestRef.current += 1;
+    selectedIdRef.current = null;
     setSelectedId(null);
     setDraft("");
     setReplyState("idle");
     setConfirmation(false);
     setDeleteState("idle");
+  }
+
+  function selectInquiry(id: string) {
+    if (selectedIdRef.current !== id) invalidateMutation();
+    selectedIdRef.current = id;
+    setSelectedId(id);
+    setReplyState("idle");
+    setConfirmation(false);
+    setDeleteState("idle");
+  }
+
+  function closeConfirmation() {
+    setConfirmation(false);
+    setDeleteState("idle");
+    deleteTriggerRef.current?.focus();
+  }
+
+  function handleDialogKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (event.key === "Escape" && deleteState !== "deleting") {
+      event.preventDefault();
+      closeConfirmation();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    if (event.shiftKey && document.activeElement === cancelRef.current) {
+      event.preventDefault();
+      deleteConfirmRef.current?.focus();
+    } else if (!event.shiftKey && document.activeElement === deleteConfirmRef.current) {
+      event.preventDefault();
+      cancelRef.current?.focus();
+    }
   }
 
   function changeFilter(next: { status?: InquiryStatus | null; category?: InquiryCategory | null }) {
@@ -104,15 +167,25 @@ export function InquiryPanel({ client = adminInquiryClient, onWaitingCountChange
   async function saveReply() {
     const inquiry = detailState.inquiry;
     if (!inquiry || replyState === "saving") return;
-    const signal = lifetimeRef.current!.signal;
+    mutationControllerRef.current?.abort();
+    const controller = new AbortController();
+    mutationControllerRef.current = controller;
+    const mutationGeneration = ++mutationGenerationRef.current;
+    const signal = controller.signal;
+    const isCurrent = () => (
+      !signal.aborted
+      && mutationGenerationRef.current === mutationGeneration
+      && selectedIdRef.current === inquiry.id
+    );
     setReplyState("saving");
     let answered: InquiryPublic;
     try {
       answered = await client.reply(inquiry.id, draft, signal);
     } catch {
-      if (!signal.aborted) setReplyState("error");
+      if (isCurrent()) setReplyState("error");
       return;
     }
+    if (!isCurrent()) return;
     setDetailState({ kind: "ready", inquiry: answered });
     setDraft(answered.adminReply ?? "");
     setReplyState("success");
@@ -122,6 +195,8 @@ export function InquiryPanel({ client = adminInquiryClient, onWaitingCountChange
       (refreshed) => {
         if (
           !signal.aborted
+          && mutationGenerationRef.current === mutationGeneration
+          && selectedIdRef.current === inquiry.id
           && detailRequestRef.current === detailRequest
           && refreshed.status === "answered"
           && refreshed.adminReply === answered.adminReply
@@ -138,19 +213,36 @@ export function InquiryPanel({ client = adminInquiryClient, onWaitingCountChange
   async function confirmDelete() {
     const inquiry = detailState.inquiry;
     if (!inquiry || deleteState === "deleting") return;
-    const signal = lifetimeRef.current!.signal;
+    mutationControllerRef.current?.abort();
+    const controller = new AbortController();
+    mutationControllerRef.current = controller;
+    const mutationGeneration = ++mutationGenerationRef.current;
+    const signal = controller.signal;
     setDeleteState("deleting");
     try {
       await client.delete(inquiry.id, signal);
     } catch {
-      if (!signal.aborted) setDeleteState("error");
+      if (!signal.aborted && mutationGenerationRef.current === mutationGeneration && selectedIdRef.current === inquiry.id) {
+        setDeleteState("error");
+      }
       return;
     }
+    if (signal.aborted || mutationGenerationRef.current !== mutationGeneration || selectedIdRef.current !== inquiry.id) return;
     setConfirmation(false);
     setDeleteState("idle");
     resetSelection();
     setReload((value) => value + 1);
-    void refreshCount(signal).catch(() => undefined);
+    const refreshController = new AbortController();
+    mutationControllerRef.current = refreshController;
+    const refreshGeneration = mutationGenerationRef.current;
+    void client.count(refreshController.signal).then(
+      (count) => {
+        if (!refreshController.signal.aborted && mutationGenerationRef.current === refreshGeneration) {
+          onWaitingCountChange(count);
+        }
+      },
+      () => undefined,
+    );
   }
 
   const inquiry = detailState.inquiry;
@@ -180,7 +272,7 @@ export function InquiryPanel({ client = adminInquiryClient, onWaitingCountChange
           {listState.kind === "ready" && listState.rows.length === 0 ? <p>조건에 맞는 문의가 없습니다.</p> : null}
           {listState.kind === "ready" && listState.rows.length ? (
             <ul className="admin-inquiry-list">{listState.rows.map((item) => (
-              <li key={item.id}><button type="button" aria-current={selectedId === item.id ? "true" : undefined} onClick={() => { setSelectedId(item.id); setReplyState("idle"); setConfirmation(false); }}>
+              <li key={item.id}><button type="button" aria-current={selectedId === item.id ? "true" : undefined} onClick={() => selectInquiry(item.id)}>
                 <span>{categoryLabels[item.category]}</span><strong>{item.title}</strong>
                 <span>{item.status === "waiting" ? "답변 대기" : "답변 완료"}</span>
               </button></li>
@@ -198,7 +290,7 @@ export function InquiryPanel({ client = adminInquiryClient, onWaitingCountChange
         <section className="admin-inquiry-detail" aria-label="문의 상세">
           {detailState.kind === "idle" ? <p>목록에서 확인할 문의를 선택하세요.</p> : null}
           {detailState.kind === "loading" ? <p role="status">문의 상세를 불러오는 중입니다.</p> : null}
-          {detailState.kind === "error" ? <div role="alert"><p>문의 상세를 불러오지 못했습니다.</p><button type="button" onClick={() => { const id = selectedId; setSelectedId(null); queueMicrotask(() => setSelectedId(id)); }}>문의 상세 다시 불러오기</button></div> : null}
+          {detailState.kind === "error" ? <div role="alert"><p>문의 상세를 불러오지 못했습니다.</p><button type="button" onClick={() => setDetailReload((value) => value + 1)}>문의 상세 다시 불러오기</button></div> : null}
           {detailState.kind === "ready" && inquiry ? (
             <>
               <p>{inquiry.ownerType === "member" ? "회원 문의" : "비회원 문의"} · {categoryLabels[inquiry.category]}</p>
@@ -214,7 +306,7 @@ export function InquiryPanel({ client = adminInquiryClient, onWaitingCountChange
               {replyState === "success" ? <p role="status">답변을 저장했습니다.</p> : null}
               <div className="admin-inquiry-actions">
                 <button type="button" disabled={replyState === "saving"} onClick={() => void saveReply()}>{replyState === "saving" ? "저장 중" : "답변 저장"}</button>
-                <button type="button" onClick={() => { setConfirmation(true); setDeleteState("idle"); }}>문의 삭제</button>
+                <button ref={deleteTriggerRef} type="button" onClick={() => { setConfirmation(true); setDeleteState("idle"); }}>문의 삭제</button>
               </div>
             </>
           ) : null}
@@ -223,13 +315,13 @@ export function InquiryPanel({ client = adminInquiryClient, onWaitingCountChange
 
       {confirmation && inquiry ? (
         <div className="admin-dialog-backdrop">
-          <section className="admin-dialog" role="dialog" aria-modal="true" aria-labelledby="inquiry-delete-title">
+          <section ref={dialogRef} className="admin-dialog" role="dialog" aria-modal="true" aria-labelledby="inquiry-delete-title">
             <h3 id="inquiry-delete-title">문의 삭제 확인</h3>
             <p><strong>{inquiry.title}</strong> 문의와 첨부 이미지를 삭제합니다. 삭제 후 복구할 수 없습니다.</p>
             {deleteState === "error" ? <p role="alert">문의를 삭제하지 못했습니다. 문의는 유지되며 다시 시도할 수 있습니다.</p> : null}
             <div>
-              <button ref={cancelRef} type="button" disabled={deleteState === "deleting"} onClick={() => { setConfirmation(false); setDeleteState("idle"); }}>취소</button>
-              <button type="button" disabled={deleteState === "deleting"} onClick={() => void confirmDelete()}>{deleteState === "deleting" ? "삭제 중" : "삭제 확인"}</button>
+              <button ref={cancelRef} type="button" disabled={deleteState === "deleting"} onClick={closeConfirmation} onKeyDown={handleDialogKeyDown}>취소</button>
+              <button ref={deleteConfirmRef} type="button" disabled={deleteState === "deleting"} onClick={() => void confirmDelete()} onKeyDown={handleDialogKeyDown}>{deleteState === "deleting" ? "삭제 중" : "삭제 확인"}</button>
             </div>
           </section>
         </div>

@@ -1636,6 +1636,7 @@ it("exposes tab counts and uses roving focus with Arrow, Home, and End keys", as
   expect(draftsTab).toHaveAttribute("tabindex", "-1");
   expect(csvTab).toHaveAttribute("tabindex", "-1");
   expect(inquiryTab).toHaveTextContent("3");
+  expect(inquiryTab).toHaveAccessibleDescription("미답변 3건");
 
   publishedTab.focus();
   await user.keyboard("{ArrowRight}");

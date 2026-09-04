@@ -73,3 +73,45 @@ Result before report/commit: no whitespace errors, no temporary config/build inf
 - No live Firebase/Storage data, cloud configuration, account, credential, push, deploy, or production action.
 - No full repository build/full-suite run was required by this focused Task 8 gate. Task 8 plus client/validation/server/auth/repository/Storage regressions ran.
 - Responsive/focus behavior has CSS and component-test coverage; authenticated real-device visual verification remains for the later authorized end-to-end task.
+
+## Review fix round 1
+
+Review findings addressed:
+
+- Detail and reply clients now reject an otherwise-valid response when its inquiry ID differs from the requested ID.
+- Reply mutations use an explicit generation, AbortController, and selected-ID guard. Selecting another inquiry, changing filters, or unmounting/auth-generation replacement invalidates the mutation; a server-side completion can occur, but its stale result cannot update detail, draft, list refresh, or count refresh.
+- Delete confirmation now focuses Cancel first, contains forward/reverse Tab focus, blocks keyboard events focused outside the modal, cancels on Escape, and restores focus to the invoking Delete button.
+- List/detail retry buttons have a 44px minimum target.
+- The exact 1:1 inquiry tab name remains unchanged while the pending count is exposed through its accessible description.
+
+Fix RED command:
+
+node_modules/.bin/vitest.cmd run lib/inquiries/admin-client.test.ts components/admin/inquiry-panel.test.tsx components/admin/admin-dashboard.test.tsx --reporter=dot
+
+RED result: 3 files failed; 5 tests failed and 69 passed. Each failure matched one review boundary: requested-ID binding, selection stale reply, filter stale reply, keyboard modal, and badge description.
+
+Fix GREEN command:
+
+node_modules/.bin/vitest.cmd run lib/inquiries/admin-client.test.ts components/admin/inquiry-panel.test.tsx components/admin/admin-dashboard.test.tsx --reporter=dot
+
+GREEN result: 3 files passed, 74 tests passed, no warnings.
+
+Modal edge RED/GREEN: the strengthened outside-focus Escape assertion first failed 1 of 11 panel tests; the busy-safe document capture cancellation then passed 11/11.
+
+Final fix regression command:
+
+node_modules/.bin/vitest.cmd run app/api/admin/inquiries components/admin/inquiry-panel.test.tsx components/admin/admin-dashboard.test.tsx lib/inquiries/admin-client.test.ts lib/inquiries/client.test.ts lib/inquiries/validation.test.ts lib/inquiries/reply-validation.test.ts lib/inquiries/server.test.ts lib/firebase/admin-auth.test.ts lib/firebase/inquiries.test.ts lib/firebase/inquiry-uploads.test.ts lib/firebase/admin.storage.test.ts --reporter=dot
+
+Result: 14 files passed, 272 tests passed, zero failures.
+
+Fix ESLint:
+
+node_modules/.bin/eslint.cmd components/admin/inquiry-panel.tsx components/admin/inquiry-panel.test.tsx components/admin/admin-dashboard.tsx components/admin/admin-dashboard.test.tsx lib/inquiries/admin-client.ts lib/inquiries/admin-client.test.ts
+
+Result: exit 0, no warnings or errors.
+
+Fix isolated strict TypeScript:
+
+node_modules/.bin/tsc.cmd --project tsconfig.task8-fix.json --pretty false
+
+Result: exit 0. The temporary non-incremental config with Vitest/Testing Library globals was removed afterward.

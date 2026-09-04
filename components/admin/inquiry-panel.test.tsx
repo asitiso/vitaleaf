@@ -177,3 +177,83 @@ it("clears detail and draft and cancels stale work when the authorization genera
   await act(async () => undefined);
   expect(screen.queryByText("답변을 저장했습니다.")).not.toBeInTheDocument();
 });
+
+it("ignores a pending reply after selecting another inquiry without starting old refresh effects", async () => {
+  const pendingReply = deferred<InquiryPublic>();
+  const rows = [row(), row({ id: "inquiry-2", title: "새 문의" })];
+  const api = client({
+    list: vi.fn().mockResolvedValue(rows),
+    get: vi.fn(async (id) => rows.find((item) => item.id === id)!),
+    reply: vi.fn(() => pendingReply.promise),
+  });
+  const user = userEvent.setup();
+  render(<InquiryPanel client={api} onWaitingCountChange={vi.fn()} />);
+  await user.click(await screen.findByRole("button", { name: /배송이 궁금해요/u }));
+  await screen.findByRole("heading", { name: "배송이 궁금해요" });
+  await user.type(screen.getByLabelText("관리자 답변"), "이전 문의 답변");
+  await user.click(screen.getByRole("button", { name: "답변 저장" }));
+  const oldSignal = vi.mocked(api.reply).mock.calls[0]![2]!;
+  await user.click(screen.getByRole("button", { name: /새 문의/u }));
+  expect(await screen.findByRole("heading", { name: "새 문의" })).toBeVisible();
+  const callsBeforeResolution = {
+    list: vi.mocked(api.list).mock.calls.length,
+    get: vi.mocked(api.get).mock.calls.length,
+    count: vi.mocked(api.count).mock.calls.length,
+  };
+  pendingReply.resolve(row({ status: "answered", adminReply: "이전 문의 답변", repliedAt: inquiryFixture.createdAt }));
+  await act(async () => undefined);
+  expect(oldSignal.aborted).toBe(true);
+  expect(screen.getByRole("heading", { name: "새 문의" })).toBeVisible();
+  expect(screen.getByLabelText("관리자 답변")).toHaveValue("");
+  expect(screen.queryByText("답변을 저장했습니다.")).not.toBeInTheDocument();
+  expect(api.list).toHaveBeenCalledTimes(callsBeforeResolution.list);
+  expect(api.get).toHaveBeenCalledTimes(callsBeforeResolution.get);
+  expect(api.count).toHaveBeenCalledTimes(callsBeforeResolution.count);
+});
+
+it("ignores a pending reply after filters reset selection", async () => {
+  const pendingReply = deferred<InquiryPublic>();
+  const api = client({ reply: vi.fn(() => pendingReply.promise), list: vi.fn().mockResolvedValue([row()]) });
+  const user = userEvent.setup();
+  render(<InquiryPanel client={api} onWaitingCountChange={vi.fn()} />);
+  await user.click(await screen.findByRole("button", { name: /배송이 궁금해요/u }));
+  await screen.findByRole("heading", { name: "배송이 궁금해요" });
+  await user.type(screen.getByLabelText("관리자 답변"), "필터 전 답변");
+  await user.click(screen.getByRole("button", { name: "답변 저장" }));
+  await user.selectOptions(screen.getByLabelText("답변 상태"), "waiting");
+  await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
+  const callsBeforeResolution = vi.mocked(api.list).mock.calls.length;
+  pendingReply.resolve(row({ status: "answered", adminReply: "필터 전 답변", repliedAt: inquiryFixture.createdAt }));
+  await act(async () => undefined);
+  expect(screen.queryByLabelText("관리자 답변")).not.toBeInTheDocument();
+  expect(screen.queryByText("답변을 저장했습니다.")).not.toBeInTheDocument();
+  expect(api.list).toHaveBeenCalledTimes(callsBeforeResolution);
+  expect(api.count).not.toHaveBeenCalled();
+});
+
+it("contains delete confirmation keyboard focus, closes on Escape, and restores the invoking button", async () => {
+  const api = client();
+  const user = userEvent.setup();
+  render(<InquiryPanel client={api} onWaitingCountChange={vi.fn()} />);
+  await user.click(await screen.findByRole("button", { name: /배송이 궁금해요/u }));
+  await screen.findByRole("heading", { name: "배송이 궁금해요" });
+  const trigger = screen.getByRole("button", { name: "문의 삭제" });
+  await user.click(trigger);
+  const dialog = screen.getByRole("dialog", { name: "문의 삭제 확인" });
+  const cancel = within(dialog).getByRole("button", { name: "취소" });
+  const confirm = within(dialog).getByRole("button", { name: "삭제 확인" });
+  expect(cancel).toHaveFocus();
+  await user.keyboard("{Shift>}{Tab}{/Shift}");
+  expect(confirm).toHaveFocus();
+  await user.keyboard("{Tab}");
+  expect(cancel).toHaveFocus();
+  screen.getByLabelText("답변 상태").focus();
+  await user.keyboard("{ArrowDown}");
+  expect(cancel).toHaveFocus();
+  expect(screen.getByLabelText("답변 상태")).toHaveValue("");
+  screen.getByLabelText("답변 상태").focus();
+  await user.keyboard("{Escape}");
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(trigger).toHaveFocus();
+  expect(api.delete).not.toHaveBeenCalled();
+});
