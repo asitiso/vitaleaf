@@ -16,6 +16,20 @@ const readJson = async <T>(fileName: string): Promise<T> => (
   JSON.parse(await readFile(resolve(process.cwd(), fileName), "utf8")) as T
 );
 
+const readText = async (fileName: string): Promise<string> => (
+  readFile(resolve(process.cwd(), fileName), "utf8")
+);
+
+const readHeadingSection = (markdown: string, heading: string): string => {
+  const headingText = `### ${heading}`;
+  const start = markdown.indexOf(headingText);
+  if (start < 0) return "";
+  const contentStart = start + headingText.length;
+  const remainder = markdown.slice(contentStart);
+  const nextHeading = remainder.search(/^#{2,3} /m);
+  return nextHeading < 0 ? markdown.slice(start) : markdown.slice(start, contentStart + nextHeading);
+};
+
 const hasIndexFor = (
   indexes: CompositeIndex[],
   equalityFields: string[],
@@ -73,5 +87,26 @@ describe("Firebase inquiry configuration contracts", () => {
     });
     expect(JSON.stringify(rule)).not.toMatch(/(?:^|\/)inquiries\//u);
     expect(JSON.stringify(rule)).not.toContain("products/");
+  });
+
+  it("keeps rules deployment behind the one approved action-time gate", async () => {
+    const readme = await readText("README.md");
+    const rulesSection = readHeadingSection(readme, "Firestore와 Storage 규칙 게시");
+    const approvedSection = readHeadingSection(readme, "향후 승인된 배포 (이 작업에서 실행하지 않음)");
+
+    expect(rulesSection).toContain("향후 승인된 배포");
+    expect(rulesSection).toContain("최종 action-time 승인");
+    expect(rulesSection).not.toMatch(/firebase-tools@15\.26\.0 deploy/u);
+    expect(approvedSection).toContain("최종 action-time 승인");
+  });
+
+  it("explains that wildcard CORS only supports already-authorized signed PUTs", async () => {
+    const readme = await readText("README.md");
+    const approvedSection = readHeadingSection(readme, "향후 승인된 배포 (이 작업에서 실행하지 않음)");
+
+    expect(approvedSection).toMatch(/origin.*\["\*"\]/su);
+    expect(approvedSection).toMatch(/짧은 수명의 서명 PUT URL/su);
+    expect(approvedSection).toMatch(/자격 ?증명.*공개/su);
+    expect(approvedSection).toMatch(/IAM.*Storage.*규칙.*완화/su);
   });
 });

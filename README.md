@@ -107,16 +107,11 @@ Firebase Console의 **Storage → 시작하기**에서 환경 변수와 같은 �
 운영 프로젝트를 자동 선택하는 `.firebaserc`를 저장소에 두지 않습니다. 다음 순서로 프로젝트 혼동을 막습니다.
 
 1. `.env.local`의 `NEXT_PUBLIC_FIREBASE_PROJECT_ID`와 Firebase Console 상단 프로젝트 ID가 완전히 같은지 확인합니다.
-2. **Firestore Database → Rules**에 `firestore.rules` 전체를 붙여 넣고 게시합니다. 회원 기능을 사용하기 전에 반드시 최신 규칙을 게시합니다.
-3. **Storage → Rules**에 `storage.rules` 전체를 붙여 넣고 게시합니다.
+2. **Firestore Database → Rules**에 게시할 `firestore.rules` 전체를 검토합니다. 회원 기능을 사용하기 전에 최신 규칙을 준비하되, 실제 게시 적용은 아래의 단일 승인 절차를 따릅니다.
+3. **Storage → Rules**에 게시할 `storage.rules` 전체를 검토합니다. 실제 게시 적용은 아래의 단일 승인 절차를 따릅니다.
 4. 게시 이력과 시간을 기록하고, 로그아웃·일반 사용자·`role: "admin"` 사용자의 허용/거부 동작을 확인합니다.
 
-명시적으로 올바른 프로젝트에 연결한 환경에서만 다음과 같은 CLI 게시를 사용할 수 있습니다. `YOUR_PROJECT_ID`를 확인하지 못했다면 실행하지 마세요.
-
-```bash
-npx firebase-tools@15.26.0 deploy --only firestore:rules --project YOUR_PROJECT_ID
-npx firebase-tools@15.26.0 deploy --only storage --project YOUR_PROJECT_ID
-```
+이 절의 규칙 게시 안내는 대상과 파일을 확인하기 위한 것입니다. 규칙을 포함한 외부 변경은 3절 **향후 승인된 배포**의 단일 게이트에서만 적용하며, 승인된 대상의 현재 정책을 읽기 전용으로 검사하고 병합 검토를 마친 뒤 실행 직전에 최종 action-time 승인을 받은 경우에만 그 절의 명령을 사용합니다. `YOUR_PROJECT_ID`를 확인하지 못했거나 최종 승인이 없으면 `deploy`를 실행하지 마세요.
 
 규칙 경계는 다음과 같습니다.
 
@@ -159,7 +154,7 @@ npx firebase-tools@15.26.0 firestore:indexes --project YOUR_PROJECT_ID
 gcloud storage buckets describe gs://BUCKET_NAME --format=json
 ```
 
-Firestore 규칙/인덱스를 검토한 뒤 승인 시에만 다음을 적용합니다.
+Firestore 규칙/인덱스를 검토한 뒤, 적용 명령을 실행하기 직전에 최종 action-time 승인을 다시 확인한 경우에만 다음을 적용합니다. 승인이 없으면 아래 명령을 실행하지 않습니다.
 
 ```powershell
 npx firebase-tools@15.26.0 deploy --only firestore:rules,firestore:indexes --project YOUR_PROJECT_ID
@@ -167,6 +162,8 @@ npx firebase-tools@15.26.0 deploy --only storage --project YOUR_PROJECT_ID
 ```
 
 Cloud Storage CORS와 lifecycle 파일은 현재 버킷 설정을 통째로 대체할 수 있습니다. 먼저 승인된 대상 버킷의 기존 CORS/lifecycle 정책을 확인하고, 관련 없는 기존 규칙을 보존한 병합 파일을 리뷰한 뒤에만 적용합니다. 이 저장소의 `storage.cors.json`과 `storage.lifecycle.json`은 문의용 로컬 템플릿일 뿐, 기존 정책을 덮어쓸 권한이나 지시가 아닙니다. CORS의 `--cors-file`에는 최상위 `cors` 래퍼 없는 배열을 사용하고, lifecycle은 `--lifecycle-file`의 `rule` 객체를 사용합니다([Cloud Storage CORS schema and CLI](https://docs.cloud.google.com/storage/docs/cors-configurations), [Cloud Storage lifecycle CLI](https://docs.cloud.google.com/storage/docs/managing-lifecycles)).
+
+로컬 CORS 템플릿의 `origin: ["*"]`는 이미 서버가 발급한 짧은 수명의 서명 PUT URL(signed PUT URL)을 브라우저가 사용할 수 있게 할 뿐입니다. CORS 와일드카드는 Firebase/GCS 자격 증명이나 공개 읽기·쓰기를 부여하지 않으며, 업로드 권한은 서명 URL에 계속 묶여 있습니다. CORS를 작동시키려고 IAM 또는 Firebase Storage 규칙을 완화하지 마세요.
 
 ```powershell
 gcloud storage buckets update gs://BUCKET_NAME --cors-file=REVIEWED_MERGED_CORS.json

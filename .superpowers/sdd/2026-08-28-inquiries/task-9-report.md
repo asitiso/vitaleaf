@@ -33,3 +33,19 @@ Implemented local Firebase denial rules, query indexes, Storage CORS/lifecycle t
 Read-only availability detection found `java`, `firebase`, and `gcloud` missing from PATH. Cached Firestore v1.22.0 and Storage rules v1.1.3 JARs exist, but JARs alone are not a runnable Java/Firebase CLI installation. Therefore emulator tests were skipped, not reported as passed. No live project or bucket was inspected or changed.
 
 The README links the primary schema/command references: [Firestore index definition reference](https://firebase.google.com/docs/reference/firestore/indexes), [Cloud Storage CORS configuration](https://docs.cloud.google.com/storage/docs/cors-configurations), and [Cloud Storage lifecycle management](https://docs.cloud.google.com/storage/docs/managing-lifecycles).
+
+## Review fix round 1
+
+- Consolidated rules deployment guidance behind the single `향후 승인된 배포` procedure. The earlier rules section now requires final action-time approval immediately before any external `deploy` and no longer repeats executable deploy commands.
+- Documented that the wildcard CORS origin only permits browser use of an already-authorized short-lived signed PUT URL; it grants no Firebase/GCS credentials or public access, and operators must not relax IAM or Firebase Storage rules to compensate.
+- Added semantic README contract tests for the single approval gate and wildcard CORS authorization boundary; tests avoid asserting the full README text.
+
+| Check | Result |
+| --- | --- |
+| TDD RED: `node ./node_modules/vitest/vitest.mjs run tests/firebase-config.test.ts --maxWorkers=1 --no-file-parallelism` before README fix | Expected failure: 2 new documentation contract tests failed. |
+| TDD GREEN: same focused config test after README fix | 1 file passed; 6 tests passed. |
+| Focused ESLint: `node_modules/.bin/eslint.cmd tests/firebase-config.test.ts` | Exit 0; no diagnostics. |
+| Focused TypeScript: `node_modules/.bin/tsc.cmd --noEmit --module esnext --moduleResolution bundler --target es2022 --lib es2022,dom --types vitest/globals,node --skipLibCheck tests/firebase-config.test.ts` | Exit 0. |
+| `git diff --check` | Exit 0; only Git autocrlf notices. |
+
+The focused config test, ESLint, TypeScript, and diff checks were rerun after the final wording adjustment with the same successful results.
