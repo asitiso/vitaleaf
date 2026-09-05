@@ -133,9 +133,13 @@ it("renders the home delivery promotion from the shared shipping policy", async 
 it("shows clearly labelled sample products when the catalog is empty", async () => {
   getProductsMock.mockResolvedValue([]);
 
-  render(await Home());
+  const { container } = render(await Home());
 
   expect(screen.getByText("샘플 상품으로 쇼핑몰 기능을 미리 확인하고 있습니다.")).toBeVisible();
+  const proofStack = container.querySelector(".home-proof-stack");
+  expect(proofStack).not.toBeNull();
+  expect(proofStack).toContainElement(screen.getByRole("region", { name: "바이타리프 품질 원칙" }));
+  expect(proofStack).toContainElement(screen.getByText("샘플 상품으로 쇼핑몰 기능을 미리 확인하고 있습니다."));
   expect(screen.getAllByRole("article", { name: "[샘플] 데일리 멀티비타민" })).toHaveLength(2);
   expect(screen.getAllByRole("article", { name: "[샘플] 패밀리 건강 선물세트" })).toHaveLength(2);
 });

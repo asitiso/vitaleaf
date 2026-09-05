@@ -36,6 +36,7 @@ type Chip = {
 
 const uniqueValues = (values: string[]): string[] =>
   [...new Set(values.filter(Boolean))].sort((left, right) => left.localeCompare(right, "ko-KR"));
+const allConcernValues = HEALTH_CONCERNS.map((option) => option.value);
 
 const activeChips = (filters: ProductFilterValues): Chip[] => {
   const chips: Chip[] = [];
@@ -62,7 +63,7 @@ export function ProductBrowser({
   const mobileFilterToggleRef = useRef<HTMLButtonElement>(null);
   const [previousStartingFilters, setPreviousStartingFilters] = useState(startingFilters);
   const categories = useMemo(() => uniqueValues(canonicalTaxonomyValues(PRODUCT_CATEGORIES, initialProducts.map((product) => product.category))), [initialProducts]);
-  const concerns = useMemo(() => uniqueValues(canonicalTaxonomyValues(HEALTH_CONCERNS, initialProducts.flatMap((product) => product.concerns))), [initialProducts]);
+  const concerns = allConcernValues;
   const ingredients = useMemo(
     () => uniqueValues(initialProducts.flatMap((product) => product.ingredients.map((ingredient) => ingredient.name))),
     [initialProducts],

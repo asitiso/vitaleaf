@@ -71,14 +71,15 @@ export default async function Home() {
         <HomePromoCards placement="desktop" />
       </section>
 
-      <section className="home-trust-bar" aria-label="바이타리프 품질 원칙">
-        <div><strong>식약처 인정</strong><span>기능성 원료 기준 확인</span></div>
-        <div><strong>GMP 제조</strong><span>안전한 제조 환경</span></div>
-        <div><strong>투명한 표기</strong><span>원산지와 함량 공개</span></div>
-        <div><strong>품질 검사</strong><span>출고 전 기준 검토</span></div>
-      </section>
-
-      {isSampleCatalog ? <p className="sample-catalog-notice">샘플 상품으로 쇼핑몰 기능을 미리 확인하고 있습니다.</p> : null}
+      <div className="home-proof-stack">
+        <section className="home-trust-bar" aria-label="바이타리프 품질 원칙">
+          <div><strong>식약처 인정</strong><span>기능성 원료 기준 확인</span></div>
+          <div><strong>GMP 제조</strong><span>안전한 제조 환경</span></div>
+          <div><strong>투명한 표기</strong><span>원산지와 함량 공개</span></div>
+          <div><strong>품질 검사</strong><span>출고 전 기준 검토</span></div>
+        </section>
+        {isSampleCatalog ? <p className="sample-catalog-notice">샘플 상품으로 쇼핑몰 기능을 미리 확인하고 있습니다.</p> : null}
+      </div>
 
       <>
           <section className="home-product-section" aria-labelledby="best-products-title">

@@ -188,6 +188,8 @@ it.each([
   [{ category: "gift" }, "[샘플] 패밀리 건강 선물세트"],
   [{ promotion: "today" }, "[샘플] 데일리 멀티비타민"],
   [{ concern: "gut" }, "[샘플] 장편한 프로바이오틱스"],
+  [{ concern: "skin" }, "[샘플] 피부 보습 히알루론산"],
+  [{ concern: "liver" }, "[샘플] 밀크씨슬 간 건강"],
 ])("keeps menu destination %o useful with sample products when Firestore is empty", async (searchParams, expectedName) => {
   getProductsMock.mockResolvedValue([]);
 
@@ -280,6 +282,15 @@ it("shows only products explicitly tagged for the selected age", async () => {
   expect(screen.queryByRole("article", { name: "기존 면역 상품" })).not.toBeInTheDocument();
   expect(screen.queryByRole("article", { name: "성인 면역 상품" })).not.toBeInTheDocument();
   expect(screen.getByText("관리자가 확인한 추천 연령 기준")).toBeInTheDocument();
+});
+
+it("always exposes skin and liver concern destinations even before products are tagged", async () => {
+  getProductsMock.mockResolvedValue(products);
+
+  render(await ProductsPage({ searchParams: Promise.resolve({ view: "concerns" }) }));
+
+  expect(screen.getByRole("button", { name: "피부 건강" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "간 건강" })).toBeVisible();
 });
 
 it("shows both canonical wizard values and legacy Korean labels at category, concern, and age destinations", async () => {

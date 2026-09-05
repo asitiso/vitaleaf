@@ -54,6 +54,8 @@ export const HEALTH_CONCERNS = [
   { value: "immunity", label: "면역", description: "일상 방어력 관리" },
   { value: "sleep", label: "수면", description: "편안한 휴식을 위한 케어" },
   { value: "eyes", label: "눈 건강", description: "선명한 일상을 위한 영양" },
+  { value: "skin", label: "피부 건강", description: "건강한 피부 보습을 위한 관리" },
+  { value: "liver", label: "간 건강", description: "활기찬 일상을 위한 간 건강 관리" },
   { value: "gut", label: "장 건강", description: "편안한 속을 위한 유산균" },
   { value: "brain", label: "뇌 건강", description: "집중과 기억을 위한 케어" },
   { value: "circulation", label: "혈행", description: "원활한 혈행을 위한 관리" },

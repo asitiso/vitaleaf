@@ -17,9 +17,21 @@ const rule = (selector: string): string => ruleFrom(mobile, selector);
 const baseRule = (selector: string): string => ruleFrom(base, selector);
 
 describe("mobile home discovery contract", () => {
-  it("makes the hero compact enough for products to enter the first viewport", () => {
-    expect(rule(".home-page")).toMatch(/gap:\s*28px/);
-    expect(rule(".home-hero")).toMatch(/min-height:\s*220px/);
+  it("keeps every home banner compact enough for products to enter sooner", () => {
+    expect(baseRule(".home-page")).toMatch(/gap:\s*32px/);
+    expect(baseRule(".home-promotions")).toMatch(/min-height:\s*280px/);
+    expect(baseRule(".home-hero")).toMatch(/34px/);
+    expect(baseRule(".home-hero h1")).toMatch(/44px/);
+    expect(baseRule(".home-transparency")).toMatch(/48px/);
+    expect(rule(".home-page")).toMatch(/gap:\s*24px/);
+    expect(rule(".home-hero")).toMatch(/min-height:\s*200px/);
+    expect(rule(".home-promo-card")).toMatch(/min-height:\s*100px/);
+  });
+
+  it("groups proof points and the sample notice without repeated page gaps", () => {
+    expect(baseRule(".home-proof-stack")).toMatch(/display:\s*grid/);
+    expect(baseRule(".home-proof-stack")).toMatch(/gap:\s*8px/);
+    expect(baseRule(".home-trust-bar")).toMatch(/padding:\s*12px\s+10px/);
   });
 
   it("moves the compact benefit cards after best products on mobile only", () => {
@@ -47,5 +59,10 @@ describe("mobile home discovery contract", () => {
     expect(mobileGrid).toMatch(/grid-auto-flow:\s*column/);
     expect(mobileGrid).toMatch(/overflow-x:\s*auto/);
     expect(mobileGrid).toMatch(/scroll-snap-type:\s*x\s+mandatory/);
+  });
+
+  it("keeps age tabs on one horizontal line instead of stacking Korean syllables", () => {
+    expect(rule(".home-age-tabs a")).toMatch(/flex:\s*0\s+0\s+auto/);
+    expect(rule(".home-age-tabs a")).toMatch(/white-space:\s*nowrap/);
   });
 });
