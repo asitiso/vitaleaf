@@ -29,7 +29,7 @@ it("loads waiting/answered member links with encoded IDs and a create action", a
   expect(screen.getByText("VL-20260826-ABC123")).toBeVisible();
   expect(screen.getByRole("link", { name: "문의 작성" })).toHaveAttribute("href", "/mypage/inquiries/new");
   expect(fetch).toHaveBeenCalledWith("/api/inquiries/list", expect.objectContaining({
-    method: "POST", headers: expect.objectContaining({ authorization: "Bearer member-token" }), body: "{}",
+    method: "POST", headers: expect.objectContaining({ authorization: "Bearer member-token" }), body: JSON.stringify({ pageSize: 21 }),
   }));
 });
 

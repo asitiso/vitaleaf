@@ -1,4 +1,4 @@
-import type { Firestore, Query } from "firebase-admin/firestore";
+import type { DocumentSnapshot, Firestore, Query } from "firebase-admin/firestore";
 
 import {
   InquiryRepositoryError,
@@ -73,13 +73,14 @@ const queryWithFilters = (query: Query, filters: InquiryListFilters): Query => {
 const readList = async (
   query: Query,
   filters: InquiryListFilters,
-  cursorSnapshot: { exists: boolean } | null,
+  cursorSnapshot: DocumentSnapshot | null,
   matchesOwner?: (record: InquiryRecord) => boolean,
 ): Promise<InquiryRecord[]> => {
   let filtered = queryWithFilters(query, filters);
   if (filters.cursor) {
     if (!cursorSnapshot?.exists) return [];
-    filtered = filtered.startAfter(cursorSnapshot as never);
+    if (matchesOwner && !matchesOwner(readRecord(cursorSnapshot.id, cursorSnapshot.data()))) return [];
+    filtered = filtered.startAfter(cursorSnapshot);
   }
   const snapshot = await filtered.get();
   const records = snapshot.docs.map((document) => readRecord(document.id, document.data()));
@@ -118,7 +119,7 @@ export const createFirestoreInquiryRepository = ({
         .where("ownerType", "==", "member")
         .where("memberUid", "==", memberUid),
       parsedFilters,
-      parsedFilters.cursor ? await collection.doc(parsedFilters.cursor).get() : null,
+      parsedFilters.cursor ? await collection.doc(requiredId(parsedFilters.cursor)).get() : null,
       (record) => record.ownerType === "member" && record.memberUid === memberUid,
     );
   },
@@ -133,7 +134,7 @@ export const createFirestoreInquiryRepository = ({
         .where("ownerType", "==", "guest")
         .where("guestOrderNumber", "==", guestOrderNumber),
       parsedFilters,
-      parsedFilters.cursor ? await collection.doc(parsedFilters.cursor).get() : null,
+      parsedFilters.cursor ? await collection.doc(requiredId(parsedFilters.cursor)).get() : null,
       (record) => record.ownerType === "guest" && record.guestOrderNumber === guestOrderNumber,
     );
   },
@@ -151,7 +152,7 @@ export const createFirestoreInquiryRepository = ({
     return readList(
       collection,
       parsedFilters,
-      parsedFilters.cursor ? await collection.doc(parsedFilters.cursor).get() : null,
+      parsedFilters.cursor ? await collection.doc(requiredId(parsedFilters.cursor)).get() : null,
     );
   },
 

@@ -46,6 +46,8 @@ const createFirestoreHarness = (initial: InquiryRecord[] = []) => {
     initial.map((record) => [record.id, clone(record) as StoredDocument]),
   );
   const queryCalls: Array<{ constraints: Constraint[]; limit: number | null }> = [];
+  const documentIds: string[] = [];
+  const cursorIds: string[] = [];
   let failRead: Error | null = null;
   let failTransaction: Error | null = null;
   let forcedQueryDocuments: Array<[string, StoredDocument]> | null = null;
@@ -73,6 +75,7 @@ const createFirestoreHarness = (initial: InquiryRecord[] = []) => {
       return query(constraints, value, cursorId);
     },
     startAfter(document: { id: string }) {
+      cursorIds.push(document.id);
       return query(constraints, limitValue, document.id);
     },
     async get() {
@@ -113,6 +116,7 @@ const createFirestoreHarness = (initial: InquiryRecord[] = []) => {
   const collection = () => ({
     ...query(),
     doc(id: string) {
+      documentIds.push(id);
       return {
         id,
         async get() {
@@ -159,6 +163,8 @@ const createFirestoreHarness = (initial: InquiryRecord[] = []) => {
     firestore,
     documents,
     queryCalls,
+    documentIds,
+    cursorIds,
     setReadFailure(error: Error | null) { failRead = error; },
     setTransactionFailure(error: Error | null) { failTransaction = error; },
     setQueryDocuments(documentsForQuery: Array<[string, StoredDocument]> | null) {
@@ -288,6 +294,48 @@ describe("createFirestoreInquiryRepository", () => {
       pageSize: 20,
       cursor: newest.id,
     })).resolves.toEqual([old]);
+  });
+
+  it.each(["member", "guest"] as const)("treats missing and foreign %s cursors as the same empty page without applying either", async (ownerType) => {
+    const own = ownerType === "member" ? memberRecord() : guestRecord();
+    const foreign = ownerType === "member"
+      ? memberRecord({ id: "foreign-cursor", memberUid: "member-2" })
+      : guestRecord({ id: "foreign-cursor", guestOrderNumber: "VL-20260828-DEF456", orderNumber: "VL-20260828-DEF456" });
+    const harness = createFirestoreHarness([own, foreign]);
+    const repository = createFirestoreInquiryRepository({ getFirestore: () => harness.firestore as never });
+    for (const cursor of ["missing-cursor", "foreign-cursor"]) {
+      const filters = { category: null, status: null, pageSize: 20, cursor };
+      const result = ownerType === "member"
+        ? repository.listForMember("member-1", filters)
+        : repository.listForGuestOrder("VL-20260828-ABC123", filters);
+      await expect(result).resolves.toEqual([]);
+    }
+    expect(harness.cursorIds).toEqual([]);
+    expect(harness.queryCalls).toEqual([]);
+  });
+
+  it("paginates an own guest cursor and permits cross-owner admin cursors", async () => {
+    const old = guestRecord({ id: "older-guest", createdAt: new Date("2026-08-27T10:00:00.000Z"), updatedAt: new Date("2026-08-27T10:00:00.000Z") });
+    const newest = guestRecord();
+    const member = memberRecord({ createdAt: new Date("2026-08-29T10:00:00.000Z"), updatedAt: new Date("2026-08-29T10:00:00.000Z") });
+    const harness = createFirestoreHarness([old, newest, member]);
+    const repository = createFirestoreInquiryRepository({ getFirestore: () => harness.firestore as never });
+    const filters = { category: null, status: null, pageSize: 20, cursor: newest.id };
+    await expect(repository.listForGuestOrder("VL-20260828-ABC123", filters)).resolves.toEqual([old]);
+    await expect(repository.listAdmin({ ...filters, cursor: member.id })).resolves.toEqual([newest, old]);
+    expect(harness.cursorIds).toEqual([newest.id, member.id]);
+  });
+
+  it.each(["member", "guest", "admin"] as const)("rejects slash cursors before constructing a Firestore document reference for %s", async (ownerType) => {
+    const harness = createFirestoreHarness([memberRecord(), guestRecord()]);
+    const repository = createFirestoreInquiryRepository({ getFirestore: () => harness.firestore as never });
+    const filters = { category: null, status: null, pageSize: 20, cursor: "foreign/nested/cursor" };
+    const result = ownerType === "member" ? repository.listForMember("member-1", filters)
+      : ownerType === "guest" ? repository.listForGuestOrder("VL-20260828-ABC123", filters)
+      : repository.listAdmin(filters);
+    await expect(result).rejects.toThrow(InquiryRepositoryError);
+    expect(harness.documentIds).toEqual([]);
+    expect(harness.queryCalls).toEqual([]);
   });
 
   it("rejects malformed stored dates, owners, reply state, and attachment paths", async () => {

@@ -96,6 +96,7 @@ describe("signed inquiry upload URLs", () => {
       version: "v4",
       action: "write",
       contentType: "image/webp",
+      extensionHeaders: { "content-length": "12" },
       expires: new Date("2026-09-02T03:05:00.000Z"),
     });
   });

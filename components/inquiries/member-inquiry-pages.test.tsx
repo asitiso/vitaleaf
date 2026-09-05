@@ -137,6 +137,31 @@ it.each(["list", "detail"])("ignores a late A %s response after B signs in", asy
   expect(screen.getByText("B 문의")).toBeVisible();
 });
 
+it("aborts A's pending older inquiries and restarts pagination on a B account change", async () => {
+  const old = deferred<Response>();
+  const aRows = Array.from({ length: 21 }, (_, index) => ({ ...inquiryFixture, id: "A-" + index, title: "A 비공개 " + index }));
+  vi.mocked(fetch).mockResolvedValueOnce(Response.json({ inquiries: aRows }))
+    .mockReturnValueOnce(old.promise)
+    .mockResolvedValueOnce(Response.json({ inquiries: [{ ...inquiryFixture, title: "B 문의" }] }));
+  mount(<MemberInquiryListPage />);
+  await signIn("A");
+  await screen.findByText("A 비공개 19");
+  fireEvent.click(screen.getByRole("button", { name: "이전 문의 더보기" }));
+  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+  const oldSignal = vi.mocked(fetch).mock.calls[1]![1]!.signal!;
+  await signIn("B");
+  expect(oldSignal.aborted).toBe(true);
+  expect(privateFrames.every((frame) => !frame.includes("A 비공개"))).toBe(true);
+  await screen.findByText("B 문의");
+  expect(fetch).toHaveBeenNthCalledWith(3, "/api/inquiries/list", expect.objectContaining({
+    body: JSON.stringify({ pageSize: 21 }), headers: expect.objectContaining({ authorization: "Bearer B-token" }),
+  }));
+  await act(async () => old.resolve(Response.json({ inquiries: [aRows[20]] })));
+  expect(screen.queryByText("A 비공개 20")).not.toBeInTheDocument();
+  expect(screen.getAllByRole("listitem")).toHaveLength(1);
+  expect(screen.queryByRole("button", { name: "이전 문의 더보기" })).not.toBeInTheDocument();
+});
+
 it.each(["validation", "upload", "token", "create"])("clears A's draft on B sign-in during %s and never navigates or submits it as B", async (phase) => {
   const pending = deferred<Response>();
   const bytes = deferred<ArrayBuffer>();

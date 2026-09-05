@@ -219,7 +219,7 @@ export function InquiryPanel({ client = adminInquiryClient, onWaitingCountChange
           && refreshed.adminReply === answered.adminReply
         ) {
           setDetailState({ kind: "ready", inquiry: refreshed });
-          setDraft(refreshed.adminReply ?? "");
+          // The save response already populated the draft; preserve edits made during this refresh.
         }
       },
       () => undefined,

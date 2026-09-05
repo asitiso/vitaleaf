@@ -95,6 +95,36 @@ it("saves one reply, retains draft on failure, and refreshes list/count on succe
   expect(onCount).toHaveBeenCalledWith(2);
 });
 
+it("preserves a new draft while delayed post-save detail refresh updates canonical content", async () => {
+  const refresh = deferred<InquiryPublic>();
+  const saved = row({ status: "answered", adminReply: "저장된 답변", repliedAt: inquiryFixture.createdAt });
+  const api = client({
+    get: vi.fn().mockResolvedValueOnce(row({ status: "answered", adminReply: "기존 답변", repliedAt: inquiryFixture.createdAt })).mockReturnValueOnce(refresh.promise),
+    reply: vi.fn().mockResolvedValue(saved),
+  });
+  const user = userEvent.setup();
+  render(<InquiryPanel client={api} onWaitingCountChange={vi.fn()} />);
+  await user.click(await screen.findByRole("button", { name: /배송이 궁금해요/u }));
+  const textarea = await screen.findByLabelText("관리자 답변");
+  expect(textarea).toHaveValue("기존 답변");
+  await user.clear(textarea);
+  await user.type(textarea, "저장된 답변");
+  await user.click(screen.getByRole("button", { name: "답변 저장" }));
+  await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
+  expect(textarea).toBeEnabled();
+  expect(screen.getByText("답변을 저장했습니다.")).toBeVisible();
+  await user.type(textarea, " 수정 중");
+  await act(async () => refresh.resolve({
+    ...saved,
+    body: "새로 조회된 문의 내용",
+    attachments: [{ id: "new-image", originalName: "사진.png", contentType: "image/png", size: 20, readUrl: "https://storage.example.test/refreshed" }],
+  }));
+  expect(textarea).toHaveValue("저장된 답변 수정 중");
+  expect(screen.getByText("새로 조회된 문의 내용")).toBeVisible();
+  expect(screen.getByRole("img", { name: "문의 첨부 이미지 1" })).toHaveAttribute("src", "https://storage.example.test/refreshed");
+  expect(screen.queryByText("답변을 저장했습니다.")).not.toBeInTheDocument();
+});
+
 it("does not report a successful reply as failed when only the badge refresh fails", async () => {
   const api = client({
     reply: vi.fn().mockResolvedValue(row({ status: "answered", adminReply: "저장된 답변", repliedAt: inquiryFixture.createdAt })),

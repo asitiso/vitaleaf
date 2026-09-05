@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { type InquiryClientAccess, InquiryClientError, listInquiries } from "../../lib/inquiries/client";
 import type { InquiryPublic } from "../../lib/inquiries/types";
@@ -32,7 +32,10 @@ function InquiryListContent({ access, createHref, detailHref, onCreate, onSelect
   const [state, setState] = useState<{
     kind: "loading" | "error" | "ready";
     rows: InquiryPublic[];
-  }>({ kind: "loading", rows: [] });
+    cursor: string | null;
+  }>({ kind: "loading", rows: [], cursor: null });
+  const [nextState, setNextState] = useState<"idle" | "loading" | "error">("idle");
+  const nextRequestRef = useRef<AbortController | null>(null);
   const [retry, setRetry] = useState(0);
   const guestToken = access.kind === "guest" ? access.token : null;
 
@@ -42,10 +45,14 @@ function InquiryListContent({ access, createHref, detailHref, onCreate, onSelect
       ? { kind: "member" } : { kind: "guest", token: guestToken };
     // Retry clears old data; identity changes remount this content synchronously.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setState({ kind: "loading", rows: [] });
-    void listInquiries(currentAccess, {}, controller.signal).then(
+    setState({ kind: "loading", rows: [], cursor: null });
+    setNextState("idle");
+    void listInquiries(currentAccess, { pageSize: 21 }, controller.signal).then(
       (rows) => {
-        if (!controller.signal.aborted) setState({ kind: "ready", rows });
+        if (!controller.signal.aborted) {
+          const page = rows.slice(0, 20);
+          setState({ kind: "ready", rows: uniqueRows(page), cursor: rows.length > 20 ? page.at(-1)!.id : null });
+        }
       },
       (reason) => {
         if (controller.signal.aborted) return;
@@ -54,14 +61,48 @@ function InquiryListContent({ access, createHref, detailHref, onCreate, onSelect
           onAccessExpired();
           return;
         }
-        setState({ kind: "error", rows: [] });
+        setState({ kind: "error", rows: [], cursor: null });
       },
     );
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      nextRequestRef.current?.abort();
+      nextRequestRef.current = null;
+    };
   }, [guestToken, retry, onAccessExpired]);
 
   function reload() {
     setRetry((count) => count + 1);
+  }
+
+  async function loadMore() {
+    if (!state.cursor || nextRequestRef.current) return;
+    const controller = new AbortController();
+    nextRequestRef.current = controller;
+    setNextState("loading");
+    try {
+      const rows = await listInquiries(access, { pageSize: 21, cursor: state.cursor }, controller.signal);
+      if (controller.signal.aborted) return;
+      const page = rows.slice(0, 20);
+      setState((previous) => ({
+        kind: "ready",
+        rows: uniqueRows([...previous.rows, ...page]),
+        cursor: rows.length > 20 ? page.at(-1)!.id : null,
+      }));
+      setNextState("idle");
+    } catch (reason) {
+      if (controller.signal.aborted) return;
+      if (access.kind === "guest" && reason instanceof InquiryClientError && reason.status === 401 && onAccessExpired) {
+        controller.abort();
+        setState({ kind: "loading", rows: [], cursor: null });
+        setNextState("idle");
+        onAccessExpired();
+        return;
+      }
+      setNextState("error");
+    } finally {
+      if (nextRequestRef.current === controller) nextRequestRef.current = null;
+    }
   }
 
   function createAction(label: string) {
@@ -119,6 +160,24 @@ function InquiryListContent({ access, createHref, detailHref, onCreate, onSelect
           })}
         </ul>
       ) : null}
+      {state.kind === "ready" && state.cursor ? (
+        <div>
+          {nextState === "loading" ? <p role="status">이전 문의를 불러오는 중입니다.</p> : null}
+          {nextState === "error" ? <p role="alert">이전 문의를 불러오지 못했습니다. 다시 시도해 주세요.</p> : null}
+          <button className="inquiry-button" type="button" disabled={nextState === "loading"} aria-busy={nextState === "loading"} onClick={() => void loadMore()}>
+            이전 문의 더보기
+          </button>
+        </div>
+      ) : null}
     </section>
   );
+}
+
+function uniqueRows(rows: InquiryPublic[]): InquiryPublic[] {
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    if (seen.has(row.id)) return false;
+    seen.add(row.id);
+    return true;
+  });
 }

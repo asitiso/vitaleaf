@@ -96,6 +96,7 @@ export const createInquiryUploadUrl = async (
     version: "v4",
     action: "write",
     contentType,
+    extensionHeaders: { "content-length": String(size) },
     expires: expiresAt,
   });
   return {

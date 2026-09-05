@@ -185,6 +185,9 @@ describe("private inquiry browser client", () => {
       headers: { "content-type": "image/png" },
       body: file,
     });
+    // Fetch supplies the exact File byte length; JavaScript must not set this forbidden header.
+    const putHeaders = new Headers(vi.mocked(fetch).mock.calls[1]![1]!.headers);
+    expect(putHeaders.has("content-length")).toBe(false);
   });
 
   it.each([
