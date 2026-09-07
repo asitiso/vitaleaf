@@ -533,6 +533,32 @@ describe("guest order lookup", () => {
   const correctLookup = { orderNumber: storedOrder.orderNumber, phone: "010-1234-5678" };
   const wrongLookup = { ...correctLookup, phone: "010-9999-9999" };
 
+  it("returns shipped operations without exposing the admin updater", async () => {
+    const statusUpdatedAt = new Date("2026-09-07T03:00:00.000Z");
+    const dependencies = inMemoryDependencies({
+      storedOrder: {
+        ...storedOrder,
+        status: "shipped",
+        isTestOrder: true,
+        shippingCarrier: "CJ대한통운",
+        trackingNumber: "1234-5678",
+        statusUpdatedAt,
+        statusUpdatedBy: "admin-1",
+      },
+    });
+
+    const result = await createGuestOrderService(dependencies).lookup(correctLookup, "client-a");
+
+    expect(result).toMatchObject({
+      status: "shipped",
+      isTestOrder: true,
+      shippingCarrier: "CJ대한통운",
+      trackingNumber: "1234-5678",
+      statusUpdatedAt: "2026-09-07T03:00:00.000Z",
+    });
+    expect(result).not.toHaveProperty("statusUpdatedBy");
+  });
+
   it("reads GUEST_ORDER_LOOKUP_SECRET lazily when no secret is injected", async () => {
     process.env.GUEST_ORDER_LOOKUP_SECRET = "test-only-environment-secret";
     const dependencies = inMemoryDependencies({ storedOrder });
@@ -555,6 +581,10 @@ describe("guest order lookup", () => {
     expect(result).toEqual({
       orderNumber: storedOrder.orderNumber,
       status: "mock-received",
+      isTestOrder: false,
+      shippingCarrier: "",
+      trackingNumber: "",
+      statusUpdatedAt: null,
       receivedAt: "2026-08-26T02:59:00.000Z",
       customerNameMasked: "김**",
       phoneMasked: "010-****-5678",

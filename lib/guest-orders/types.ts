@@ -65,7 +65,6 @@ export type GuestOrderPublic = {
   shippingCarrier?: string;
   trackingNumber?: string;
   statusUpdatedAt?: string | null;
-  statusUpdatedBy?: string;
   receivedAt: string;
   customerNameMasked: string;
   phoneMasked: string;

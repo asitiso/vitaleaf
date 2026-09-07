@@ -86,6 +86,16 @@ it("parses a sample guest order lookup whose optional thumbnail URL is empty", a
       quantity: 1,
     }],
   }, payment, idempotencyKey);
+  if (!storedOrder) throw new Error("Expected the service to persist the order.");
+  storedOrder = {
+    ...storedOrder,
+    status: "shipped",
+    isTestOrder: true,
+    shippingCarrier: "CJ대한통운",
+    trackingNumber: "1234-5678",
+    statusUpdatedAt: new Date("2026-08-10T10:00:00.000Z"),
+    statusUpdatedBy: "admin-1",
+  };
   const publicOrder = await service.lookup({
     orderNumber: receipt.orderNumber,
     phone: order.phone,

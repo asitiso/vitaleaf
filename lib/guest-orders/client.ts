@@ -1,4 +1,5 @@
 import type { PaymentResult } from "../payment/process-payment";
+import { ORDER_STATUSES, type OrderStatus } from "../orders/operations";
 import type { GuestOrderCreateInput, GuestOrderPublic } from "./types";
 
 const ORDER_NUMBER = /^VL-\d{8}-[A-Z0-9]{6}$/u;
@@ -30,6 +31,20 @@ const optionalText = (value: unknown, maximum: number): string => {
   if (value === undefined) return "";
   if (typeof value !== "string" || value.length > maximum) throw new GuestOrderClientError();
   return value;
+};
+
+const optionalTimestamp = (value: unknown): string | null => {
+  if (value === undefined || value === null) return null;
+  const timestamp = text(value, 64);
+  const parsed = new Date(timestamp);
+  if (
+    !ISO_TIMESTAMP.test(timestamp)
+    || Number.isNaN(parsed.getTime())
+    || parsed.toISOString() !== timestamp
+  ) {
+    throw new GuestOrderClientError();
+  }
+  return timestamp;
 };
 
 const number = (value: unknown): number => {
@@ -77,14 +92,22 @@ const parseReceipt = (value: unknown): PaymentResult => {
 const parsePublicOrder = (value: unknown): GuestOrderPublic => {
   const order = asRecord(value);
   const receipt = parseReceipt(order);
-  if (order.status !== "mock-received") throw new GuestOrderClientError();
+  if (!ORDER_STATUSES.includes(order.status as OrderStatus)) throw new GuestOrderClientError();
+  const status = order.status as OrderStatus;
+  if (order.isTestOrder !== undefined && typeof order.isTestOrder !== "boolean") {
+    throw new GuestOrderClientError();
+  }
   if (!Array.isArray(order.lines) || order.lines.length === 0 || order.lines.length > 20) {
     throw new GuestOrderClientError();
   }
 
   return {
     ...receipt,
-    status: order.status,
+    status,
+    isTestOrder: order.isTestOrder === true,
+    shippingCarrier: optionalText(order.shippingCarrier, 200),
+    trackingNumber: optionalText(order.trackingNumber, 200),
+    statusUpdatedAt: optionalTimestamp(order.statusUpdatedAt),
     customerNameMasked: text(order.customerNameMasked, 50),
     phoneMasked: text(order.phoneMasked, 30),
     addressMasked: text(order.addressMasked, 250),

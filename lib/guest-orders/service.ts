@@ -91,9 +91,16 @@ const safePhoneEqual = (left: string, right: string): boolean => {
   return timingSafeEqual(leftDigest, rightDigest);
 };
 
+const toIsoStringOrNull = (value: Date | null | undefined): string | null =>
+  value instanceof Date && !Number.isNaN(value.getTime()) ? value.toISOString() : null;
+
 const toPublicOrder = (order: GuestOrderStored): GuestOrderPublic => ({
   orderNumber: order.orderNumber,
   status: order.status,
+  isTestOrder: order.isTestOrder === true,
+  shippingCarrier: order.shippingCarrier ?? "",
+  trackingNumber: order.trackingNumber ?? "",
+  statusUpdatedAt: toIsoStringOrNull(order.statusUpdatedAt),
   receivedAt: order.receivedAt.toISOString(),
   customerNameMasked: maskName(order.customerName),
   phoneMasked: maskPhone(order.phoneNormalized),
