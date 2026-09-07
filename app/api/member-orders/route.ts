@@ -61,7 +61,10 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const { order, payment, idempotencyKey } = parseCreatePayload(body);
-    const service = createMemberOrderService({ repository: memberOrderRepository });
+    const service = createMemberOrderService({
+      repository: memberOrderRepository,
+      testCustomerUid: process.env.TEST_CUSTOMER_UID?.trim() || null,
+    });
     const receipt = await service.create(uid, order, payment, idempotencyKey);
     return Response.json(receipt, { status: 201 });
   } catch (error) {

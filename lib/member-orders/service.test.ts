@@ -120,6 +120,42 @@ describe("member order service", () => {
     );
   });
 
+  it("marks only the configured authenticated UID as a test order", async () => {
+    const repository = createRepository();
+    const service = createMemberOrderService({
+      repository,
+      testCustomerUid: "test-uid",
+    });
+
+    await service.create("test-uid", input, payment, idempotencyKey);
+
+    expect(repository.createOrder).toHaveBeenCalledWith(
+      "test-uid",
+      expect.objectContaining({ isTestOrder: true }),
+      idempotencyKey,
+      expect.any(String),
+    );
+  });
+
+  it("ignores a client-supplied test flag for an ordinary member", async () => {
+    const repository = createRepository();
+    const service = createMemberOrderService({ repository, testCustomerUid: "test-uid" });
+
+    await service.create(
+      "member-uid",
+      { ...input, isTestOrder: true },
+      payment,
+      idempotencyKey,
+    );
+
+    expect(repository.createOrder).toHaveBeenCalledWith(
+      "member-uid",
+      expect.objectContaining({ isTestOrder: false }),
+      idempotencyKey,
+      expect.any(String),
+    );
+  });
+
   it("returns the original order for an identical idempotency key and rejects a conflicting payload", async () => {
     const repository = createRepository();
     const service = createMemberOrderService({ repository });

@@ -4,6 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   create: vi.fn(),
+  createOrder: vi.fn(),
+  getOrderByIdempotency: vi.fn(),
+  loadProducts: vi.fn(),
+  useRealService: false,
   verifyBearerMember: vi.fn(),
 }));
 
@@ -13,14 +17,22 @@ vi.mock("../../../lib/firebase/admin-auth", async (importOriginal) => {
 });
 
 vi.mock("../../../lib/firebase/member-orders.server", () => ({
-  memberOrderRepository: {},
+  memberOrderRepository: {
+    createOrder: mocks.createOrder,
+    getOrderByIdempotency: mocks.getOrderByIdempotency,
+    loadProducts: mocks.loadProducts,
+  },
 }));
 
 vi.mock("../../../lib/member-orders/service", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../lib/member-orders/service")>();
   return {
     ...actual,
-    createMemberOrderService: vi.fn(() => ({ create: mocks.create })),
+    createMemberOrderService: vi.fn((
+      dependencies: Parameters<typeof actual.createMemberOrderService>[0],
+    ) => mocks.useRealService
+      ? actual.createMemberOrderService(dependencies)
+      : { create: mocks.create }),
   };
 });
 
@@ -45,6 +57,25 @@ const order = {
 };
 
 const idempotencyKey = "550e8400-e29b-41d4-a716-446655440000";
+const savedTestCustomerUid = process.env.TEST_CUSTOMER_UID;
+
+const product = {
+  id: "p1",
+  name: "오메가3",
+  thumbnailUrl: "/omega.jpg",
+  price: 80_000,
+  stock: 5,
+  purchaseOptions: [{
+    id: "2-month",
+    label: "2개월분",
+    durationMonths: 2,
+    sku: "OMEGA-2M",
+    priceAdjustment: -35_000,
+    stock: 5,
+    active: true,
+    isDefault: true,
+  }],
+};
 
 const createRequest = (body: unknown, authorization?: string): Request => new Request(
   "http://localhost/api/member-orders",
@@ -59,7 +90,16 @@ const createRequest = (body: unknown, authorization?: string): Request => new Re
 );
 
 beforeEach(() => {
+  mocks.useRealService = false;
   mocks.create.mockReset().mockResolvedValue(payment);
+  mocks.createOrder.mockReset().mockImplementation(async (
+    _uid,
+    storedOrder,
+    _key,
+    requestFingerprint,
+  ) => ({ order: storedOrder, requestFingerprint }));
+  mocks.getOrderByIdempotency.mockReset().mockResolvedValue(null);
+  mocks.loadProducts.mockReset().mockResolvedValue([product]);
   mocks.verifyBearerMember.mockReset().mockImplementation(async (request: Request) => {
     if (!request.headers.get("authorization")) throw new ServerAuthenticationError(401);
     return { uid: "verified-member" };
@@ -67,6 +107,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  if (savedTestCustomerUid === undefined) delete process.env.TEST_CUSTOMER_UID;
+  else process.env.TEST_CUSTOMER_UID = savedTestCustomerUid;
   vi.restoreAllMocks();
   vi.clearAllMocks();
 });
@@ -103,6 +145,22 @@ describe("POST /api/member-orders", () => {
       expect.objectContaining({ userId: "attacker-controlled-user" }),
       payment,
       idempotencyKey,
+    );
+  });
+
+  it("labels an order when the verified UID matches the server test customer UID", async () => {
+    process.env.TEST_CUSTOMER_UID = "member-uid";
+    mocks.useRealService = true;
+    mocks.verifyBearerMember.mockResolvedValueOnce({ uid: "member-uid" });
+
+    const response = await POST(createRequest({ order, payment, idempotencyKey }, "Bearer member-token"));
+
+    expect(response.status).toBe(201);
+    expect(mocks.createOrder).toHaveBeenCalledWith(
+      "member-uid",
+      expect.objectContaining({ isTestOrder: true }),
+      idempotencyKey,
+      expect.any(String),
     );
   });
 

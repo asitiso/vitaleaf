@@ -19,6 +19,7 @@ import {
 
 type MemberOrderServiceDependencies = {
   repository: MemberOrderServerRepository;
+  testCustomerUid?: string | null;
 };
 
 const receiptFor = (order: MemberOrderStored): PaymentResult => ({
@@ -38,7 +39,10 @@ const requestFingerprintFor = (input: ReturnType<typeof parseGuestOrderCreateInp
     lines: input.lines,
   });
 
-export const createMemberOrderService = ({ repository }: MemberOrderServiceDependencies) => ({
+export const createMemberOrderService = ({
+  repository,
+  testCustomerUid,
+}: MemberOrderServiceDependencies) => ({
   async create(
     uid: string,
     value: unknown,
@@ -90,6 +94,7 @@ export const createMemberOrderService = ({ repository }: MemberOrderServiceDepen
       userId: uid,
       orderNumber: payment.orderNumber,
       status: "mock-received",
+      isTestOrder: Boolean(testCustomerUid) && uid === testCustomerUid,
       paymentMethod: input.paymentMethod,
       customerName: input.customerName,
       phone: input.phone,
