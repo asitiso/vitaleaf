@@ -1,6 +1,7 @@
 import { collection, getDocs, orderBy, query } from "firebase/firestore";
 
 import type { OrderDraft } from "../payment/process-payment";
+import { normalizeOrderOperations, type OrderOperations, type OrderStatus } from "../orders/operations";
 import { LEGACY_PURCHASE_OPTION_ID } from "../products/purchase-options";
 import { db } from "./client";
 
@@ -20,11 +21,10 @@ export type MemberOrderLine = {
 
 export type MemberOrderSnapshotLine = Required<MemberOrderLine>;
 
-export type MemberOrder = {
+export type MemberOrder = OrderOperations & {
   id: string;
   userId: string;
   orderNumber: string;
-  status: "mock-received";
   paymentMethod: OrderDraft["paymentMethod"];
   customerName: string;
   phone: string;
@@ -42,8 +42,17 @@ export type MemberOrder = {
   receivedAt?: Date | null;
 };
 
-export type MemberOrderStored = Omit<MemberOrder, "id" | "createdAt" | "receivedAt" | "lines">
+export type MemberOrderStored = Omit<
+  MemberOrder,
+  "id" | "createdAt" | "receivedAt" | "lines" | keyof OrderOperations
+>
   & {
+    status: OrderStatus;
+    isTestOrder?: boolean;
+    shippingCarrier?: string;
+    trackingNumber?: string;
+    statusUpdatedAt?: Date | null;
+    statusUpdatedBy?: string;
     lines: MemberOrderSnapshotLine[];
     createdAt: Date;
     receivedAt: Date;
@@ -125,10 +134,10 @@ const asLines = (value: unknown): MemberOrderLine[] =>
 export const normalizeMemberOrder = (uid: string, id: string, raw: unknown): MemberOrder => {
   const order = asRecord(raw);
   return {
+    ...normalizeOrderOperations(order),
     id,
     userId: uid,
     orderNumber: asString(order.orderNumber),
-    status: "mock-received",
     paymentMethod: asPaymentMethod(order.paymentMethod),
     customerName: asString(order.customerName),
     phone: asString(order.phone),

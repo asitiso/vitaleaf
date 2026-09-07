@@ -15,7 +15,12 @@ vi.mock("firebase/firestore", () => ({
   query: queryMock,
 }));
 
-import { createMemberOrderReadRepository, listMemberOrders, type MemberOrderReadAdapter } from "./member-orders";
+import {
+  createMemberOrderReadRepository,
+  listMemberOrders,
+  normalizeMemberOrder,
+  type MemberOrderReadAdapter,
+} from "./member-orders";
 
 const olderOrder = {
   id: "older",
@@ -67,6 +72,41 @@ beforeEach(() => {
 });
 
 describe("member order read repository", () => {
+  it("normalizes stored preparing operations", () => {
+    const statusUpdatedAt = new Date("2026-09-07T03:00:00.000Z");
+
+    expect(normalizeMemberOrder("user-1", "preparing-order", {
+      ...newerOrder.data(),
+      status: "preparing",
+      isTestOrder: true,
+      shippingCarrier: "",
+      trackingNumber: "",
+      statusUpdatedAt: { toDate: () => statusUpdatedAt },
+      statusUpdatedBy: "admin-1",
+    })).toMatchObject({
+      status: "preparing",
+      isTestOrder: true,
+      shippingCarrier: "",
+      trackingNumber: "",
+      statusUpdatedAt,
+      statusUpdatedBy: "admin-1",
+    });
+  });
+
+  it("falls back to received operations for an invalid legacy status", () => {
+    expect(normalizeMemberOrder("user-1", "legacy-order", {
+      ...olderOrder.data(),
+      status: "paid",
+    })).toMatchObject({
+      status: "mock-received",
+      isTestOrder: false,
+      shippingCarrier: "",
+      trackingNumber: "",
+      statusUpdatedAt: null,
+      statusUpdatedBy: "",
+    });
+  });
+
   it("keeps historical zero-priced orders readable while normalizing their implicit option snapshot", async () => {
     const adapter: MemberOrderReadAdapter = { list: vi.fn().mockResolvedValue([olderOrder]) };
 

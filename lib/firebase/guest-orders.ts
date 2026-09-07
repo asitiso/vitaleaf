@@ -9,6 +9,7 @@ import type {
 } from "../guest-orders/types";
 import type { Product } from "../products/types";
 import { normalizeProduct } from "../products/normalize";
+import { normalizeOrderOperations } from "../orders/operations";
 import { LEGACY_PURCHASE_OPTION_ID } from "../products/purchase-options";
 import { OrderCatalogInvalidError } from "../orders/resolve-order-lines";
 import { getAdminFirestore } from "./admin";
@@ -67,14 +68,14 @@ const normalizeLines = (value: unknown): GuestOrderLine[] => Array.isArray(value
     })
   : [];
 
-const normalizeOrder = (orderNumber: string, value: unknown): GuestOrderStored => {
+export const normalizeGuestOrder = (orderNumber: string, value: unknown): GuestOrderStored => {
   const order = asRecord(value);
   const paymentMethod = order.paymentMethod === "bank" || order.paymentMethod === "easy"
     ? order.paymentMethod
     : "card";
   return {
+    ...normalizeOrderOperations(order),
     orderNumber,
-    status: "mock-received",
     paymentMethod,
     customerName: asString(order.customerName),
     phoneNormalized: asString(order.phoneNormalized),
@@ -142,7 +143,7 @@ export const createFirestoreGuestOrderRepository = ({
           if (!existingOrderSnapshot.exists) {
             throw new Error("Stored guest order idempotency mapping has no order.");
           }
-          return normalizeOrder(existingOrderNumber, existingOrderSnapshot.data());
+          return normalizeGuestOrder(existingOrderNumber, existingOrderSnapshot.data());
         }
 
         transaction.create(firestore.doc(`guestOrders/${order.orderNumber}`), order);
@@ -171,12 +172,12 @@ export const createFirestoreGuestOrderRepository = ({
     if (!orderSnapshot.exists) {
       throw new Error("Stored guest order idempotency mapping has no order.");
     }
-    return normalizeOrder(orderNumber, orderSnapshot.data());
+    return normalizeGuestOrder(orderNumber, orderSnapshot.data());
   },
 
   async getOrder(orderNumber) {
     const snapshot = await getFirestore().doc(`guestOrders/${orderNumber}`).get();
-    return snapshot.exists ? normalizeOrder(orderNumber, snapshot.data()) : null;
+    return snapshot.exists ? normalizeGuestOrder(orderNumber, snapshot.data()) : null;
   },
 
   async getAttempt(fingerprint) {

@@ -19,12 +19,17 @@ vi.mock("firebase-admin/app", () => ({
 vi.mock("firebase-admin/firestore", () => ({ getFirestore: adminMocks.getFirestore }));
 
 import { getAdminFirestore } from "./admin";
-import { createFirestoreGuestOrderRepository } from "./guest-orders";
+import { createFirestoreGuestOrderRepository, normalizeGuestOrder } from "./guest-orders";
 
 const NOW = new Date("2026-08-26T03:00:00.000Z");
 const order: GuestOrderStored = {
   orderNumber: "VL-20260826-ABC123",
   status: "mock-received",
+  isTestOrder: false,
+  shippingCarrier: "",
+  trackingNumber: "",
+  statusUpdatedAt: null,
+  statusUpdatedBy: "",
   paymentMethod: "card",
   customerName: "김민수",
   phoneNormalized: "01012345678",
@@ -162,6 +167,54 @@ const firestoreHarness = () => {
 };
 
 describe("Firestore guest-order repository", () => {
+  it("exports the same shipped-order normalization used by lookup", async () => {
+    const harness = firestoreHarness();
+    const statusUpdatedAt = new Date("2026-09-07T03:00:00.000Z");
+    const stored = {
+      ...order,
+      status: "shipped",
+      isTestOrder: false,
+      shippingCarrier: "CJ대한통운",
+      trackingNumber: "1234-5678",
+      statusUpdatedAt: { toDate: () => statusUpdatedAt },
+      statusUpdatedBy: "admin-1",
+    };
+    harness.snapshots.set(`guestOrders/${order.orderNumber}`, {
+      exists: true,
+      data: () => stored,
+    });
+    const repository = createFirestoreGuestOrderRepository({
+      getFirestore: () => harness.firestore as never,
+      loadProduct: vi.fn(),
+    });
+    const expected = {
+      ...order,
+      status: "shipped",
+      isTestOrder: false,
+      shippingCarrier: "CJ대한통운",
+      trackingNumber: "1234-5678",
+      statusUpdatedAt,
+      statusUpdatedBy: "admin-1",
+    };
+
+    expect(normalizeGuestOrder(order.orderNumber, stored)).toEqual(expected);
+    await expect(repository.getOrder(order.orderNumber)).resolves.toEqual(expected);
+  });
+
+  it("falls back to received operations for an invalid legacy status", () => {
+    expect(normalizeGuestOrder(order.orderNumber, {
+      ...order,
+      status: "paid",
+    })).toMatchObject({
+      status: "mock-received",
+      isTestOrder: false,
+      shippingCarrier: "",
+      trackingNumber: "",
+      statusUpdatedAt: null,
+      statusUpdatedBy: "",
+    });
+  });
+
   it("loads every requested public server product", async () => {
     const harness = firestoreHarness();
     const p1 = { id: "p1" } as Product;

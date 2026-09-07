@@ -1,7 +1,8 @@
 import type { PaymentResult } from "../payment/process-payment";
+import type { OrderStatus } from "../orders/operations";
 import type { Product } from "../products/types";
 
-export type GuestOrderStatus = "mock-received";
+export type GuestOrderStatus = OrderStatus;
 
 export type GuestOrderCreateLineInput = {
   productId: string;
@@ -37,6 +38,11 @@ export type GuestOrderLine = {
 export type GuestOrderStored = {
   orderNumber: string;
   status: GuestOrderStatus;
+  isTestOrder?: boolean;
+  shippingCarrier?: string;
+  trackingNumber?: string;
+  statusUpdatedAt?: Date | null;
+  statusUpdatedBy?: string;
   paymentMethod: GuestOrderCreateInput["paymentMethod"];
   customerName: string;
   phoneNormalized: string;
@@ -55,6 +61,11 @@ export type GuestOrderStored = {
 export type GuestOrderPublic = {
   orderNumber: string;
   status: GuestOrderStatus;
+  isTestOrder?: boolean;
+  shippingCarrier?: string;
+  trackingNumber?: string;
+  statusUpdatedAt?: string | null;
+  statusUpdatedBy?: string;
   receivedAt: string;
   customerNameMasked: string;
   phoneMasked: string;
