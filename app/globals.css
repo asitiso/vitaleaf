@@ -1063,6 +1063,7 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
   .admin-table td:last-child::before { display: block; margin-bottom: 8px; }
   .admin-row-actions { min-width: 0; }
   .admin-order-layout { grid-template-columns: 1fr; }
+  .admin-order-filters { grid-template-columns: 1fr; }
   .admin-order-list-container { max-height: min(42vh, 30rem); overflow-y: auto; }
 }
 

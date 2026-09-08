@@ -1,5 +1,6 @@
 import { getCurrentFirebaseIdToken } from "../firebase/id-token";
 import type { GuestOrderPublic } from "../guest-orders/types";
+import { ORDER_STATUSES, type OrderStatus } from "../orders/operations";
 import type {
   InquiryCategory,
   InquiryCreateInput,
@@ -95,6 +96,13 @@ const optionalText = (value: unknown, maximum: number): string => {
   return value;
 };
 
+const possiblyEmptyText = (value: unknown, maximum: number): string => {
+  if (typeof value !== "string" || value.length > maximum || hasControlCharacter(value)) {
+    throw new InquiryClientError();
+  }
+  return value;
+};
+
 // Match the server's Unicode character bounds without relaxing URL/token fields.
 const inquiryText = (value: unknown, maximum: number, allowBodyWhitespace = false): string => {
   if (
@@ -128,6 +136,9 @@ const parseTimestamp = (value: unknown): string => {
   }
   return timestamp;
 };
+
+const parseNullableTimestamp = (value: unknown): string | null =>
+  value === null ? null : parseTimestamp(value);
 
 const parseOrderNumber = (value: unknown): string => {
   const orderNumber = text(value, 32);
@@ -164,6 +175,10 @@ const parsePublicOrder = (value: unknown): GuestOrderPublic => {
   requireExactKeys(order, [
     "orderNumber",
     "status",
+    "isTestOrder",
+    "shippingCarrier",
+    "trackingNumber",
+    "statusUpdatedAt",
     "receivedAt",
     "customerNameMasked",
     "phoneMasked",
@@ -174,13 +189,19 @@ const parsePublicOrder = (value: unknown): GuestOrderPublic => {
     "total",
   ]);
   const orderNumber = parseOrderNumber(order.orderNumber);
-  if (order.status !== "mock-received") throw new InquiryClientError();
+  if (!ORDER_STATUSES.includes(order.status as OrderStatus)) throw new InquiryClientError();
+  if (typeof order.isTestOrder !== "boolean") throw new InquiryClientError();
+  const status = order.status as OrderStatus;
   if (!Array.isArray(order.lines) || order.lines.length < 1 || order.lines.length > 20) {
     throw new InquiryClientError();
   }
   return {
     orderNumber,
-    status: "mock-received",
+    status,
+    isTestOrder: order.isTestOrder,
+    shippingCarrier: possiblyEmptyText(order.shippingCarrier, 200),
+    trackingNumber: possiblyEmptyText(order.trackingNumber, 200),
+    statusUpdatedAt: parseNullableTimestamp(order.statusUpdatedAt),
     receivedAt: parseTimestamp(order.receivedAt),
     customerNameMasked: text(order.customerNameMasked, 50),
     phoneMasked: text(order.phoneMasked, 30),

@@ -20,6 +20,10 @@ const orderNumber = "VL-20260826-ABC123";
 const publicOrder = {
   orderNumber,
   status: "mock-received" as const,
+  isTestOrder: false,
+  shippingCarrier: "",
+  trackingNumber: "",
+  statusUpdatedAt: null,
   receivedAt: "2026-08-26T03:00:00.000Z",
   customerNameMasked: "김**",
   phoneMasked: "010-****-5678",
@@ -95,6 +99,55 @@ describe("guest inquiry verification client", () => {
     const [url] = vi.mocked(fetch).mock.calls[0];
     expect(String(url)).not.toContain(orderNumber);
     expect(String(url)).not.toContain("010-1234-5678");
+  });
+
+  it.each([
+    ["preparing", false, "", "", null],
+    ["shipped", true, "CJ대한통운", "1234-5678", "2026-09-07T03:00:00.000Z"],
+  ] as const)("parses canonical %s operations through real guest verification", async (
+    status,
+    isTestOrder,
+    shippingCarrier,
+    trackingNumber,
+    statusUpdatedAt,
+  ) => {
+    const order = {
+      ...publicOrder,
+      status,
+      isTestOrder,
+      shippingCarrier,
+      trackingNumber,
+      statusUpdatedAt,
+    };
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({
+      order,
+      accessToken: "guest-access-token",
+      expiresAt: "2026-09-07T04:00:00.000Z",
+    }));
+
+    await expect(verifyGuestInquiryAccess(orderNumber, "010-1234-5678")).resolves.toEqual({
+      order,
+      accessToken: "guest-access-token",
+      expiresAt: "2026-09-07T04:00:00.000Z",
+    });
+  });
+
+  it.each([
+    ["unknown status", { status: "paid" }],
+    ["non-boolean test flag", { isTestOrder: "false" }],
+    ["non-string carrier", { shippingCarrier: 123 }],
+    ["non-string tracking number", { trackingNumber: { raw: "1234" } }],
+    ["invalid status timestamp", { statusUpdatedAt: "2026-09-07" }],
+    ["extra order field", { statusUpdatedBy: "private-admin-id" }],
+  ])("rejects a guest order with %s", async (_description, change) => {
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({
+      order: { ...publicOrder, ...change },
+      accessToken: "guest-access-token",
+      expiresAt: "2026-09-07T04:00:00.000Z",
+    }));
+
+    await expect(verifyGuestInquiryAccess(orderNumber, "010-1234-5678"))
+      .rejects.toThrow(InquiryClientError);
   });
 
   it.each([

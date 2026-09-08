@@ -11,10 +11,10 @@ const styleRules = (rules: CSSRuleList): CSSStyleRule[] => Array.from(rules)
   .filter((rule): rule is CSSStyleRule => rule.type === CSSRule.STYLE_RULE);
 
 const baseRule = (selector: string): CSSStyleRule => {
-  const rule = styleRules(styleElement.sheet?.cssRules ?? document.styleSheets[0]!.cssRules)
-    .find((candidate) => candidate.selectorText === selector);
-  expect(rule, `Missing CSS rule: ${selector}`).toBeDefined();
-  return rule!;
+  const rules = styleRules(styleElement.sheet?.cssRules ?? document.styleSheets[0]!.cssRules)
+    .filter((candidate) => candidate.selectorText === selector);
+  expect(rules, `Expected one base CSS rule: ${selector}`).toHaveLength(1);
+  return rules[0]!;
 };
 
 const mediaRule = (conditionText: string, selector: string): CSSStyleRule => {
@@ -23,11 +23,11 @@ const mediaRule = (conditionText: string, selector: string): CSSStyleRule => {
       && (rule as CSSMediaRule).conditionText === conditionText);
   expect(mediaRules.length, `Missing media query: ${conditionText}`).toBeGreaterThan(0);
 
-  const rule = mediaRules
+  const rules = mediaRules
     .flatMap((media) => styleRules(media.cssRules))
-    .find((candidate) => candidate.selectorText === selector);
-  expect(rule, `Missing ${selector} in ${conditionText}`).toBeDefined();
-  return rule!;
+    .filter((candidate) => candidate.selectorText === selector);
+  expect(rules, `Expected one ${selector} rule in ${conditionText}`).toHaveLength(1);
+  return rules[0]!;
 };
 
 describe("admin order responsive CSS contract", () => {
@@ -51,10 +51,11 @@ describe("admin order responsive CSS contract", () => {
   it("switches to one column with a bounded scroll region at the admin tablet breakpoint", () => {
     expect(mediaRule("(max-width: 760px)", ".admin-order-layout").style.gridTemplateColumns)
       .toBe("1fr");
+    expect(mediaRule("(max-width: 760px)", ".admin-order-filters").style.gridTemplateColumns)
+      .toBe("1fr");
 
     const list = mediaRule("(max-width: 760px)", ".admin-order-list-container").style;
-    expect(list.maxHeight).not.toBe("");
-    expect(list.maxHeight).not.toBe("none");
+    expect(list.maxHeight).toBe("min(42vh, 30rem)");
     expect(list.overflowY).toBe("auto");
   });
 

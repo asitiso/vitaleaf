@@ -15,6 +15,10 @@ const accessToken = "private-guest-access";
 const publicOrder = {
   orderNumber,
   status: "mock-received" as const,
+  isTestOrder: false,
+  shippingCarrier: "",
+  trackingNumber: "",
+  statusUpdatedAt: null,
   receivedAt: "2026-08-26T10:00:00.000Z",
   customerNameMasked: "김**",
   phoneMasked: "010-****-5678",
