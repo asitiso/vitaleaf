@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import type { MemberOrder } from "../../lib/firebase/member-orders";
+import { normalizeOrderStatus, ORDER_STATUS_LABELS } from "../../lib/orders/operations";
 
 type OrderHistoryProps = {
   orders: MemberOrder[];
@@ -21,17 +22,24 @@ export function OrderHistory({ orders }: OrderHistoryProps) {
 
   return (
     <ul aria-label="주문 내역">
-      {orders.map((order) => (
-        <li key={order.id}>
-          <article>
-            <h3>{order.orderNumber}</h3>
-            <p>{order.createdAt ? order.createdAt.toLocaleDateString("ko-KR") : "주문 일시 확인 중"}</p>
-            <p>{order.lines.map((line) => `${line.name} ${line.quantity}개`).join(", ")}</p>
-            <p>결제 금액 {formatWon(order.total)}</p>
-            <p>주문 접수</p>
-          </article>
-        </li>
-      ))}
+      {orders.map((order) => {
+        const status = normalizeOrderStatus(order.status);
+        const hasShippingDetails = status === "shipped"
+          && Boolean(order.shippingCarrier)
+          && Boolean(order.trackingNumber);
+        return (
+          <li key={order.id}>
+            <article>
+              <h3>{order.orderNumber}</h3>
+              <p>{order.createdAt ? order.createdAt.toLocaleDateString("ko-KR") : "주문 일시 확인 중"}</p>
+              <p>{order.lines.map((line) => `${line.name} ${line.quantity}개`).join(", ")}</p>
+              <p>결제 금액 {formatWon(order.total)}</p>
+              <p>{ORDER_STATUS_LABELS[status]}</p>
+              {hasShippingDetails ? <p>{order.shippingCarrier} · {order.trackingNumber}</p> : null}
+            </article>
+          </li>
+        );
+      })}
     </ul>
   );
 }

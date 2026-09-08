@@ -1017,6 +1017,31 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
 .admin-dialog p { color: #5c6d63; line-height: 1.65; }
 .admin-dialog div { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 24px; }
 .admin-dialog button:last-child { color: #fff; border-color: #a44031; background: #a44031; }
+.admin-orders { min-width: 0; padding-top: 28px; }
+.admin-order-filters { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(140px, 180px) minmax(140px, 180px); gap: 12px; align-items: end; margin-bottom: 18px; }
+.admin-order-filters label, .admin-order-form label { display: grid; min-width: 0; gap: 6px; color: #3b5448; font-size: 12px; font-weight: 800; }
+.admin-order-filters input, .admin-order-filters select, .admin-order-form input, .admin-order-form select { width: 100%; min-width: 0; min-height: 44px; border: 1px solid #c8d6cb; border-radius: 4px; padding: 9px 11px; color: var(--color-ink); background: #fff; font: inherit; }
+.admin-order-layout { display: grid; min-width: 0; grid-template-columns: minmax(300px, .85fr) minmax(0, 1.4fr); gap: 20px; align-items: start; }
+.admin-order-list-container, .admin-order-detail { min-width: 0; max-width: 100%; border: 1px solid #d5dfd7; border-radius: 6px; background: #fff; }
+.admin-order-list-container { overflow: hidden; }
+.admin-order-list { display: grid; gap: 0; padding: 0; margin: 0; list-style: none; }
+.admin-order-list li + li { border-top: 1px solid #e0e7e1; }
+.admin-order-row { display: grid; width: 100%; min-width: 0; min-height: 44px; gap: 5px; border: 0; padding: 15px 16px; color: #43594e; background: transparent; font: inherit; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+.admin-order-row:hover, .admin-order-row[aria-current="true"] { background: #f2f7f2; }
+.admin-order-row[aria-current="true"] { box-shadow: inset 3px 0 var(--color-sage); }
+.admin-order-row strong { color: #203a2f; }
+.admin-order-row time { color: #718078; font-size: 12px; }
+.admin-order-status, .admin-order-test-badge { justify-self: start; border-radius: 999px; padding: 4px 8px; color: #315544; background: #e3ece4; font-size: 12px; font-weight: 800; }
+.admin-order-test-badge { color: #7a4b20; background: #f5edcf; }
+.admin-order-detail { min-width: 0; max-width: 100%; padding: 20px; overflow-wrap: anywhere; }
+.admin-order-detail h3 { margin-top: 0; color: var(--color-forest); }
+.admin-order-contact, .admin-order-totals { display: grid; grid-template-columns: minmax(90px, auto) minmax(0, 1fr); gap: 8px 14px; }
+.admin-order-contact dd, .admin-order-totals dd { min-width: 0; margin: 0; }
+.admin-order-contact p { margin: 3px 0; }
+.admin-order-lines { display: grid; gap: 8px; padding: 0; list-style: none; }
+.admin-order-lines li { display: grid; min-width: 0; gap: 3px; padding: 12px; border-radius: 4px; background: #f7faf7; overflow-wrap: anywhere; }
+.admin-order-form { display: grid; min-width: 0; gap: 14px; margin-top: 20px; }
+.admin-order-form .admin-primary-button { justify-self: start; }
 
 @media (max-width: 760px) {
   .admin-page, .admin-login-page, .admin-state { width: min(100% - 32px, var(--content-width)); padding-top: 30px; }
@@ -1037,6 +1062,8 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
   .admin-table td:last-child { display: block; padding-bottom: 0; border-bottom: 0; }
   .admin-table td:last-child::before { display: block; margin-bottom: 8px; }
   .admin-row-actions { min-width: 0; }
+  .admin-order-layout { grid-template-columns: 1fr; }
+  .admin-order-list-container { max-height: min(42vh, 30rem); overflow-y: auto; }
 }
 
 @media (max-width: 480px) {
@@ -1046,6 +1073,10 @@ body { font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", Arial, sa
   .admin-table-controls { grid-template-columns: 1fr; }
   .admin-table-search { grid-column: auto; }
   .admin-row-actions button { flex: 1 1 calc(50% - 7px); }
+  .admin-order-filters { grid-template-columns: 1fr; }
+  .admin-order-list-container { max-height: none; overflow-y: visible; }
+  .admin-order-detail { height: auto; max-height: none; }
+  .admin-order-form .admin-primary-button { width: 100%; justify-self: stretch; }
 }
 
 /* Guided product registration */

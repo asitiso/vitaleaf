@@ -5,6 +5,7 @@ import { type FormEvent, useCallback, useEffect, useRef, useState } from "react"
 import { formatWon } from "../../lib/format";
 import type { GuestOrderPublic } from "../../lib/guest-orders/types";
 import { type GuestInquiryAccess, verifyGuestInquiryAccess } from "../../lib/inquiries/client";
+import { normalizeOrderStatus, ORDER_STATUS_LABELS } from "../../lib/orders/operations";
 import { GuestInquiryPanel } from "../inquiries/guest-inquiry-panel";
 
 const ORDER_NUMBER_PATTERN = /^VL-\d{8}-[A-Z0-9]{6}$/u;
@@ -167,7 +168,10 @@ export function GuestOrderLookupForm({ initialOrderNumber = "" }: GuestOrderLook
           <h2 id="guest-order-result-heading" ref={resultHeadingRef} tabIndex={-1}>주문 조회 결과</h2>
           <dl className="guest-order-lookup__overview">
             <div><dt>주문번호</dt><dd>{order.orderNumber}</dd></div>
-            <div><dt>주문 상태</dt><dd>{order.status === "mock-received" ? "접수 완료" : order.status}</dd></div>
+            <div><dt>주문 상태</dt><dd>{ORDER_STATUS_LABELS[normalizeOrderStatus(order.status)]}</dd></div>
+            {normalizeOrderStatus(order.status) === "shipped" && order.shippingCarrier && order.trackingNumber
+              ? <div><dt>배송 정보</dt><dd>{order.shippingCarrier} · {order.trackingNumber}</dd></div>
+              : null}
             <div><dt>접수 일시</dt><dd>{formatReceivedDate(order.receivedAt)}</dd></div>
           </dl>
           <section aria-labelledby="guest-order-items-heading">

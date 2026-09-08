@@ -6,6 +6,7 @@ const tokenMock = vi.hoisted(() => vi.fn());
 vi.mock("../../lib/firebase/id-token", () => ({ getCurrentFirebaseIdToken: tokenMock }));
 
 import { deferred, inquiryFixture } from "../../tests/inquiry-fixtures";
+import * as inquiryClient from "../../lib/inquiries/client";
 import { GuestOrderLookupForm } from "./guest-order-lookup-form";
 
 const orderNumber = "VL-20260826-ABC123";
@@ -252,4 +253,50 @@ it("rejects a verification response for a different order without granting inqui
   expect(await screen.findByRole("alert")).toHaveTextContent("주문 정보를 확인하지 못했습니다");
   expect(screen.queryByText(otherOrderNumber)).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "이 주문으로 1:1 문의하기" })).not.toBeInTheDocument();
+});
+
+it.each([
+  ["preparing", "상품 준비"],
+  ["shipped", "배송 중"],
+  ["received", "접수"],
+] as const)("shows the canonical Korean label for guest status %s", async (status, label) => {
+  vi.spyOn(inquiryClient, "verifyGuestInquiryAccess").mockResolvedValueOnce({
+    order: { ...publicOrder, status: status as unknown as typeof publicOrder.status },
+    accessToken,
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+  });
+  render(<GuestOrderLookupForm />);
+  submitLookup();
+
+  expect(await screen.findByText(label)).toBeVisible();
+  expect(screen.queryByText(status)).not.toBeInTheDocument();
+});
+
+it.each([
+  ["CJ대한통운", "1234567890", true],
+  ["CJ대한통운", "", false],
+  ["", "1234567890", false],
+] as const)("shows guest shipping details only as a complete pair", async (carrier, tracking, visible) => {
+  vi.spyOn(inquiryClient, "verifyGuestInquiryAccess").mockResolvedValueOnce({
+    order: {
+      ...publicOrder,
+      status: "shipped",
+      shippingCarrier: carrier,
+      trackingNumber: tracking,
+    },
+    accessToken,
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+  });
+  render(<GuestOrderLookupForm />);
+  submitLookup();
+
+  await screen.findByRole("heading", { name: "주문 조회 결과" });
+  const details = screen.queryByText(`${carrier} · ${tracking}`);
+  if (visible) {
+    expect(details).toBeVisible();
+  } else {
+    expect(details).not.toBeInTheDocument();
+    if (carrier) expect(screen.queryByText(carrier, { exact: false })).not.toBeInTheDocument();
+    if (tracking) expect(screen.queryByText(tracking, { exact: false })).not.toBeInTheDocument();
+  }
 });
