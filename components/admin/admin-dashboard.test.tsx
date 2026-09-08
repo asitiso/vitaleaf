@@ -38,6 +38,7 @@ vi.mock("../../lib/firebase/product-media", () => ({
 
 import type { Product, ProductDraft } from "../../lib/products/types";
 import type { AdminInquiryClient } from "../../lib/inquiries/admin-client";
+import type { AdminOrderDetail, AdminOrderListItem } from "../../lib/admin-orders/types";
 import { createAdminAuth, type AdminSessionState } from "../../lib/firebase/auth";
 import { AdminDashboard, type AdminDashboardDependencies } from "./admin-dashboard";
 
@@ -112,6 +113,11 @@ const dependencies = (overrides: Partial<AdminDashboardDependencies> = {}): Admi
     stock: 0,
   })),
   uploadProductImage: vi.fn(),
+  orderClient: {
+    list: vi.fn().mockResolvedValue([]),
+    get: vi.fn(),
+    update: vi.fn(),
+  },
   inquiryClient: {
     count: vi.fn().mockResolvedValue(3),
     list: vi.fn().mockResolvedValue([]),
@@ -1655,6 +1661,77 @@ it("exposes tab counts and uses roving focus with Arrow, Home, and End keys", as
   await user.keyboard("{ArrowLeft}");
   expect(inquiryTab).toHaveFocus();
   expect(inquiryTab).toHaveAttribute("aria-selected", "true");
+});
+
+const adminOrder: AdminOrderListItem = {
+  source: "member", ownerId: "first-admin-customer", orderNumber: "VL-20260907-ADMIN01",
+  customerName: "주문 고객", createdAt: "2026-09-07T12:00:00.000Z", itemSummary: "오메가3",
+  total: 28000, status: "mock-received", isTestOrder: true,
+};
+const adminOrderDetail: AdminOrderDetail = {
+  ...adminOrder, phone: "010-5555-9999",
+  shippingAddress: { postcode: "12345", address: "이전 관리자 주문 주소", addressDetail: "101호" },
+  deliveryNote: "", paymentMethod: "card", lines: [], subtotal: 28000, shippingFee: 0,
+  receivedAt: adminOrder.createdAt, shippingCarrier: "", trackingNumber: "", statusUpdatedAt: null, statusUpdatedBy: "",
+};
+
+it("opens orders between product tools and inquiries without prefetching, and reports the received count", async () => {
+  let emitSession!: (state: AdminSessionState) => void;
+  const deps = dependencies({ observeAdminSession: (next) => { emitSession = next; return vi.fn(); } });
+  deps.orderClient.list = vi.fn().mockResolvedValue([adminOrder, { ...adminOrder, orderNumber: "OTHER", status: "completed" }]);
+  render(<AdminDashboard dependencies={deps} />);
+  expect(deps.orderClient.list).not.toHaveBeenCalled();
+  act(() => emitSession("admin"));
+  const tab = await screen.findByRole("tab", { name: "주문 관리" });
+  expect(screen.getAllByRole("tab").map((item) => item.getAttribute("aria-label"))).toEqual(["판매 상품", "임시 저장", "CSV 관리", "주문 관리", "1:1 문의"]);
+  expect(tab).not.toHaveAttribute("aria-describedby");
+  expect(deps.orderClient.list).not.toHaveBeenCalled();
+  const user = userEvent.setup();
+  screen.getByRole("tab", { name: "CSV 관리" }).focus();
+  await user.keyboard("{ArrowRight}");
+  expect(tab).toHaveFocus();
+  expect(await screen.findByRole("tabpanel", { name: "주문 관리" })).toBeVisible();
+  await waitFor(() => expect(tab).toHaveAccessibleDescription("접수 1건"));
+  expect(deps.orderClient.list).toHaveBeenCalledTimes(1);
+  expect(deps.orderClient.get).not.toHaveBeenCalled();
+  expect(deps.subscribeProducts).toHaveBeenCalledTimes(1);
+  expect(deps.subscribeDrafts).toHaveBeenCalledTimes(1);
+});
+
+it.each(["list", "get", "update"] as const)("isolates pending order %s across an authorization generation change", async (operation) => {
+  let emitSession!: (state: AdminSessionState) => void;
+  const pendingList = deferred<AdminOrderListItem[]>();
+  const pendingDetail = deferred<AdminOrderDetail>();
+  const nextList = deferred<AdminOrderListItem[]>();
+  const deps = dependencies({ observeAdminSession: (next) => { emitSession = next; return vi.fn(); } });
+  deps.orderClient.list = vi.fn().mockReturnValueOnce(operation === "list" ? pendingList.promise : Promise.resolve([adminOrder])).mockReturnValueOnce(nextList.promise);
+  deps.orderClient.get = vi.fn().mockReturnValue(operation === "get" ? pendingDetail.promise : Promise.resolve(adminOrderDetail));
+  deps.orderClient.update = vi.fn().mockReturnValue(pendingDetail.promise);
+  render(<AdminDashboard dependencies={deps} />);
+  act(() => emitSession("admin"));
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("tab", { name: "주문 관리" }));
+  if (operation !== "list") {
+    await user.click(await screen.findByRole("button", { name: /VL-20260907-ADMIN01/ }));
+    if (operation === "update") {
+      await screen.findByText("이전 관리자 주문 주소");
+      await user.click(screen.getByRole("button", { name: "처리 정보 저장" }));
+    }
+  }
+  const signal = vi.mocked(deps.orderClient[operation]).mock.calls[0]!.at(-1) as AbortSignal;
+  act(() => { emitSession("checking"); emitSession("admin"); });
+  expect(signal.aborted).toBe(true);
+  const tab = await screen.findByRole("tab", { name: "주문 관리" });
+  expect(tab).not.toHaveAttribute("aria-describedby");
+  expect(screen.queryByText("이전 관리자 주문 주소")).not.toBeInTheDocument();
+  await user.click(tab);
+  await act(async () => { pendingList.resolve([adminOrder]); pendingDetail.resolve(adminOrderDetail); });
+  expect(tab).not.toHaveAttribute("aria-describedby");
+  expect(screen.queryByText("이전 관리자 주문 주소")).not.toBeInTheDocument();
+  expect(screen.queryByText("010-5555-9999")).not.toBeInTheDocument();
+  await act(async () => nextList.resolve([]));
+  expect(tab).toHaveAccessibleDescription("접수 0건");
+  expect(screen.getByText("주문이 없습니다.")).toBeVisible();
 });
 
 it("loads only the pending count after authorization and opens inquiries without replacing product subscriptions", async () => {

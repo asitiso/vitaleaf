@@ -43,6 +43,8 @@ import { ProductWizard } from "./product-wizard/product-wizard";
 import type { MediaUpload } from "./product-wizard/media-step";
 import { adminInquiryClient, type AdminInquiryClient } from "../../lib/inquiries/admin-client";
 import { InquiryPanel } from "./inquiry-panel";
+import { adminOrderClient, type AdminOrderClient } from "../../lib/admin-orders/client";
+import { OrderPanel } from "./order-panel";
 
 export type AdminDashboardDependencies = {
   observeAdminSession(next: (state: AdminSessionState) => void, onError: (error: unknown) => void): () => void;
@@ -62,6 +64,7 @@ export type AdminDashboardDependencies = {
   duplicateProductToDraft(productId: string): Promise<ProductDraft>;
   uploadProductImage: MediaUpload;
   inquiryClient: AdminInquiryClient;
+  orderClient: AdminOrderClient;
 };
 
 const defaultDependencies: Omit<AdminDashboardDependencies, "duplicateProductToDraft"> = {
@@ -81,6 +84,7 @@ const defaultDependencies: Omit<AdminDashboardDependencies, "duplicateProductToD
   discardDraft,
   uploadProductImage,
   inquiryClient: adminInquiryClient,
+  orderClient: adminOrderClient,
 };
 
 const blankDraft = (id: string): ProductDraft => ({
@@ -431,9 +435,9 @@ const DraftEditor = forwardRef<DraftEditorHandle, {
   );
 });
 
-type DashboardView = "published" | "drafts" | "csv" | "inquiries";
+type DashboardView = "published" | "drafts" | "csv" | "orders" | "inquiries";
 type PendingOperation = { action: "unpublish" | "delete"; row: ProductTableRow };
-const dashboardViews: readonly DashboardView[] = ["published", "drafts", "csv", "inquiries"];
+const dashboardViews: readonly DashboardView[] = ["published", "drafts", "csv", "orders", "inquiries"];
 
 export function AdminDashboard({ dependencies: providedDependencies }: { dependencies?: AdminDashboardDependencies }) {
   const router = useRouter();
@@ -468,6 +472,7 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
   const [editorGeneration, setEditorGeneration] = useState(0);
   const [authorizationGeneration, setAuthorizationGeneration] = useState(0);
   const [inquiryWaitingCount, setInquiryWaitingCount] = useState<number | null>(null);
+  const [orderReceivedCount, setOrderReceivedCount] = useState<number | null>(null);
   const [csvImporting, setCsvImporting] = useState(false);
   const authorizationGenerationRef = useRef(0);
   const sessionRef = useRef<AdminSessionState | "loading">(session);
@@ -478,6 +483,7 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
     published: null,
     drafts: null,
     csv: null,
+    orders: null,
     inquiries: null,
   });
   const mutationTokensRef = useRef(new Map<string, symbol>());
@@ -493,6 +499,7 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
     if (sessionRef.current !== state) {
       authorizationGenerationRef.current += 1;
       setAuthorizationGeneration(authorizationGenerationRef.current);
+      setOrderReceivedCount(null);
     }
     sessionRef.current = state;
     setSession(state);
@@ -525,6 +532,7 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
     sessionRef.current = "signed-out";
     editorGenerationRef.current += 1;
     setAuthorizationGeneration(authorizationGenerationRef.current);
+    setOrderReceivedCount(null);
     productsRef.current = [];
     draftsRef.current = [];
     mutationTokensRef.current.clear();
@@ -621,6 +629,7 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
       if (sessionRef.current !== "admin") {
         authorizationGenerationRef.current += 1;
         setAuthorizationGeneration(authorizationGenerationRef.current);
+        setOrderReceivedCount(null);
       }
       sessionRef.current = "admin";
       setAuthMessage("");
@@ -633,6 +642,7 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
       draftsRef.current = [];
       mutationTokensRef.current.clear();
       setAuthorizationGeneration(authorizationGenerationRef.current);
+      setOrderReceivedCount(null);
       setProducts([]);
       setDrafts([]);
       setEditingDraft(null);
@@ -900,6 +910,9 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
             <button ref={(node) => { tabRefs.current.published = node; }} id="admin-tab-published" type="button" disabled={csvImporting} role="tab" tabIndex={view === "published" ? 0 : -1} aria-label="판매 상품" aria-describedby="admin-tab-published-count" aria-selected={view === "published"} aria-controls="admin-panel-published" onClick={() => setView("published")} onKeyDown={(event) => handleTabKeyDown(event, "published")}>판매 상품 <span id="admin-tab-published-count">{products.length}개</span></button>
             <button ref={(node) => { tabRefs.current.drafts = node; }} id="admin-tab-drafts" type="button" disabled={csvImporting} role="tab" tabIndex={view === "drafts" ? 0 : -1} aria-label="임시 저장" aria-describedby="admin-tab-drafts-count" aria-selected={view === "drafts"} aria-controls="admin-panel-drafts" onClick={() => setView("drafts")} onKeyDown={(event) => handleTabKeyDown(event, "drafts")}>임시 저장 <span id="admin-tab-drafts-count">{drafts.length}개</span></button>
             <button ref={(node) => { tabRefs.current.csv = node; }} id="admin-tab-csv" type="button" disabled={csvImporting} role="tab" tabIndex={view === "csv" ? 0 : -1} aria-label="CSV 관리" aria-selected={view === "csv"} aria-controls="admin-panel-csv" onClick={() => setView("csv")} onKeyDown={(event) => handleTabKeyDown(event, "csv")}>CSV 관리</button>
+            <button ref={(node) => { tabRefs.current.orders = node; }} id="admin-tab-orders" type="button" disabled={csvImporting} role="tab" tabIndex={view === "orders" ? 0 : -1} aria-label="주문 관리" aria-describedby={orderReceivedCount === null ? undefined : "admin-tab-orders-count"} aria-selected={view === "orders"} aria-controls="admin-panel-orders" onClick={() => setView("orders")} onKeyDown={(event) => handleTabKeyDown(event, "orders")}>
+              주문 관리 {orderReceivedCount === null ? null : <span id="admin-tab-orders-count" className="admin-order-badge">접수 {orderReceivedCount}건</span>}
+            </button>
             <button ref={(node) => { tabRefs.current.inquiries = node; }} id="admin-tab-inquiries" type="button" disabled={csvImporting} role="tab" tabIndex={view === "inquiries" ? 0 : -1} aria-label="1:1 문의" aria-describedby={inquiryWaitingCount === null ? undefined : "admin-tab-inquiries-count"} aria-selected={view === "inquiries"} aria-controls="admin-panel-inquiries" onClick={() => setView("inquiries")} onKeyDown={(event) => handleTabKeyDown(event, "inquiries")}>
               1:1 문의 {inquiryWaitingCount === null ? null : <span id="admin-tab-inquiries-count" className="admin-inquiry-badge">미답변 {inquiryWaitingCount}건</span>}
             </button>
@@ -967,6 +980,18 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
           {view === "csv" ? (
             <section id="admin-panel-csv" className="admin-catalog" role="tabpanel" aria-labelledby="admin-tab-csv">
               <CsvTools products={products} importing={csvImporting} onImportDrafts={importDrafts} />
+            </section>
+          ) : null}
+
+          {view === "orders" ? (
+            <section id="admin-panel-orders" className="admin-catalog" role="tabpanel" aria-labelledby="admin-tab-orders">
+              <OrderPanel
+                key={authorizationGeneration}
+                client={dependencies.orderClient}
+                onReceivedCountChange={(count) => {
+                  if (authorizationGenerationRef.current === authorizationGeneration) setOrderReceivedCount(count);
+                }}
+              />
             </section>
           ) : null}
 
