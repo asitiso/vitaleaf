@@ -1,7 +1,13 @@
 import { getCurrentFirebaseIdToken } from "../firebase/id-token";
-import { ORDER_STATUSES, type OrderOperationsUpdate, type OrderStatus } from "../orders/operations";
+import {
+  ORDER_STATUSES,
+  parseOrderOperationsUpdate,
+  type OrderOperationsUpdate,
+  type OrderStatus,
+} from "../orders/operations";
 import type { MemberOrderSnapshotLine } from "../firebase/member-orders";
 import type { AdminOrderDetail, AdminOrderListItem, AdminOrderReference } from "./types";
+import { parseAdminOrderReference } from "./validation";
 
 const endpoint = "/api/admin/orders";
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
@@ -229,6 +235,22 @@ const sameOperations = (order: AdminOrderDetail, operations: OrderOperationsUpda
     && order.trackingNumber === trackingNumber;
 };
 
+const canonicalRequestReference = (value: AdminOrderReference): AdminOrderReference => {
+  try {
+    return parseAdminOrderReference(value);
+  } catch {
+    throw new AdminOrderClientError();
+  }
+};
+
+const canonicalRequestOperations = (value: OrderOperationsUpdate): OrderOperationsUpdate => {
+  try {
+    return parseOrderOperationsUpdate(value);
+  } catch {
+    throw new AdminOrderClientError();
+  }
+};
+
 const isAbortError = (error: unknown): boolean =>
   typeof error === "object"
   && error !== null
@@ -280,19 +302,33 @@ export const adminOrderClient: AdminOrderClient = {
     return orders.map(parseListItem);
   },
   async get(requestedReference, signal) {
+    const requestReference = canonicalRequestReference(requestedReference);
     const order = parseDetail(envelope(
-      await post(`${endpoint}/detail`, requestedReference, signal),
+      await post(`${endpoint}/detail`, {
+        source: requestReference.source,
+        ownerId: requestReference.ownerId,
+        orderNumber: requestReference.orderNumber,
+      }, signal),
       "order",
     ));
-    if (!sameReference(order, requestedReference)) throw new AdminOrderClientError();
+    if (!sameReference(order, requestReference)) throw new AdminOrderClientError();
     return order;
   },
   async update(requestedReference, operations, signal) {
+    const requestReference = canonicalRequestReference(requestedReference);
+    const requestOperations = canonicalRequestOperations(operations);
     const order = parseDetail(envelope(
-      await post(`${endpoint}/update`, { ...requestedReference, ...operations }, signal),
+      await post(`${endpoint}/update`, {
+        source: requestReference.source,
+        ownerId: requestReference.ownerId,
+        orderNumber: requestReference.orderNumber,
+        status: requestOperations.status,
+        shippingCarrier: requestOperations.shippingCarrier,
+        trackingNumber: requestOperations.trackingNumber,
+      }, signal),
       "order",
     ));
-    if (!sameReference(order, requestedReference) || !sameOperations(order, operations)) {
+    if (!sameReference(order, requestReference) || !sameOperations(order, requestOperations)) {
       throw new AdminOrderClientError();
     }
     return order;

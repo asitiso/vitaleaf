@@ -169,6 +169,71 @@ describe("adminOrderClient transport", () => {
       message: expect.not.stringContaining("private"),
     });
   });
+
+  it("rejects extra caller reference fields before they can leak through detail transport", async () => {
+    fetchMock.mockResolvedValueOnce(Response.json({ order: detail }));
+    const hostileReference = {
+      ...memberReference,
+      bearerToken: "caller-private-token",
+      phone: "010-0000-0000",
+    };
+
+    await expect(adminOrderClient.get(hostileReference as typeof memberReference))
+      .rejects.toThrow(AdminOrderClientError);
+    expect(tokenMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects operations that try to redirect an update before any authenticated request", async () => {
+    fetchMock.mockResolvedValueOnce(Response.json({ order: detail }));
+    const hostileOperations = {
+      status: "shipped",
+      shippingCarrier: "CJ대한통운",
+      trackingNumber: "1234567890",
+      source: "guest",
+      ownerId: null,
+      orderNumber: "VL-20260907-OTHER1",
+      bearerToken: "caller-private-token",
+    };
+
+    await expect(adminOrderClient.update(memberReference, hostileOperations as never))
+      .rejects.toThrow(AdminOrderClientError);
+    expect(tokenMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("sends only canonical reference and operation fields after server-compatible trimming", async () => {
+    const rawReference = {
+      source: "member",
+      ownerId: " member-1 ",
+      orderNumber: " VL-20260907-TEST01 ",
+    } as const;
+    const rawOperations = {
+      status: "shipped",
+      shippingCarrier: " CJ대한통운 ",
+      trackingNumber: " 1234567890 ",
+    } as const;
+    const shipped = {
+      ...detail,
+      status: "shipped" as const,
+      shippingCarrier: "CJ대한통운",
+      trackingNumber: "1234567890",
+    };
+    fetchMock.mockResolvedValueOnce(Response.json({ order: detail }))
+      .mockResolvedValueOnce(Response.json({ order: shipped }));
+
+    await expect(adminOrderClient.get(rawReference)).resolves.toEqual(detail);
+    await expect(adminOrderClient.update(rawReference, rawOperations)).resolves.toEqual(shipped);
+    expect(fetchMock.mock.calls.map(([url, options]) => [url, JSON.parse(options.body)])).toEqual([
+      ["/api/admin/orders/detail", memberReference],
+      ["/api/admin/orders/update", {
+        ...memberReference,
+        status: "shipped",
+        shippingCarrier: "CJ대한통운",
+        trackingNumber: "1234567890",
+      }],
+    ]);
+  });
 });
 
 describe("adminOrderClient response validation", () => {
