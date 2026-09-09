@@ -1,6 +1,6 @@
 import { getCurrentFirebaseIdToken } from "../firebase/id-token";
 import type { GuestOrderPublic } from "../guest-orders/types";
-import { ORDER_STATUSES, type OrderStatus } from "../orders/operations";
+import { isValidOrderShippingField, ORDER_STATUSES, type OrderStatus } from "../orders/operations";
 import type {
   InquiryCategory,
   InquiryCreateInput,
@@ -96,8 +96,8 @@ const optionalText = (value: unknown, maximum: number): string => {
   return value;
 };
 
-const possiblyEmptyText = (value: unknown, maximum: number): string => {
-  if (typeof value !== "string" || value.length > maximum || hasControlCharacter(value)) {
+const orderShippingText = (value: unknown): string => {
+  if (!isValidOrderShippingField(value)) {
     throw new InquiryClientError();
   }
   return value;
@@ -199,8 +199,8 @@ const parsePublicOrder = (value: unknown): GuestOrderPublic => {
     orderNumber,
     status,
     isTestOrder: order.isTestOrder,
-    shippingCarrier: possiblyEmptyText(order.shippingCarrier, 200),
-    trackingNumber: possiblyEmptyText(order.trackingNumber, 200),
+    shippingCarrier: orderShippingText(order.shippingCarrier),
+    trackingNumber: orderShippingText(order.trackingNumber),
     statusUpdatedAt: parseNullableTimestamp(order.statusUpdatedAt),
     receivedAt: parseTimestamp(order.receivedAt),
     customerNameMasked: text(order.customerNameMasked, 50),

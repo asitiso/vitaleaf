@@ -202,6 +202,18 @@ describe("adminOrderClient transport", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["overlong carrier", { shippingCarrier: "가".repeat(201), trackingNumber: "1234" }],
+    ["tracking control", { shippingCarrier: "CJ대한통운", trackingNumber: "12\u007f34" }],
+  ])("rejects %s before requesting an authentication token", async (_case, shipping) => {
+    await expect(adminOrderClient.update(memberReference, {
+      status: "shipped",
+      ...shipping,
+    })).rejects.toThrow(AdminOrderClientError);
+    expect(tokenMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("sends only canonical reference and operation fields after server-compatible trimming", async () => {
     const rawReference = {
       source: "member",

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { AdminOrderClient } from "../../lib/admin-orders/client";
 import type { AdminOrderDetail, AdminOrderListItem, AdminOrderReference } from "../../lib/admin-orders/types";
-import { ORDER_STATUSES, ORDER_STATUS_LABELS, type OrderOperationsUpdate, type OrderStatus } from "../../lib/orders/operations";
+import { ORDER_SHIPPING_FIELD_MAX_LENGTH, ORDER_STATUSES, ORDER_STATUS_LABELS, type OrderOperationsUpdate, type OrderStatus } from "../../lib/orders/operations";
 
 type Props = {
   client: AdminOrderClient;
@@ -198,8 +198,8 @@ export function OrderPanel({ client, onReceivedCountChange }: Props) {
               <label>처리 상태<select value={draft.status} disabled={saving} onChange={(event) => { setDraft({ ...draft, status: event.target.value as OrderStatus }); setSaveState("idle"); setValidationError(""); }}>
                 {ORDER_STATUSES.map((status) => <option key={status} value={status}>{ORDER_STATUS_LABELS[status]}</option>)}
               </select></label>
-              <label>배송사<input value={draft.shippingCarrier} disabled={saving} required={draft.status === "shipped"} onChange={(event) => { setDraft({ ...draft, shippingCarrier: event.target.value }); setSaveState("idle"); setValidationError(""); }} /></label>
-              <label>송장번호<input value={draft.trackingNumber} disabled={saving} required={draft.status === "shipped"} onChange={(event) => { setDraft({ ...draft, trackingNumber: event.target.value }); setSaveState("idle"); setValidationError(""); }} /></label>
+              <label>배송사<input value={draft.shippingCarrier} maxLength={ORDER_SHIPPING_FIELD_MAX_LENGTH} disabled={saving} required={draft.status === "shipped"} onChange={(event) => { setDraft({ ...draft, shippingCarrier: event.target.value }); setSaveState("idle"); setValidationError(""); }} /></label>
+              <label>송장번호<input value={draft.trackingNumber} maxLength={ORDER_SHIPPING_FIELD_MAX_LENGTH} disabled={saving} required={draft.status === "shipped"} onChange={(event) => { setDraft({ ...draft, trackingNumber: event.target.value }); setSaveState("idle"); setValidationError(""); }} /></label>
               {validationError ? <p role="alert">{validationError}</p> : null}
               {saveState === "error" ? <p role="alert">처리 정보를 저장하지 못했습니다. 기존 상태와 입력 내용을 유지했으니 다시 시도해 주세요.</p> : null}
               {saveState === "success" ? <p role="status">처리 정보를 저장했습니다.</p> : null}

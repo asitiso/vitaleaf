@@ -25,6 +25,36 @@ const payment: PaymentResult = {
   orderNumber: "VL-20260810-ABC123",
   receivedAt: "2026-08-10T09:00:00.000Z",
 };
+const shippedLookupResponse = (shippingCarrier: string, trackingNumber: string) => ({
+  order: {
+    orderNumber: payment.orderNumber,
+    status: "shipped",
+    isTestOrder: false,
+    shippingCarrier,
+    trackingNumber,
+    statusUpdatedAt: "2026-08-10T10:00:00.000Z",
+    receivedAt: payment.receivedAt,
+    customerNameMasked: "홍**",
+    phoneMasked: "010-****-5678",
+    addressMasked: "06236 서울특별시 강남구 ***",
+    lines: [{
+      productId: "omega-3",
+      purchaseOptionId: "default",
+      purchaseOptionLabel: "기본 구성",
+      sku: "",
+      name: "데일리 오메가3",
+      thumbnailUrl: "/omega-3.jpg",
+      basePrice: 16_000,
+      priceAdjustment: 0,
+      unitPrice: 16_000,
+      quantity: 2,
+      lineTotal: 32_000,
+    }],
+    subtotal: 32_000,
+    shippingFee: 0,
+    total: 32_000,
+  },
+});
 const idempotencyKey = "550e8400-e29b-41d4-a716-446655440000";
 
 afterEach(() => {
@@ -86,9 +116,10 @@ it("parses a sample guest order lookup whose optional thumbnail URL is empty", a
       quantity: 1,
     }],
   }, payment, idempotencyKey);
-  if (!storedOrder) throw new Error("Expected the service to persist the order.");
+  const persistedOrder = await repository.getOrder(receipt.orderNumber);
+  if (!persistedOrder) throw new Error("Expected the service to persist the order.");
   storedOrder = {
-    ...storedOrder,
+    ...persistedOrder,
     status: "shipped",
     isTestOrder: true,
     shippingCarrier: "CJ대한통운",
@@ -168,6 +199,34 @@ it("keeps a historical zero-priced guest order readable through lookup", async (
     subtotal: 0,
     total: 0,
   });
+});
+
+it("accepts guest shipping fields at the 200-character boundary", async () => {
+  const shippingCarrier = "가".repeat(200);
+  const trackingNumber = "1".repeat(200);
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(
+    shippedLookupResponse(shippingCarrier, trackingNumber),
+  )));
+
+  await expect(lookupGuestOrder(payment.orderNumber, order.phone)).resolves.toMatchObject({
+    shippingCarrier,
+    trackingNumber,
+  });
+});
+
+it.each([
+  ["201-character carrier", "가".repeat(201), "1234"],
+  ["201-character tracking number", "CJ대한통운", "1".repeat(201)],
+  ["C0 carrier control", "CJ\u0000대한통운", "1234"],
+  ["DEL tracking control", "CJ대한통운", "12\u007f34"],
+  ["C1 carrier control", "CJ\u0085대한통운", "1234"],
+])("rejects guest shipping fields with a %s", async (_case, shippingCarrier, trackingNumber) => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json(
+    shippedLookupResponse(shippingCarrier, trackingNumber),
+  )));
+
+  await expect(lookupGuestOrder(payment.orderNumber, order.phone))
+    .rejects.toThrow(GuestOrderClientError);
 });
 
 it.each([

@@ -15,6 +15,7 @@ import {
   putInquiryUpload,
   verifyGuestInquiryAccess,
 } from "./client";
+import { parseOrderOperationsUpdate } from "../orders/operations";
 
 const orderNumber = "VL-20260826-ABC123";
 const publicOrder = {
@@ -118,6 +119,32 @@ describe("guest inquiry verification client", () => {
       shippingCarrier,
       trackingNumber,
       statusUpdatedAt,
+    };
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({
+      order,
+      accessToken: "guest-access-token",
+      expiresAt: "2026-09-07T04:00:00.000Z",
+    }));
+
+    await expect(verifyGuestInquiryAccess(orderNumber, "010-1234-5678")).resolves.toEqual({
+      order,
+      accessToken: "guest-access-token",
+      expiresAt: "2026-09-07T04:00:00.000Z",
+    });
+  });
+
+  it("accepts max-length shipped fields produced by the persistence parser", async () => {
+    const shippingCarrier = "가".repeat(200);
+    const trackingNumber = "1".repeat(200);
+    const operations = parseOrderOperationsUpdate({
+      status: "shipped",
+      shippingCarrier,
+      trackingNumber,
+    });
+    const order = {
+      ...publicOrder,
+      ...operations,
+      statusUpdatedAt: "2026-09-07T03:00:00.000Z",
     };
     vi.mocked(fetch).mockResolvedValueOnce(Response.json({
       order,

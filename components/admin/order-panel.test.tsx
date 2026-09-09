@@ -135,6 +135,8 @@ it("requires shipping fields, locks duplicate saves, and updates detail, list an
   await user.selectOptions(screen.getByLabelText("처리 상태", { exact: true }), "shipped");
   expect(screen.getByLabelText("배송사")).toBeRequired();
   expect(screen.getByLabelText("송장번호")).toBeRequired();
+  expect(screen.getByLabelText("배송사")).toHaveAttribute("maxlength", "200");
+  expect(screen.getByLabelText("송장번호")).toHaveAttribute("maxlength", "200");
   await user.click(screen.getByRole("button", { name: "처리 정보 저장" }));
   expect(client.update).not.toHaveBeenCalled();
   await user.type(screen.getByLabelText("배송사"), "   ");

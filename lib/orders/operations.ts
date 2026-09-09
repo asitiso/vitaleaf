@@ -4,6 +4,8 @@ export const ORDER_STATUSES = [
 
 export type OrderStatus = typeof ORDER_STATUSES[number];
 
+export const ORDER_SHIPPING_FIELD_MAX_LENGTH = 200;
+
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   "mock-received": "접수",
   preparing: "상품 준비",
@@ -50,6 +52,14 @@ const asDate = (value: unknown): Date | null => {
   }
 };
 
+export function isValidOrderShippingField(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > ORDER_SHIPPING_FIELD_MAX_LENGTH) return false;
+  return ![...value].some((character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+    return codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f);
+  });
+}
+
 export function normalizeOrderStatus(value: unknown): OrderStatus {
   return ORDER_STATUSES.includes(value as OrderStatus)
     ? value as OrderStatus
@@ -81,14 +91,22 @@ export function parseOrderOperationsUpdate(value: unknown): OrderOperationsUpdat
     throw new OrderOperationsValidationError("주문 처리 정보를 다시 확인해 주세요.");
   }
   const status = record.status as OrderStatus;
-  const shippingCarrier = typeof record.shippingCarrier === "string"
-    ? record.shippingCarrier.trim()
+  const rawShippingCarrier = typeof record.shippingCarrier === "string"
+    ? record.shippingCarrier
     : "";
-  const trackingNumber = typeof record.trackingNumber === "string"
-    ? record.trackingNumber.trim()
+  const rawTrackingNumber = typeof record.trackingNumber === "string"
+    ? record.trackingNumber
     : "";
+  const shippingCarrier = rawShippingCarrier.trim();
+  const trackingNumber = rawTrackingNumber.trim();
   if (status === "shipped" && (!shippingCarrier || !trackingNumber)) {
     throw new OrderOperationsValidationError("배송사와 송장번호를 입력해 주세요.");
+  }
+  if (
+    status === "shipped"
+    && (!isValidOrderShippingField(rawShippingCarrier) || !isValidOrderShippingField(rawTrackingNumber))
+  ) {
+    throw new OrderOperationsValidationError("주문 처리 정보를 다시 확인해 주세요.");
   }
   return {
     status,

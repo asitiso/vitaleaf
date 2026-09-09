@@ -1,5 +1,5 @@
 import type { PaymentResult } from "../payment/process-payment";
-import { ORDER_STATUSES, type OrderStatus } from "../orders/operations";
+import { isValidOrderShippingField, ORDER_STATUSES, type OrderStatus } from "../orders/operations";
 import type { GuestOrderCreateInput, GuestOrderPublic } from "./types";
 
 const ORDER_NUMBER = /^VL-\d{8}-[A-Z0-9]{6}$/u;
@@ -30,6 +30,12 @@ const text = (value: unknown, maximum: number): string => {
 const optionalText = (value: unknown, maximum: number): string => {
   if (value === undefined) return "";
   if (typeof value !== "string" || value.length > maximum) throw new GuestOrderClientError();
+  return value;
+};
+
+const orderShippingText = (value: unknown): string => {
+  if (value === undefined) return "";
+  if (!isValidOrderShippingField(value)) throw new GuestOrderClientError();
   return value;
 };
 
@@ -105,8 +111,8 @@ const parsePublicOrder = (value: unknown): GuestOrderPublic => {
     ...receipt,
     status,
     isTestOrder: order.isTestOrder === true,
-    shippingCarrier: optionalText(order.shippingCarrier, 200),
-    trackingNumber: optionalText(order.trackingNumber, 200),
+    shippingCarrier: orderShippingText(order.shippingCarrier),
+    trackingNumber: orderShippingText(order.trackingNumber),
     statusUpdatedAt: optionalTimestamp(order.statusUpdatedAt),
     customerNameMasked: text(order.customerNameMasked, 50),
     phoneMasked: text(order.phoneMasked, 30),
