@@ -30,15 +30,15 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=YOUR_MEASUREMENT_ID
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
 ```
 
-`NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID`는 Analytics를 쓰지 않으면 비워 둘 수 있습니다. 운영 배포에서는 `NEXT_PUBLIC_SITE_URL`을 실제 HTTPS 주소로 바꿉니다.
+`NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID`는 Analytics를 쓰지 않으면 비워 둘 수 있지만 변수 이름은 등록합니다. 운영 배포에서는 `NEXT_PUBLIC_SITE_URL`을 실제 HTTPS 주소로 바꿉니다.
 
-Vercel 프로젝트의 **Settings → Environment Variables**에 `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL`, `FIREBASE_ADMIN_PRIVATE_KEY`, `FIREBASE_STORAGE_BUCKET`, `GUEST_ORDER_LOOKUP_SECRET`, `INQUIRY_TOKEN_SECRET`을 서버 전용 변수로 등록합니다. Admin 비공개 키는 서비스 계정 JSON의 `private_key` 값에 있는 줄바꿈을 `\n`으로 유지하고, `GUEST_ORDER_LOOKUP_SECRET`과 `INQUIRY_TOKEN_SECRET`은 각각 암호학적으로 안전한 무작위 바이트를 32바이트 이상 생성해 사용합니다. 이 이름들에 `NEXT_PUBLIC_` 접두사를 붙이면 브라우저 번들에 노출될 수 있으므로 절대 붙이지 않습니다.
+Vercel 프로젝트의 **Settings → Environment Variables**에 `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL`, `FIREBASE_ADMIN_PRIVATE_KEY`, `FIREBASE_STORAGE_BUCKET`, `GUEST_ORDER_LOOKUP_SECRET`, `INQUIRY_TOKEN_SECRET`을 Preview와 Production의 서버 전용 변수로 등록합니다. Admin 비공개 키는 서비스 계정 JSON의 `private_key` 값에 있는 줄바꿈을 `\n`으로 유지하고, `GUEST_ORDER_LOOKUP_SECRET`과 `INQUIRY_TOKEN_SECRET`은 각각 암호학적으로 안전한 무작위 바이트를 32바이트 이상 생성해 사용합니다. 이 이름들에 `NEXT_PUBLIC_` 접두사를 붙이면 브라우저 번들에 노출될 수 있으므로 절대 붙이지 않습니다.
 
 `NEXT_PUBLIC_*`는 브라우저에 공개되는 웹 앱 설정입니다. 서비스 계정 JSON 전체나 Admin SDK 비공개 키를 공개 변수, 소스 코드, 커밋, 이슈, 로그에 붙여 넣지 마세요. `.env.example`에는 예시값만 두고 실제 값은 로컬 `.env.local`과 Vercel의 암호화된 환경 변수에만 보관합니다.
 
 #### Authentication deployment gate
 
-Preview와 Production에 다음 공개 Firebase 웹 앱 변수 이름을 등록합니다. 앞의 여섯 개는 필수이고 Measurement ID는 선택입니다.
+Vercel의 Preview와 Production 범위에 다음 공개 변수 이름을 모두 등록합니다. 일곱 `NEXT_PUBLIC_FIREBASE_*` 이름은 같은 Firebase 웹 앱을 가리켜야 합니다. `NEXT_PUBLIC_SITE_URL`은 Preview에는 안정된 Preview alias의 HTTPS 주소, Production에는 운영 HTTPS 주소를 사용합니다.
 
 - `NEXT_PUBLIC_FIREBASE_API_KEY`
 - `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`
@@ -46,15 +46,26 @@ Preview와 Production에 다음 공개 Firebase 웹 앱 변수 이름을 등록�
 - `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`
 - `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
 - `NEXT_PUBLIC_FIREBASE_APP_ID`
-- `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID` (optional)
+- `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID`
+- `NEXT_PUBLIC_SITE_URL`
 
-서버 전용 변수는 다음 여섯 이름으로 분리하며 `NEXT_PUBLIC_` 접두사를 붙이지 않습니다: `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL`, `FIREBASE_ADMIN_PRIVATE_KEY`, `FIREBASE_STORAGE_BUCKET`, `GUEST_ORDER_LOOKUP_SECRET`, `INQUIRY_TOKEN_SECRET`. `FIREBASE_STORAGE_BUCKET`은 Admin SDK가 서명 URL을 만들 대상 버킷 이름이고, `INQUIRY_TOKEN_SECRET`은 문의 회원/비회원 접근 토큰 서명용 비밀로 32자 이상이어야 합니다. 환경변수 점검 시 값은 출력하거나 저장하지 않고, 변수 이름과 Preview/Production별 존재 여부만 확인합니다.
+서버 주문·문의 API를 위해 Preview와 Production 범위에 다음 서버 전용 이름도 모두 등록하며 `NEXT_PUBLIC_` 접두사를 붙이지 않습니다.
 
-1. Confirm the six required `NEXT_PUBLIC_FIREBASE_*` values in Preview and Production; Measurement ID is optional.
-2. Redeploy after any public-variable change.
-3. Enable Firebase Auth Email/Password.
-4. Authorize the stable Preview alias and Production domain.
-5. Create the Auth admin user and `admins/{uid}` with `role: admin`.
+- `FIREBASE_ADMIN_PROJECT_ID`
+- `FIREBASE_ADMIN_CLIENT_EMAIL`
+- `FIREBASE_ADMIN_PRIVATE_KEY`
+- `FIREBASE_STORAGE_BUCKET`
+- `GUEST_ORDER_LOOKUP_SECRET`
+- `INQUIRY_TOKEN_SECRET`
+
+`FIREBASE_STORAGE_BUCKET`은 Admin SDK가 서명 URL을 만들 대상 버킷 이름이고, `GUEST_ORDER_LOOKUP_SECRET`과 `INQUIRY_TOKEN_SECRET`은 각각 32바이트 이상의 안전한 무작위 비밀이어야 합니다. 환경 변수 점검 시 실제 값은 출력·복사·저장하지 않고 변수 이름과 Preview/Production별 존재 여부만 확인합니다.
+
+1. Firebase Console의 **Authentication → Sign-in method**에서 Email/Password를 사용 설정하고, 회원가입과 로그인이 동작하는지 먼저 확인합니다.
+2. **Authentication → Settings → Authorized domains**에 안정된 Preview alias 도메인과 Production 도메인을 모두 등록합니다. 프로토콜이나 경로가 아닌 도메인 이름만 입력합니다.
+3. 인증이 동작한 뒤 전용 테스트 고객 Auth 사용자를 만듭니다. 테스트 비밀번호를 로그·README·이슈·셸 기록에 남기지 말고 UID만 복사합니다.
+4. 복사한 UID를 Vercel Preview와 Production 범위의 `TEST_CUSTOMER_UID`로 각각 등록합니다. 실제 UID를 저장소나 로그에 기록하지 않습니다.
+5. 관리자용 Auth 사용자는 별도로 만들고, 같은 UID의 Firestore 문서 `admins/{uid}`에 문자열 필드 `role = "admin"`을 설정합니다. Auth 사용자만 만들거나 테스트 고객 UID를 관리자 UID로 재사용하지 않습니다.
+6. `NEXT_PUBLIC_*` 값은 빌드 시 브라우저 번들에 포함되므로 하나라도 변경하면 해당 Preview와 Production 배포를 다시 실행합니다.
 
 Vercel scope 점검은 다음 읽기 전용 명령으로 수행합니다. 값은 표시하지 않습니다.
 

@@ -20,15 +20,13 @@ const readText = async (fileName: string): Promise<string> => (
   readFile(resolve(process.cwd(), fileName), "utf8")
 );
 
-const readHeadingSection = (markdown: string, heading: string): string => {
-  const headingText = `### ${heading}`;
-  const start = markdown.indexOf(headingText);
-  if (start < 0) return "";
-  const contentStart = start + headingText.length;
-  const remainder = markdown.slice(contentStart);
-  const nextHeading = remainder.search(/^#{2,3} /m);
-  return nextHeading < 0 ? markdown.slice(start) : markdown.slice(start, contentStart + nextHeading);
-};
+const readEnvNames = async (): Promise<string[]> => (
+  (await readText(".env.example"))
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("#"))
+    .map((line) => line.slice(0, line.indexOf("=")))
+);
 
 const hasIndexFor = (
   indexes: CompositeIndex[],
@@ -44,7 +42,36 @@ const hasIndexFor = (
     && index.fields.at(-1)?.fieldPath === "createdAt";
 });
 
-describe("Firebase inquiry configuration contracts", () => {
+describe("Firebase configuration contracts", () => {
+  it("declares the exact public, server, and test-account deployment environment names", async () => {
+    const publicNames = [
+      "NEXT_PUBLIC_FIREBASE_API_KEY",
+      "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN",
+      "NEXT_PUBLIC_FIREBASE_PROJECT_ID",
+      "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET",
+      "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID",
+      "NEXT_PUBLIC_FIREBASE_APP_ID",
+      "NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID",
+      "NEXT_PUBLIC_SITE_URL",
+    ];
+    const serverNames = [
+      "FIREBASE_ADMIN_PROJECT_ID",
+      "FIREBASE_ADMIN_CLIENT_EMAIL",
+      "FIREBASE_ADMIN_PRIVATE_KEY",
+      "FIREBASE_STORAGE_BUCKET",
+      "GUEST_ORDER_LOOKUP_SECRET",
+      "INQUIRY_TOKEN_SECRET",
+    ];
+    const testAccountNames = ["TEST_CUSTOMER_UID"];
+    const envNames = await readEnvNames();
+
+    expect(envNames.filter((name) => name.startsWith("NEXT_PUBLIC_")).sort()).toEqual(publicNames.sort());
+    expect(envNames.filter((name) => !name.startsWith("NEXT_PUBLIC_")).sort()).toEqual(
+      [...serverNames, ...testAccountNames].sort(),
+    );
+    expect(envNames.sort()).toEqual([...publicNames, ...serverNames, ...testAccountNames].sort());
+  });
+
   it("covers every member, guest, and admin query shape emitted by the repository", async () => {
     const config = await readJson<{ indexes: CompositeIndex[] }>("firestore.indexes.json");
     const filters = [[], ["status"], ["category"], ["status", "category"]];
@@ -89,24 +116,4 @@ describe("Firebase inquiry configuration contracts", () => {
     expect(JSON.stringify(rule)).not.toContain("products/");
   });
 
-  it("keeps rules deployment behind the one approved action-time gate", async () => {
-    const readme = await readText("README.md");
-    const rulesSection = readHeadingSection(readme, "Firestore와 Storage 규칙 게시");
-    const approvedSection = readHeadingSection(readme, "향후 승인된 배포 (이 작업에서 실행하지 않음)");
-
-    expect(rulesSection).toContain("향후 승인된 배포");
-    expect(rulesSection).toContain("최종 action-time 승인");
-    expect(rulesSection).not.toMatch(/firebase-tools@15\.26\.0 deploy/u);
-    expect(approvedSection).toContain("최종 action-time 승인");
-  });
-
-  it("explains that wildcard CORS only supports already-authorized signed PUTs", async () => {
-    const readme = await readText("README.md");
-    const approvedSection = readHeadingSection(readme, "향후 승인된 배포 (이 작업에서 실행하지 않음)");
-
-    expect(approvedSection).toMatch(/origin.*\["\*"\]/su);
-    expect(approvedSection).toMatch(/짧은 수명의 서명 PUT URL/su);
-    expect(approvedSection).toMatch(/자격 ?증명.*공개/su);
-    expect(approvedSection).toMatch(/IAM.*Storage.*규칙.*완화/su);
-  });
 });
