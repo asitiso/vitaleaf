@@ -1,7 +1,6 @@
 import type { MemberOrder } from "../firebase/member-orders";
-import type { GuestOrderStored } from "../guest-orders/types";
 import { normalizeOrderOperations, parseOrderOperationsUpdate } from "../orders/operations";
-import type { AdminOrderDetail, AdminOrderListItem, AdminOrderReference, AdminOrderRepository, AdminOrderService } from "./types";
+import type { AdminGuestOrder, AdminOrderDetail, AdminOrderListItem, AdminOrderReference, AdminOrderRepository, AdminOrderService } from "./types";
 import { parseAdminOrderReference } from "./validation";
 
 export class AdminOrderAccessError extends Error {
@@ -18,7 +17,7 @@ export class AdminOrderNotFoundError extends Error {
   }
 }
 
-type StoredOrder = MemberOrder | GuestOrderStored;
+type StoredOrder = MemberOrder | AdminGuestOrder;
 const isoDate = (date: Date | null | undefined): string | null =>
   date instanceof Date && !Number.isNaN(date.getTime()) ? date.toISOString() : null;
 

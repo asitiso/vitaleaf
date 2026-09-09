@@ -30,11 +30,17 @@ export type AdminOrderDetail = AdminOrderListItem & {
   statusUpdatedBy: string;
 };
 
+// Administrative reads tolerate legacy timestamps without relaxing customer lookup records.
+export type AdminGuestOrder = Omit<GuestOrderStored, "createdAt" | "receivedAt"> & {
+  createdAt: Date | null;
+  receivedAt: Date | null;
+};
+
 export type AdminOrderRepository = {
   listMember(limit: number): Promise<MemberOrder[]>;
-  listGuest(limit: number): Promise<GuestOrderStored[]>;
-  get(reference: AdminOrderReference): Promise<MemberOrder | GuestOrderStored | null>;
-  update(reference: AdminOrderReference, operations: OrderOperationsUpdate, adminUid: string, now: Date): Promise<MemberOrder | GuestOrderStored>;
+  listGuest(limit: number): Promise<AdminGuestOrder[]>;
+  get(reference: AdminOrderReference): Promise<MemberOrder | AdminGuestOrder | null>;
+  update(reference: AdminOrderReference, operations: OrderOperationsUpdate, adminUid: string, now: Date): Promise<MemberOrder | AdminGuestOrder>;
 };
 
 export type AdminOrderService = {

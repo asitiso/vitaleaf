@@ -1,13 +1,62 @@
 import type { Firestore } from "firebase-admin/firestore";
 import { AdminOrderAccessError, AdminOrderNotFoundError } from "../admin-orders/service";
-import type { AdminOrderReference, AdminOrderRepository } from "../admin-orders/types";
+import type { AdminGuestOrder, AdminOrderReference, AdminOrderRepository } from "../admin-orders/types";
 import { parseAdminOrderReference } from "../admin-orders/validation";
+import { normalizeOrderOperations } from "../orders/operations";
 import { getAdminFirestore } from "./admin";
-import { normalizeGuestOrder } from "./guest-orders";
 import { normalizeMemberOrder } from "./member-orders";
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+
+const asString = (value: unknown): string => typeof value === "string" ? value : "";
+
+const nullableDate = (value: unknown): Date | null => {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (!value || typeof value !== "object" || !("toDate" in value)) return null;
+  try {
+    const date = typeof value.toDate === "function" ? value.toDate() : null;
+    return date instanceof Date && !Number.isNaN(date.getTime()) ? date : null;
+  } catch {
+    return null;
+  }
+};
+
+const normalizeAdminGuestOrder = (orderNumber: string, value: unknown): AdminGuestOrder => {
+  const data = asRecord(value);
+  // Reuse canonical line, amount and payment normalization, but do not inherit
+  // member receivedAt's createdAt fallback or the customer's strict date errors.
+  const order = normalizeMemberOrder("", orderNumber, data);
+  return {
+    ...normalizeOrderOperations(data),
+    orderNumber,
+    customerName: order.customerName,
+    phoneNormalized: asString(data.phoneNormalized),
+    postcode: asString(data.postcode),
+    address: asString(data.address),
+    addressDetail: asString(data.addressDetail),
+    deliveryNote: order.deliveryNote,
+    paymentMethod: order.paymentMethod,
+    lines: order.lines.map((line) => ({
+      productId: line.productId,
+      purchaseOptionId: line.purchaseOptionId ?? "default",
+      purchaseOptionLabel: line.purchaseOptionLabel ?? "기본 구성",
+      sku: line.sku ?? "",
+      name: line.name,
+      thumbnailUrl: line.thumbnailUrl ?? "",
+      basePrice: line.basePrice ?? line.unitPrice,
+      priceAdjustment: line.priceAdjustment ?? 0,
+      quantity: line.quantity,
+      unitPrice: line.unitPrice,
+      lineTotal: line.lineTotal ?? line.unitPrice * line.quantity,
+    })),
+    subtotal: order.subtotal,
+    shippingFee: order.shippingFee,
+    total: order.total,
+    createdAt: order.createdAt,
+    receivedAt: nullableDate(data.receivedAt),
+  };
+};
 
 const documentPath = (reference: AdminOrderReference): string => reference.source === "member"
   ? `users/${reference.ownerId}/orders/${reference.orderNumber}`
@@ -26,7 +75,7 @@ const memberReferenceFromPath = (path: string): Extract<AdminOrderReference, { s
 
 const normalize = (reference: AdminOrderReference, value: unknown) => {
   const data = asRecord(value);
-  if (reference.source === "guest") return normalizeGuestOrder(reference.orderNumber, data);
+  if (reference.source === "guest") return normalizeAdminGuestOrder(reference.orderNumber, data);
   // The shared member normalizer derives userId from its argument, so check the stored value first.
   if (data.userId !== reference.ownerId) throw new AdminOrderAccessError();
   return normalizeMemberOrder(reference.ownerId, reference.orderNumber, data);
@@ -47,7 +96,7 @@ export const createFirestoreAdminOrderRepository = ({
   },
   async listGuest(limit) {
     const snapshot = await getFirestore().collection("guestOrders").orderBy("createdAt", "desc").limit(limit).get();
-    return snapshot.docs.map((document) => normalizeGuestOrder(document.id, document.data()));
+    return snapshot.docs.map((document) => normalizeAdminGuestOrder(document.id, document.data()));
   },
   async get(input) {
     const reference = parseAdminOrderReference(input);

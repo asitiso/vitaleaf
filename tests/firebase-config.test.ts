@@ -43,6 +43,23 @@ const hasIndexFor = (
 });
 
 describe("Firebase configuration contracts", () => {
+  it("indexes descending order creation dates across members while retaining collection defaults", async () => {
+    const config = await readJson<{ fieldOverrides: Array<{
+      collectionGroup: string;
+      fieldPath: string;
+      indexes: Array<{ queryScope: string; order?: string; arrayConfig?: string }>;
+    }> }>("firestore.indexes.json");
+    const override = config.fieldOverrides.find((field) =>
+      field.collectionGroup === "orders" && field.fieldPath === "createdAt");
+
+    expect(override?.indexes).toEqual(expect.arrayContaining([
+      { order: "DESCENDING", queryScope: "COLLECTION_GROUP" },
+      { order: "ASCENDING", queryScope: "COLLECTION" },
+      { order: "DESCENDING", queryScope: "COLLECTION" },
+      { arrayConfig: "CONTAINS", queryScope: "COLLECTION" },
+    ]));
+  });
+
   it("declares the exact public, server, and test-account deployment environment names", async () => {
     const publicNames = [
       "NEXT_PUBLIC_FIREBASE_API_KEY",
