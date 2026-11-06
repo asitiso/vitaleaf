@@ -113,13 +113,13 @@ export function DraftPreview({
     );
   }
   if (session === "loading" || session === "checking") {
-    return <main className="admin-state" role="status">관리자 권한을 확인하는 중입니다.</main>;
+    return <main className="admin-state"><p role="status">관리자 권한을 확인하는 중입니다.</p></main>;
   }
   if (session !== "admin") {
     return <main className="admin-state" role="alert"><h1>미리보기 권한이 없습니다</h1><p>관리자 계정으로 로그인해 주세요.</p></main>;
   }
   if (currentLoad.state === "loading") {
-    return <main className="admin-state" role="status">초안을 불러오는 중입니다.</main>;
+    return <main className="admin-state"><p role="status">초안을 불러오는 중입니다.</p></main>;
   }
   if (currentLoad.state === "error" || !product) {
     return (

@@ -301,7 +301,10 @@ it("clears the catalog and editor on checking and ignores callbacks from the old
   expect(screen.getByRole("heading", { name: "Admin A draft 수정" })).toBeVisible();
 
   act(() => emitSession("checking"));
-  expect(screen.getByRole("status")).toHaveTextContent("관리자 권한을 확인하는 중입니다.");
+  const loadingStatus = screen.getByRole("status");
+  expect(loadingStatus).toHaveTextContent("관리자 권한을 확인하는 중입니다.");
+  expect(loadingStatus.tagName).toBe("P");
+  expect(loadingStatus.closest("main")).not.toBeNull();
   act(() => {
     productCallbacks[0]([{ ...product, name: "Stale admin A product" }]);
     draftCallbacks[0]([productDraft(product, { name: "Stale admin A draft" })]);

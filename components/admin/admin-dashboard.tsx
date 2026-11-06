@@ -855,7 +855,7 @@ export function AdminDashboard({ dependencies: providedDependencies }: { depende
   };
 
   if (session === "loading" || session === "checking") {
-    return <main className="admin-state" role="status">관리자 권한을 확인하는 중입니다.</main>;
+    return <main className="admin-state"><p role="status">관리자 권한을 확인하는 중입니다.</p></main>;
   }
 
   if (session !== "admin") {

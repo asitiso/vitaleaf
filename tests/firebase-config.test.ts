@@ -43,6 +43,18 @@ const hasIndexFor = (
 });
 
 describe("Firebase configuration contracts", () => {
+  it("indexes the approved product review query in the order required by Firestore", async () => {
+    const config = await readJson<{ indexes: CompositeIndex[] }>("firestore.indexes.json");
+    const reviewIndex = config.indexes.find((index) =>
+      index.collectionGroup === "reviews" && index.queryScope === "COLLECTION");
+
+    expect(reviewIndex?.fields).toEqual([
+      { fieldPath: "approved", order: "ASCENDING" },
+      { fieldPath: "productId", order: "ASCENDING" },
+      { fieldPath: "createdAt", order: "DESCENDING" },
+    ]);
+  });
+
   it("indexes descending order creation dates across members while retaining collection defaults", async () => {
     const config = await readJson<{ fieldOverrides: Array<{
       collectionGroup: string;

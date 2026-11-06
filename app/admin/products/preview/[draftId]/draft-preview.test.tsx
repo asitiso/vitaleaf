@@ -83,7 +83,10 @@ it("authorizes before loading and renders the existing detail with purchase cont
   });
   render(<CartProvider><DraftPreview draftId="draft-1" dependencies={deps} /></CartProvider>);
 
-  expect(screen.getByRole("status")).toHaveTextContent("관리자 권한");
+  const loadingStatus = screen.getByRole("status");
+  expect(loadingStatus).toHaveTextContent("관리자 권한");
+  expect(loadingStatus.tagName).toBe("P");
+  expect(loadingStatus.closest("main")).not.toBeNull();
   expect(getDraft).not.toHaveBeenCalled();
   act(() => emit("admin"));
 
