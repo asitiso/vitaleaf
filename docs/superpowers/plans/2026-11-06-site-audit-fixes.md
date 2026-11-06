@@ -108,10 +108,10 @@ Run: `firebase deploy --only firestore:indexes --project todaysell-d4bbc`.
 
 Commit only the fixes, tests, plan, and audit report; push `feat/member-account-orders`.
 
-- [ ] **Step 4: Deploy/promote to Vercel production**
+- [x] **Step 4: Deploy/promote to Vercel production**
 
 Deploy the verified commit to `asitiso/vitaleaf` and confirm `https://vitaleaf.vercel.app` points to a Ready production deployment.
 
-- [ ] **Step 5: Re-run production smoke tests**
+- [x] **Step 5: Re-run production smoke tests**
 
 Verify review empty/success state, mobile navigation, cart/checkout, test order visibility, administrator orders/inquiries, favicon, axe results, and error logs.

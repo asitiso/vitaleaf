@@ -118,7 +118,7 @@ Next.js App Router의 `app/icon.svg` 규약으로 브랜드 아이콘을 추가�
 | **Severity** | medium |
 | **Category** | accessibility |
 | **URL** | https://vitaleaf.vercel.app/admin |
-| **Status** | 수정 및 재검증 예정 |
+| **Status** | 운영 axe 재검사 완료 |
 
 **Description**
 
@@ -127,5 +127,6 @@ Next.js App Router의 `app/icon.svg` 규약으로 브랜드 아이콘을 추가�
 **Resolution**
 
 관리자 도구 모음 설명 문구의 공통 색상을 이미 검증된 진한 보조 텍스트 색상으로 조정했습니다.
+운영 관리자 문의 화면을 다시 검사한 결과 axe 위반은 0건입니다.
 
 ---
