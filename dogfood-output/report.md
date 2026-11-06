@@ -13,9 +13,9 @@
 |----------|-------|
 | Critical | 0 |
 | High | 0 |
-| Medium | 3 |
+| Medium | 4 |
 | Low | 1 |
-| **Total** | **4** |
+| **Total** | **5** |
 
 ## Issues
 
@@ -108,5 +108,24 @@ axe-core WCAG 2 AA 검사에서 상품 카드의 카테고리, 이미지 대체 
 **Resolution**
 
 Next.js App Router의 `app/icon.svg` 규약으로 브랜드 아이콘을 추가했습니다. 생성된 아이콘 링크와 `/icon.svg` 응답 200을 확인했습니다.
+
+---
+
+### ISSUE-005: 관리자 문의 화면 설명 문구 명암 대비 부족
+
+| Field | Value |
+|-------|-------|
+| **Severity** | medium |
+| **Category** | accessibility |
+| **URL** | https://vitaleaf.vercel.app/admin |
+| **Status** | 수정 및 재검증 예정 |
+
+**Description**
+
+프로덕션 관리자 문의 화면의 설명 문구가 배경 대비 4.11:1로 WCAG 2 AA 최소 기준 4.5:1을 충족하지 못했습니다.
+
+**Resolution**
+
+관리자 도구 모음 설명 문구의 공통 색상을 이미 검증된 진한 보조 텍스트 색상으로 조정했습니다.
 
 ---
