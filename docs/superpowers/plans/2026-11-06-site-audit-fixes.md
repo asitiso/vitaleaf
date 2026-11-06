@@ -104,7 +104,7 @@ Run: `pnpm test`, `pnpm lint`, `pnpm build:vercel`.
 
 Run: `firebase deploy --only firestore:indexes --project todaysell-d4bbc`.
 
-- [ ] **Step 3: Commit and push the branch**
+- [x] **Step 3: Commit and push the branch**
 
 Commit only the fixes, tests, plan, and audit report; push `feat/member-account-orders`.
 
